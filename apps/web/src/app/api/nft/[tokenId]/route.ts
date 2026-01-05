@@ -107,6 +107,7 @@ export async function GET(
       open: "Open",
       active: "In Progress",
       completed: "Completed",
+      cancelled: "Cancelled",
     };
     const statusLabel = statusLabels[status] || status;
 

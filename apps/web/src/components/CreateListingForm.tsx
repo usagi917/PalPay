@@ -56,9 +56,37 @@ export function CreateListingForm({ onSuccess }: CreateListingFormProps) {
   const { createListing, isLoading, error, txHash } = useCreateListing(handleSuccess);
 
   const handleSubmit = async () => {
-    if (!title || !amount) return;
-
     setFormError(null);
+
+    // タイトルのバリデーション
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
+      setFormError(locale === "ja" ? "タイトルを入力してください" : "Please enter a title");
+      return;
+    }
+    if (trimmedTitle.length > 100) {
+      setFormError(locale === "ja" ? "タイトルは100文字以内で入力してください" : "Title must be 100 characters or less");
+      return;
+    }
+
+    // 説明のバリデーション（任意だが500文字以内）
+    const trimmedDescription = description.trim();
+    if (trimmedDescription.length > 500) {
+      setFormError(locale === "ja" ? "説明は500文字以内で入力してください" : "Description must be 500 characters or less");
+      return;
+    }
+
+    // 金額のバリデーション
+    if (!amount) {
+      setFormError(locale === "ja" ? "価格を入力してください" : "Please enter a price");
+      return;
+    }
+    const amountNum = parseFloat(amount);
+    if (isNaN(amountNum) || amountNum <= 0) {
+      setFormError(locale === "ja" ? "価格は0より大きい値を入力してください" : "Price must be greater than 0");
+      return;
+    }
+
     let amountBigInt: bigint;
     try {
       amountBigInt = parseUnits(amount, decimals);
@@ -66,8 +94,9 @@ export function CreateListingForm({ onSuccess }: CreateListingFormProps) {
       setFormError(locale === "ja" ? "金額の形式が正しくありません" : "Invalid amount format");
       return;
     }
+
     const categoryType = categoryToType(category);
-    await createListing(categoryType, title, description, amountBigInt, imageURI);
+    await createListing(categoryType, trimmedTitle, trimmedDescription, amountBigInt, imageURI.trim());
   };
 
   const t = {
@@ -381,7 +410,7 @@ export function CreateListingForm({ onSuccess }: CreateListingFormProps) {
                     <Button
                       variant="contained"
                       onClick={handleSubmit}
-                      disabled={isLoading || !title || !amount}
+                      disabled={isLoading || !title.trim() || !amount}
                       sx={{
                         flex: 1,
                         background: "linear-gradient(135deg, var(--color-primary) 0%, var(--copper-rich) 100%)",
