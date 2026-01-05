@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useMemo, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -49,6 +49,7 @@ import type { Address } from "viem";
 export default function ListingDetailPage() {
   const params = useParams();
   const escrowAddress = params.address as Address;
+  const router = useRouter();
 
   const [locale, setLocale] = useState<Locale>("ja");
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
@@ -80,7 +81,8 @@ export default function ListingDetailPage() {
     refetchMilestones();
     refetchEvents();
     purchaseValidation.refetch();
-  }, [refetchInfo, refetchMilestones, refetchEvents, purchaseValidation]);
+    router.refresh();
+  }, [refetchInfo, refetchMilestones, refetchEvents, purchaseValidation, router]);
 
   const { lock, submit, cancel, isLoading: actionLoading, error: actionError, txHash, txStep, resetState } = useEscrowActions(
     escrowAddress,
