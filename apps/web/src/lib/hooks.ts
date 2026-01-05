@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { type Address, type Hash } from "viem";
 import { createClient, createWallet, config, getChain, getMetaMaskProvider } from "./config";
 import { FACTORY_ABI, ESCROW_ABI, ERC20_ABI } from "./abi";
+import { getMilestoneName } from "./constants";
 import type { EscrowInfo, Milestone, ListingSummary, TimelineEvent, UserRole } from "./types";
 
 // ============ Wallet Connection ============
@@ -267,18 +268,8 @@ export function typeToCategory(categoryType: number): string {
   }
 }
 
-// マイルストーン名をcode + categoryTypeから生成
-const MILESTONE_NAMES: Record<number, string[]> = {
-  0: ["素牛導入", "肥育開始", "肥育中1", "肥育中2", "肥育中3", "肥育中4", "肥育中5", "肥育中6", "出荷準備", "出荷", "納品完了"],
-  1: ["仕込み", "発酵", "熟成", "瓶詰め", "出荷"],
-  2: ["制作開始", "窯焼き", "絵付け", "仕上げ"],
-  3: ["完了"],
-};
-
-export function getMilestoneName(categoryType: number, code: number): string {
-  const names = MILESTONE_NAMES[categoryType] || MILESTONE_NAMES[3];
-  return names[code] || `Step ${code + 1}`;
-}
+// getMilestoneName is now imported from ./constants
+export { getMilestoneName } from "./constants";
 
 export function useCreateListing(onSuccess?: () => void) {
   const [isLoading, setIsLoading] = useState(false);
@@ -666,9 +657,10 @@ export function useEscrowEvents(escrowAddress: Address | null) {
   const [error, setError] = useState<string | null>(null);
   const [fromBlock, setFromBlock] = useState<bigint | null>(null);
 
+  // escrowAddressが変更されたときのみfromBlockをリセット
   useEffect(() => {
     setFromBlock(null);
-  }, [escrowAddress, fromBlock]);
+  }, [escrowAddress]);
 
   const fetchEvents = useCallback(async () => {
     if (!escrowAddress) {

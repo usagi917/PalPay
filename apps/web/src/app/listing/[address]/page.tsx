@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -16,6 +16,11 @@ import {
   CircularProgress,
   Alert,
   Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
@@ -46,6 +51,7 @@ export default function ListingDetailPage() {
   const escrowAddress = params.address as Address;
 
   const [locale, setLocale] = useState<Locale>("ja");
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
 
   const i18nValue = useMemo(
     () => ({
@@ -80,6 +86,16 @@ export default function ListingDetailPage() {
     escrowAddress,
     handleSuccess
   );
+
+  // 成功後に3秒で自動リセット
+  useEffect(() => {
+    if (txStep === "success") {
+      const timer = setTimeout(() => {
+        resetState();
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [txStep, resetState]);
 
   const userRole = getUserRole(wallet.address, info);
 
@@ -579,7 +595,7 @@ export default function ListingDetailPage() {
                                 variant="outlined"
                                 fullWidth
                                 startIcon={actionLoading ? <CircularProgress size={20} /> : <CancelIcon />}
-                                onClick={cancel}
+                                onClick={() => setCancelDialogOpen(true)}
                                 disabled={actionLoading}
                                 sx={{
                                   borderColor: "var(--status-error)",
@@ -906,6 +922,54 @@ export default function ListingDetailPage() {
             )}
           </Container>
         </Box>
+
+        {/* Cancel Confirmation Dialog */}
+        <Dialog
+          open={cancelDialogOpen}
+          onClose={() => setCancelDialogOpen(false)}
+          PaperProps={{
+            sx: {
+              background: "var(--color-surface)",
+              border: "1px solid var(--color-border)",
+              borderRadius: 3,
+            },
+          }}
+        >
+          <DialogTitle sx={{ color: "var(--color-text)" }}>
+            {locale === "ja" ? "出品をキャンセルしますか？" : "Cancel this listing?"}
+          </DialogTitle>
+          <DialogContent>
+            <DialogContentText sx={{ color: "var(--color-text-secondary)" }}>
+              {locale === "ja"
+                ? "この操作は取り消せません。出品をキャンセルするとNFTがバーンされます。"
+                : "This action cannot be undone. Cancelling will burn the NFT."}
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions sx={{ p: 2 }}>
+            <Button
+              onClick={() => setCancelDialogOpen(false)}
+              sx={{ color: "var(--color-text-muted)" }}
+            >
+              {locale === "ja" ? "戻る" : "Go Back"}
+            </Button>
+            <Button
+              onClick={() => {
+                setCancelDialogOpen(false);
+                cancel();
+              }}
+              variant="contained"
+              sx={{
+                background: "var(--status-error)",
+                color: "white",
+                "&:hover": {
+                  background: "#c0392b",
+                },
+              }}
+            >
+              {locale === "ja" ? "キャンセルする" : "Yes, Cancel"}
+            </Button>
+          </DialogActions>
+        </Dialog>
       </div>
     </I18nContext.Provider>
   );

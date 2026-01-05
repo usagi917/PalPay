@@ -3,24 +3,12 @@ import { createPublicClient, http, type Address } from "viem";
 import { polygonAmoy } from "viem/chains";
 import { FACTORY_ABI, ESCROW_ABI, ERC20_ABI } from "@/lib/abi";
 import { SUPPORTED_CHAINS, CATEGORY_LABELS } from "@/lib/config";
+import { getMilestoneName } from "@/lib/constants";
 
 interface Milestone {
   name: string;
   bps: bigint | number;
   completed: boolean;
-}
-
-// Milestone names by category type (same as hooks.ts)
-const MILESTONE_NAMES: Record<number, string[]> = {
-  0: ["素牛導入", "肥育開始", "肥育中1", "肥育中2", "肥育中3", "肥育中4", "肥育中5", "肥育中6", "出荷準備", "出荷", "納品完了"],
-  1: ["仕込み", "発酵", "熟成", "瓶詰め", "出荷"],
-  2: ["制作開始", "窯焼き", "絵付け", "仕上げ"],
-  3: ["完了"],
-};
-
-function getMilestoneName(categoryType: number, index: number): string {
-  const names = MILESTONE_NAMES[categoryType] || MILESTONE_NAMES[3];
-  return names[index] || `Step ${index + 1}`;
 }
 
 const resolveChain = () => {
@@ -71,6 +59,7 @@ function generateSVG(
   const accentColor = "#f39c12";
   const successColor = "#27ae60";
   const pendingColor = "#3498db";
+  const cancelledColor = "#95a5a6";
   const progressStart = "#d4af37";
   const progressEnd = "#f4d03f";
   const textColor = "#ecf0f1";
@@ -78,7 +67,7 @@ function generateSVG(
 
   const categoryLabel = CATEGORY_LABELS[category]?.en || category;
   const categoryEmoji = category === "wagyu" ? "🐂" : category === "sake" ? "🍶" : category === "craft" ? "🏺" : "📦";
-  const completedEmoji = status === "completed" ? "✨" : "";
+  const completedEmoji = status === "completed" ? "✨" : status === "cancelled" ? "❌" : "";
   const safeCategoryLabel = escapeSvgText(categoryLabel.toUpperCase());
   const safeTitle = escapeSvgText(title.length > 25 ? `${title.slice(0, 25)}...` : title);
   const safeTokenId = escapeSvgText(tokenId.padStart(3, "0"));
@@ -162,8 +151,8 @@ function generateSVG(
   <text x="200" y="165" font-size="50" text-anchor="middle">${categoryEmoji}${completedEmoji}</text>
 
   <!-- Status Badge -->
-  <rect x="120" y="185" width="160" height="28" rx="14" fill="${status === "completed" ? successColor : status === "active" ? accentColor : pendingColor}30"/>
-  <text x="200" y="204" font-family="Arial, sans-serif" font-size="12" fill="${status === "completed" ? successColor : status === "active" ? accentColor : pendingColor}" text-anchor="middle" font-weight="bold">
+  <rect x="120" y="185" width="160" height="28" rx="14" fill="${status === "completed" ? successColor : status === "active" ? accentColor : status === "cancelled" ? cancelledColor : pendingColor}30"/>
+  <text x="200" y="204" font-family="Arial, sans-serif" font-size="12" fill="${status === "completed" ? successColor : status === "active" ? accentColor : status === "cancelled" ? cancelledColor : pendingColor}" text-anchor="middle" font-weight="bold">
     ${safeStatus}
   </text>
 
