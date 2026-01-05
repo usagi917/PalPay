@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { type Address, type Hash } from "viem";
-import { createClient, createWallet, config, getChain, getMetaMaskProvider } from "./config";
+import { createClient, createWallet, config, getChain, getMetaMaskProvider, isMobile, openMetaMaskDeepLink } from "./config";
 import { FACTORY_ABI, ESCROW_ABI, ERC20_ABI } from "./abi";
 import { getMilestoneName } from "./constants";
 import type { EscrowInfo, Milestone, ListingSummary, TimelineEvent, UserRole } from "./types";
@@ -16,7 +16,13 @@ export function useWallet() {
 
   const connect = useCallback(async () => {
     const provider = getMetaMaskProvider();
+
+    // モバイルブラウザでMetaMaskプロバイダーがない場合、Deep Linkで開く
     if (!provider) {
+      if (isMobile()) {
+        openMetaMaskDeepLink();
+        return;
+      }
       setError("MetaMaskがインストールされていません");
       return;
     }

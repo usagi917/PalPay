@@ -35,6 +35,38 @@ export const createClient = () => {
   });
 };
 
+// モバイルデバイス検出
+export const isMobile = (): boolean => {
+  if (typeof window === "undefined" || typeof navigator === "undefined") {
+    return false;
+  }
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+    navigator.userAgent
+  );
+};
+
+// MetaMaskアプリ内ブラウザかどうか判定
+export const isMetaMaskBrowser = (): boolean => {
+  if (typeof window === "undefined" || !window.ethereum) {
+    return false;
+  }
+  const ethereum = window.ethereum as { isMetaMask?: boolean };
+  return !!ethereum.isMetaMask;
+};
+
+// MetaMask Deep Linkを開く（モバイルブラウザ用）
+export const openMetaMaskDeepLink = (): void => {
+  if (typeof window === "undefined") return;
+
+  // 現在のURLからホスト名とパスを取得
+  const dappUrl = window.location.href.replace(/^https?:\/\//, "");
+
+  // MetaMask Deep Link
+  const deepLink = `https://metamask.app.link/dapp/${dappUrl}`;
+
+  window.location.href = deepLink;
+};
+
 // MetaMaskプロバイダーを明示的に取得
 export const getMetaMaskProvider = (): typeof window.ethereum | null => {
   if (typeof window === "undefined" || !window.ethereum) {
