@@ -83,30 +83,29 @@ function generateSVG(
       const fillColor = m.completed ? successColor : pendingColor;
       const icon = m.completed ? "✓" : "○";
 
-      // Display full name (truncate to 8 chars for very long names)
-      const displayName = m.name.length > 8 ? m.name.slice(0, 7) + "…" : m.name;
-      const safeDisplayName = escapeSvgText(displayName);
+      // Display full name (no truncation for Japanese milestone names)
+      const safeDisplayName = escapeSvgText(m.name);
 
       return `
         <g transform="translate(40, ${y})">
           <circle cx="10" cy="10" r="10" fill="${fillColor}30" stroke="${fillColor}" stroke-width="2"/>
           <text x="10" y="14" font-size="10" fill="${fillColor}" text-anchor="middle" font-weight="bold">${icon}</text>
           <text x="28" y="14" font-size="11" fill="${m.completed ? textColor : mutedColor}" font-family="Arial, sans-serif">${safeDisplayName}</text>
-          <text x="360" y="14" font-size="10" fill="${mutedColor}" text-anchor="end" font-family="Arial, sans-serif">${(Number(m.bps) / 100).toFixed(0)}%</text>
+          <text x="350" y="14" font-size="10" fill="${mutedColor}" text-anchor="end" font-family="Arial, sans-serif">${(Number(m.bps) / 100).toFixed(0)}%</text>
         </g>
       `;
     })
     .join("");
 
   // Progress bar
-  const progressBarWidth = 320;
+  const progressBarWidth = 310;
   const progressFill = (progressPercent / 100) * progressBarWidth;
 
   // Calculate SVG height based on milestone count
   const svgHeight = 360 + milestones.length * 32;
 
   const svg = `
-<svg width="400" height="${svgHeight}" viewBox="0 0 400 ${svgHeight}" xmlns="http://www.w3.org/2000/svg">
+<svg width="420" height="${svgHeight}" viewBox="0 0 420 ${svgHeight}" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:${bgGradientStart}"/>
@@ -126,39 +125,39 @@ function generateSVG(
   </defs>
 
   <!-- Background -->
-  <rect width="400" height="${svgHeight}" fill="url(#bgGradient)"/>
+  <rect width="420" height="${svgHeight}" fill="url(#bgGradient)"/>
 
   <!-- Border -->
-  <rect x="10" y="10" width="380" height="${svgHeight - 20}" rx="20" fill="none" stroke="${accentColor}40" stroke-width="2"/>
+  <rect x="10" y="10" width="400" height="${svgHeight - 20}" rx="20" fill="none" stroke="${accentColor}40" stroke-width="2"/>
 
   <!-- Category Badge -->
-  <rect x="140" y="25" width="120" height="24" rx="12" fill="${accentColor}30"/>
-  <text x="200" y="42" font-family="Arial, sans-serif" font-size="11" fill="${accentColor}" text-anchor="middle" font-weight="bold">
+  <rect x="150" y="25" width="120" height="24" rx="12" fill="${accentColor}30"/>
+  <text x="210" y="42" font-family="Arial, sans-serif" font-size="11" fill="${accentColor}" text-anchor="middle" font-weight="bold">
     ${safeCategoryLabel}
   </text>
 
   <!-- Title -->
-  <text x="200" y="80" font-family="Arial, sans-serif" font-size="20" fill="${textColor}" text-anchor="middle" font-weight="bold" filter="url(#glow)">
+  <text x="210" y="80" font-family="Arial, sans-serif" font-size="20" fill="${textColor}" text-anchor="middle" font-weight="bold" filter="url(#glow)">
     ${safeTitle}
   </text>
 
   <!-- Token ID -->
-  <text x="200" y="105" font-family="Arial, sans-serif" font-size="12" fill="${mutedColor}" text-anchor="middle">
+  <text x="210" y="105" font-family="Arial, sans-serif" font-size="12" fill="${mutedColor}" text-anchor="middle">
     Token #${safeTokenId}
   </text>
 
   <!-- Icon -->
-  <text x="200" y="165" font-size="50" text-anchor="middle">${categoryEmoji}${completedEmoji}</text>
+  <text x="210" y="165" font-size="50" text-anchor="middle">${categoryEmoji}${completedEmoji}</text>
 
   <!-- Status Badge -->
-  <rect x="120" y="185" width="160" height="28" rx="14" fill="${status === "completed" ? successColor : status === "active" ? accentColor : status === "cancelled" ? cancelledColor : pendingColor}30"/>
-  <text x="200" y="204" font-family="Arial, sans-serif" font-size="12" fill="${status === "completed" ? successColor : status === "active" ? accentColor : status === "cancelled" ? cancelledColor : pendingColor}" text-anchor="middle" font-weight="bold">
+  <rect x="130" y="185" width="160" height="28" rx="14" fill="${status === "completed" ? successColor : status === "active" ? accentColor : status === "cancelled" ? cancelledColor : pendingColor}30"/>
+  <text x="210" y="204" font-family="Arial, sans-serif" font-size="12" fill="${status === "completed" ? successColor : status === "active" ? accentColor : status === "cancelled" ? cancelledColor : pendingColor}" text-anchor="middle" font-weight="bold">
     ${safeStatus}
   </text>
 
   <!-- Progress Section -->
   <text x="40" y="245" font-family="Arial, sans-serif" font-size="14" fill="${mutedColor}">Progress</text>
-  <text x="360" y="245" font-family="Arial, sans-serif" font-size="14" fill="${textColor}" text-anchor="end" font-weight="bold">${progressPercent}%</text>
+  <text x="350" y="245" font-family="Arial, sans-serif" font-size="14" fill="${textColor}" text-anchor="end" font-weight="bold">${progressPercent}%</text>
 
   <!-- Progress Bar Background -->
   <rect x="40" y="255" width="${progressBarWidth}" height="16" rx="8" fill="${mutedColor}30"/>
@@ -175,7 +174,7 @@ function generateSVG(
   ${milestoneIndicators}
 
   <!-- Footer -->
-  <text x="200" y="${svgHeight - 15}" font-family="Arial, sans-serif" font-size="8" fill="${mutedColor}40" text-anchor="middle">
+  <text x="210" y="${svgHeight - 15}" font-family="Arial, sans-serif" font-size="8" fill="${mutedColor}40" text-anchor="middle">
     Wagyu Milestone Escrow v2 - Dynamic NFT
   </text>
 </svg>
@@ -301,9 +300,9 @@ export async function GET(
 
     // Return fallback SVG on error
     const fallbackSvg = `
-<svg width="400" height="500" viewBox="0 0 400 500" xmlns="http://www.w3.org/2000/svg">
-  <rect width="400" height="500" fill="#1a1a2e"/>
-  <text x="200" y="250" font-family="Arial" font-size="16" fill="#e74c3c" text-anchor="middle">
+<svg width="420" height="500" viewBox="0 0 420 500" xmlns="http://www.w3.org/2000/svg">
+  <rect width="420" height="500" fill="#1a1a2e"/>
+  <text x="210" y="250" font-family="Arial" font-size="16" fill="#e74c3c" text-anchor="middle">
     Failed to load NFT data
   </text>
 </svg>

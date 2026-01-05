@@ -17,9 +17,9 @@ export function HeroNFT({ tokenId = 1 }: HeroNFTProps) {
       <Image
         src={`/api/nft/${tokenId}/image?t=${refreshKey}`}
         alt="Dynamic NFT"
-        width={360}
-        height={450}
-        sizes="(max-width: 768px) 70vw, 320px"
+        width={420}
+        height={720}
+        sizes="(max-width: 768px) 70vw, 380px"
         className="hero-nft-image"
         unoptimized
       />
