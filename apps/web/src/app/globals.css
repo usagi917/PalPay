@@ -855,13 +855,11 @@ body {
 
 .hero-nft-shell {
   position: relative;
-  width: min(300px, 85vw);
-  aspect-ratio: 4 / 5;
+  width: min(320px, 85vw);
 }
 
 .hero-nft-frame {
   width: 100%;
-  height: 100%;
   border-radius: var(--radius-xl);
   overflow: hidden;
   background: var(--color-bg-elevated);

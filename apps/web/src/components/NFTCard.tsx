@@ -142,8 +142,8 @@ export function NFTCard({ tokenId = 1 }: NFTCardProps) {
             <Image
               src={`${metadata.image}?t=${refreshKey}`}
               alt={metadata.name}
-              width={400}
-              height={500}
+              width={420}
+              height={720}
               sizes="(max-width: 1280px) 100vw, 50vw"
               className="w-full h-auto"
               unoptimized
