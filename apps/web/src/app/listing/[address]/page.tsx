@@ -41,8 +41,10 @@ import {
   useEscrowEvents,
   useTokenInfo,
   usePurchaseValidation,
+  useNftOwner,
   formatAmount,
   getUserRole,
+  canAccessChat,
   shortenAddress,
 } from "@/lib/hooks";
 import { getTxUrl, getAddressUrl, CATEGORY_LABELS, STATUS_LABELS } from "@/lib/config";
@@ -71,6 +73,7 @@ export default function ListingDetailPage() {
   const { milestones, isLoading: milestonesLoading, refetch: refetchMilestones } = useMilestones(escrowAddress);
   const { events, refetch: refetchEvents } = useEscrowEvents(escrowAddress);
   const { symbol, decimals } = useTokenInfo();
+  const { owner: nftOwner } = useNftOwner(info?.tokenId ?? null);
 
   // Purchase validation (balance/allowance check)
   const purchaseValidation = usePurchaseValidation(
@@ -793,8 +796,8 @@ export default function ListingDetailPage() {
                       </Card>
                     )}
 
-                    {/* Chat Window - for locked and active states */}
-                    {wallet.address && (info.status === "locked" || info.status === "active") && (userRole === "buyer" || userRole === "producer") && (
+                    {/* Chat Window - for NFT holders and producer only */}
+                    {wallet.address && canAccessChat(wallet.address, info, nftOwner) && (
                       <Card
                         sx={{
                           background: "var(--color-surface)",
@@ -806,8 +809,16 @@ export default function ListingDetailPage() {
                         <CardContent sx={{ p: 0 }}>
                           <ChatWindow
                             escrowAddress={escrowAddress}
-                            peerAddress={userRole === "buyer" ? info.producer : info.buyer}
-                            peerLabel={userRole === "buyer" ? (locale === "ja" ? "出品者" : "Producer") : (locale === "ja" ? "購入者" : "Buyer")}
+                            peerAddress={
+                              userRole === "producer"
+                                ? (nftOwner || info.buyer) // Producer chats with current NFT owner
+                                : info.producer // NFT owner chats with producer
+                            }
+                            peerLabel={
+                              userRole === "producer"
+                                ? (locale === "ja" ? "NFT所有者" : "NFT Owner")
+                                : (locale === "ja" ? "出品者" : "Producer")
+                            }
                             enabled={true}
                             height={350}
                           />
