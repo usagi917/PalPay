@@ -29,7 +29,10 @@ import LockIcon from "@mui/icons-material/Lock";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import SendIcon from "@mui/icons-material/Send";
 import CancelIcon from "@mui/icons-material/Cancel";
+import ThumbUpIcon from "@mui/icons-material/ThumbUp";
+import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import { Header, HeroNFT, ConnectWallet, TxProgress } from "@/components";
+import { ChatWindow } from "@/components/chat";
 import {
   useWallet,
   useEscrowInfo,
@@ -84,7 +87,7 @@ export default function ListingDetailPage() {
     router.refresh();
   }, [refetchInfo, refetchMilestones, refetchEvents, purchaseValidation, router]);
 
-  const { lock, submit, cancel, isLoading: actionLoading, error: actionError, txHash, txStep, resetState } = useEscrowActions(
+  const { lock, submit, approve, cancel, confirmDelivery, isLoading: actionLoading, error: actionError, txHash, txStep, resetState } = useEscrowActions(
     escrowAddress,
     handleSuccess
   );
@@ -587,12 +590,49 @@ export default function ListingDetailPage() {
                             </Button>
                           )}
 
-                          {/* Producer's own listing - waiting message + cancel button */}
+                          {/* Producer's own listing - waiting message */}
                           {info.status === "open" && userRole === "producer" && txStep !== "success" && (
                             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
                               <Typography sx={{ color: "var(--color-text-muted)", textAlign: "center" }}>
                                 {locale === "ja" ? "購入者を待っています..." : "Waiting for buyer..."}
                               </Typography>
+                            </Box>
+                          )}
+
+                          {/* LOCKED state - Buyer needs to approve or cancel */}
+                          {info.status === "locked" && userRole === "buyer" && txStep !== "success" && (
+                            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                              <Alert severity="info" sx={{ borderRadius: 2 }}>
+                                {locale === "ja"
+                                  ? "出品者とチャットで条件を確認してください。問題なければ承認してマイルストーンを開始します。"
+                                  : "Chat with the producer to confirm conditions. Approve to start milestones."}
+                              </Alert>
+                              <Button
+                                variant="contained"
+                                fullWidth
+                                startIcon={actionLoading ? <CircularProgress size={20} /> : <ThumbUpIcon />}
+                                onClick={approve}
+                                disabled={actionLoading}
+                                sx={{
+                                  background: "linear-gradient(135deg, var(--status-success) 0%, #5A9E73 100%)",
+                                  color: "var(--sumi-black)",
+                                  fontWeight: 600,
+                                  py: 1.5,
+                                  borderRadius: 2,
+                                  "&:hover": {
+                                    transform: "translateY(-2px)",
+                                    boxShadow: "var(--shadow-medium), 0 0 30px rgba(110, 191, 139, 0.3)",
+                                  },
+                                }}
+                              >
+                                {actionLoading
+                                  ? locale === "ja"
+                                    ? "処理中..."
+                                    : "Processing..."
+                                  : locale === "ja"
+                                  ? "承認してマイルストーン開始"
+                                  : "Approve & Start Milestones"}
+                              </Button>
                               <Button
                                 variant="outlined"
                                 fullWidth
@@ -613,9 +653,23 @@ export default function ListingDetailPage() {
                                     ? "処理中..."
                                     : "Processing..."
                                   : locale === "ja"
-                                  ? "出品をキャンセル"
-                                  : "Cancel Listing"}
+                                  ? "キャンセルして返金"
+                                  : "Cancel & Refund"}
                               </Button>
+                            </Box>
+                          )}
+
+                          {/* LOCKED state - Producer waiting for approval */}
+                          {info.status === "locked" && userRole === "producer" && txStep !== "success" && (
+                            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                              <Alert severity="info" sx={{ borderRadius: 2 }}>
+                                {locale === "ja"
+                                  ? "購入者がチャットで条件を確認中です。承認されるとマイルストーンが開始します。"
+                                  : "Buyer is reviewing conditions. Milestones will start after approval."}
+                              </Alert>
+                              <Typography sx={{ color: "var(--color-text-muted)", textAlign: "center" }}>
+                                {locale === "ja" ? "購入者の承認待ち..." : "Waiting for buyer approval..."}
+                              </Typography>
                             </Box>
                           )}
 
@@ -626,8 +680,8 @@ export default function ListingDetailPage() {
                             </Box>
                           )}
 
-                          {/* Submit Button (for producer, when active) */}
-                          {info.status === "active" && userRole === "producer" && nextMilestoneIndex >= 0 && txStep !== "success" && !milestonesLoading && (
+                          {/* Submit Button (for producer, when active) - excludes final milestone */}
+                          {info.status === "active" && userRole === "producer" && nextMilestoneIndex >= 0 && nextMilestoneIndex < milestones.length - 1 && txStep !== "success" && !milestonesLoading && (
                             <Button
                               variant="contained"
                               fullWidth
@@ -656,11 +710,64 @@ export default function ListingDetailPage() {
                             </Button>
                           )}
 
-                          {/* Buyer message when active */}
-                          {info.status === "active" && userRole === "buyer" && (
+                          {/* Producer waiting for buyer to confirm final delivery */}
+                          {info.status === "active" && userRole === "producer" && nextMilestoneIndex === milestones.length - 1 && txStep !== "success" && !milestonesLoading && (
+                            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                              <Alert severity="info" sx={{ borderRadius: 2 }}>
+                                {locale === "ja"
+                                  ? "最終マイルストーンは購入者の納品確認が必要です。納品完了後、購入者に確認を依頼してください。"
+                                  : "Final milestone requires buyer confirmation. Ask buyer to confirm delivery after completion."}
+                              </Alert>
+                              <Typography sx={{ color: "var(--color-text-muted)", textAlign: "center" }}>
+                                {locale === "ja" ? "購入者の納品確認待ち..." : "Waiting for buyer to confirm delivery..."}
+                              </Typography>
+                            </Box>
+                          )}
+
+                          {/* Buyer tracking progress - not final milestone */}
+                          {info.status === "active" && userRole === "buyer" && nextMilestoneIndex < milestones.length - 1 && txStep !== "success" && (
                             <Typography sx={{ color: "var(--color-text-muted)", textAlign: "center" }}>
                               {locale === "ja" ? "生産者の進捗を確認中..." : "Tracking producer progress..."}
                             </Typography>
+                          )}
+
+                          {/* Confirm Delivery Button (for buyer, when active, final milestone) */}
+                          {info.status === "active" && userRole === "buyer" && nextMilestoneIndex === milestones.length - 1 && txStep !== "success" && (
+                            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                              <Alert severity="success" sx={{ borderRadius: 2 }}>
+                                {locale === "ja"
+                                  ? "商品の納品を確認してください。確認すると最終報酬が出品者に支払われます。"
+                                  : "Please confirm delivery. This will release the final payment to the producer."}
+                              </Alert>
+                              <Button
+                                variant="contained"
+                                fullWidth
+                                startIcon={actionLoading ? <CircularProgress size={20} /> : <LocalShippingIcon />}
+                                onClick={() => confirmDelivery()}
+                                disabled={actionLoading}
+                                sx={{
+                                  background: "linear-gradient(135deg, var(--color-primary) 0%, var(--copper-rich) 100%)",
+                                  color: "var(--sumi-black)",
+                                  fontWeight: 600,
+                                  py: 1.5,
+                                  borderRadius: 2,
+                                  boxShadow: "var(--shadow-subtle), var(--shadow-copper)",
+                                  "&:hover": {
+                                    background: "linear-gradient(135deg, var(--color-primary) 0%, var(--copper-deep) 100%)",
+                                    transform: "translateY(-2px)",
+                                    boxShadow: "var(--shadow-medium), 0 0 40px var(--copper-glow)",
+                                  },
+                                }}
+                              >
+                                {actionLoading
+                                  ? locale === "ja"
+                                    ? "処理中..."
+                                    : "Processing..."
+                                  : locale === "ja"
+                                  ? "納品を確認して完了"
+                                  : "Confirm Delivery & Complete"}
+                              </Button>
+                            </Box>
                           )}
 
                           {/* Completed message */}
@@ -682,6 +789,28 @@ export default function ListingDetailPage() {
                               </Typography>
                             </Box>
                           )}
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* Chat Window - for locked and active states */}
+                    {wallet.address && (info.status === "locked" || info.status === "active") && (userRole === "buyer" || userRole === "producer") && (
+                      <Card
+                        sx={{
+                          background: "var(--color-surface)",
+                          backdropFilter: "blur(20px)",
+                          border: "1px solid var(--color-border)",
+                          borderRadius: 3,
+                        }}
+                      >
+                        <CardContent sx={{ p: 0 }}>
+                          <ChatWindow
+                            escrowAddress={escrowAddress}
+                            peerAddress={userRole === "buyer" ? info.producer : info.buyer}
+                            peerLabel={userRole === "buyer" ? (locale === "ja" ? "出品者" : "Producer") : (locale === "ja" ? "購入者" : "Buyer")}
+                            enabled={true}
+                            height={350}
+                          />
                         </CardContent>
                       </Card>
                     )}
@@ -871,6 +1000,28 @@ export default function ListingDetailPage() {
                                   ? milestones[Number(event.index)]?.name
                                   : undefined;
 
+                              const getEventLabel = () => {
+                                switch (event.type) {
+                                  case "Locked":
+                                    return locale === "ja" ? "購入" : "Purchased";
+                                  case "Approved":
+                                    return locale === "ja" ? "承認" : "Approved";
+                                  case "Cancelled":
+                                    return locale === "ja" ? "キャンセル・返金" : "Cancelled & Refunded";
+                                  case "DeliveryConfirmed":
+                                    return locale === "ja" ? "納品確認・完了" : "Delivery Confirmed";
+                                  case "Completed":
+                                    return milestoneName ||
+                                      (event.index !== undefined
+                                        ? `Milestone #${event.index}`
+                                        : locale === "ja"
+                                          ? "マイルストーン"
+                                          : "Milestone");
+                                  default:
+                                    return event.type;
+                                }
+                              };
+
                               return (
                                 <Box
                                   key={index}
@@ -886,16 +1037,7 @@ export default function ListingDetailPage() {
                                 >
                                   <Box>
                                     <Typography sx={{ color: "var(--color-text)", fontWeight: 500 }}>
-                                      {event.type === "Locked"
-                                        ? locale === "ja"
-                                          ? "購入"
-                                          : "Purchased"
-                                        : milestoneName ||
-                                          (event.index !== undefined
-                                            ? `Milestone #${event.index}`
-                                            : locale === "ja"
-                                              ? "マイルストーン"
-                                              : "Milestone")}
+                                      {getEventLabel()}
                                     </Typography>
                                     {event.amount && (
                                       <Typography variant="caption" sx={{ color: "var(--color-text-muted)" }}>
@@ -938,13 +1080,13 @@ export default function ListingDetailPage() {
           }}
         >
           <DialogTitle sx={{ color: "var(--color-text)" }}>
-            {locale === "ja" ? "出品をキャンセルしますか？" : "Cancel this listing?"}
+            {locale === "ja" ? "購入をキャンセルしますか？" : "Cancel this purchase?"}
           </DialogTitle>
           <DialogContent>
             <DialogContentText sx={{ color: "var(--color-text-secondary)" }}>
               {locale === "ja"
-                ? "この操作は取り消せません。出品をキャンセルするとNFTがバーンされます。"
-                : "This action cannot be undone. Cancelling will burn the NFT."}
+                ? "キャンセルすると全額返金され、NFTは出品者に戻ります。"
+                : "Cancelling will refund the full amount and return the NFT to the producer."}
             </DialogContentText>
           </DialogContent>
           <DialogActions sx={{ p: 2 }}>
@@ -968,7 +1110,7 @@ export default function ListingDetailPage() {
                 },
               }}
             >
-              {locale === "ja" ? "キャンセルする" : "Yes, Cancel"}
+              {locale === "ja" ? "キャンセルして返金" : "Yes, Cancel & Refund"}
             </Button>
           </DialogActions>
         </Dialog>

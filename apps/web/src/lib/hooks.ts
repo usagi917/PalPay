@@ -203,12 +203,12 @@ export function useListingSummaries() {
                 functionName: "getProgress",
               }),
             ]) as [
-              [Address, Address, Address, Address, bigint, bigint, bigint, boolean],
+              [Address, Address, Address, Address, bigint, bigint, bigint, number],
               [string, string, string, string, string],
               [bigint, bigint]
             ];
 
-            const [, , producer, buyer, tokenId, totalAmount, releasedAmount, locked] = core;
+            const [, , producer, buyer, tokenId, totalAmount, releasedAmount, statusEnum] = core;
             const [category, title, description, imageURI, status] = meta;
 
             return {
@@ -218,12 +218,12 @@ export function useListingSummaries() {
               buyer,
               totalAmount,
               releasedAmount,
-              locked,
+              locked: statusEnum >= 1, // V6: locked if not OPEN
               category,
               title,
               description,
               imageURI,
-              status: status as "open" | "active" | "completed" | "cancelled",
+              status: status as "open" | "locked" | "active" | "completed" | "cancelled",
               progress: {
                 completed: Number(progress[0]),
                 total: Number(progress[1]),
@@ -357,7 +357,7 @@ export function useEscrowInfo(escrowAddress: Address | null) {
           functionName: "getMeta",
         }),
       ]) as [
-        [Address, Address, Address, Address, bigint, bigint, bigint, boolean],
+        [Address, Address, Address, Address, bigint, bigint, bigint, number],
         [string, string, string, string, string]
       ];
 
@@ -369,7 +369,7 @@ export function useEscrowInfo(escrowAddress: Address | null) {
         tokenId,
         totalAmount,
         releasedAmount,
-        locked,
+        statusEnum,
       ] = core;
       const [category, title, description, imageURI, status] = meta;
 
@@ -381,12 +381,12 @@ export function useEscrowInfo(escrowAddress: Address | null) {
         tokenId,
         totalAmount,
         releasedAmount,
-        locked,
+        locked: statusEnum >= 1, // V6: locked if not OPEN
         category,
         title,
         description,
         imageURI,
-        status: status as "open" | "active" | "completed" | "cancelled",
+        status: status as "open" | "locked" | "active" | "completed" | "cancelled",
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch escrow info");
@@ -614,7 +614,47 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
     [escrowAddress, onSuccess]
   );
 
-  // V5: Cancel function
+  // V6: Approve function (buyer approves to start milestones)
+  const approve = useCallback(async () => {
+    if (!escrowAddress) return;
+
+    setIsLoading(true);
+    setError(null);
+    setTxHash(null);
+    setTxStep("signing");
+
+    try {
+      const wallet = createWallet();
+      const client = createClient();
+      if (!wallet) throw new Error("Walletが接続されていません");
+
+      const [account] = await wallet.getAddresses();
+
+      const hash = await wallet.writeContract({
+        address: escrowAddress,
+        abi: ESCROW_ABI,
+        functionName: "approve",
+        args: [],
+        account,
+      });
+
+      setTxStep("confirming");
+      setTxHash(hash);
+      const receipt = await client.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") {
+        throw new Error("承認トランザクションが失敗しました");
+      }
+      setTxStep("success");
+      onSuccess?.();
+    } catch (err) {
+      setTxStep("error");
+      setError(err instanceof Error ? err.message : "承認に失敗しました");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [escrowAddress, onSuccess]);
+
+  // V6: Cancel function (buyer cancels with full refund, LOCKED only)
   const cancel = useCallback(async () => {
     if (!escrowAddress) return;
 
@@ -654,7 +694,54 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
     }
   }, [escrowAddress, onSuccess]);
 
-  return { lock, submit, cancel, isLoading, error, txHash, txStep, resetState };
+  // V6: Confirm Delivery function (buyer confirms final milestone)
+  const confirmDelivery = useCallback(
+    async (evidenceHash?: string) => {
+      if (!escrowAddress) return;
+
+      setIsLoading(true);
+      setError(null);
+      setTxHash(null);
+      setTxStep("signing");
+
+      try {
+        const wallet = createWallet();
+        const client = createClient();
+        if (!wallet) throw new Error("Walletが接続されていません");
+
+        const [account] = await wallet.getAddresses();
+
+        const evidenceBytes32 = evidenceHash
+          ? (evidenceHash.startsWith("0x") ? evidenceHash : `0x${evidenceHash}`)
+          : "0x0000000000000000000000000000000000000000000000000000000000000000";
+
+        const hash = await wallet.writeContract({
+          address: escrowAddress,
+          abi: ESCROW_ABI,
+          functionName: "confirmDelivery",
+          args: [evidenceBytes32 as `0x${string}`],
+          account,
+        });
+
+        setTxStep("confirming");
+        setTxHash(hash);
+        const receipt = await client.waitForTransactionReceipt({ hash });
+        if (receipt.status !== "success") {
+          throw new Error("納品確認トランザクションが失敗しました");
+        }
+        setTxStep("success");
+        onSuccess?.();
+      } catch (err) {
+        setTxStep("error");
+        setError(err instanceof Error ? err.message : "納品確認に失敗しました");
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [escrowAddress, onSuccess]
+  );
+
+  return { lock, submit, approve, cancel, confirmDelivery, isLoading, error, txHash, txStep, resetState };
 }
 
 export function useEscrowEvents(escrowAddress: Address | null) {
@@ -718,7 +805,7 @@ export function useEscrowEvents(escrowAddress: Address | null) {
         setFromBlock(effectiveFromBlock);
       }
 
-      const [lockedLogs, completedLogs] = await Promise.all([
+      const [lockedLogs, approvedLogs, cancelledLogs, completedLogs, deliveryConfirmedLogs] = await Promise.all([
         client.getLogs({
           address: escrowAddress,
           event: {
@@ -736,9 +823,47 @@ export function useEscrowEvents(escrowAddress: Address | null) {
           address: escrowAddress,
           event: {
             type: "event",
+            name: "Approved",
+            inputs: [
+              { name: "buyer", type: "address", indexed: true },
+            ],
+          },
+          fromBlock: effectiveFromBlock,
+          toBlock: "latest",
+        }),
+        client.getLogs({
+          address: escrowAddress,
+          event: {
+            type: "event",
+            name: "Cancelled",
+            inputs: [
+              { name: "buyer", type: "address", indexed: true },
+              { name: "refundAmount", type: "uint256", indexed: false },
+            ],
+          },
+          fromBlock: effectiveFromBlock,
+          toBlock: "latest",
+        }),
+        client.getLogs({
+          address: escrowAddress,
+          event: {
+            type: "event",
             name: "Completed",
             inputs: [
               { name: "index", type: "uint256", indexed: true },
+              { name: "amount", type: "uint256", indexed: false },
+            ],
+          },
+          fromBlock: effectiveFromBlock,
+          toBlock: "latest",
+        }),
+        client.getLogs({
+          address: escrowAddress,
+          event: {
+            type: "event",
+            name: "DeliveryConfirmed",
+            inputs: [
+              { name: "buyer", type: "address", indexed: true },
               { name: "amount", type: "uint256", indexed: false },
             ],
           },
@@ -759,12 +884,41 @@ export function useEscrowEvents(escrowAddress: Address | null) {
         });
       }
 
+      for (const log of approvedLogs) {
+        allEvents.push({
+          type: "Approved",
+          buyer: log.args.buyer!,
+          txHash: log.transactionHash!,
+          blockNumber: log.blockNumber!,
+        });
+      }
+
+      for (const log of cancelledLogs) {
+        allEvents.push({
+          type: "Cancelled",
+          buyer: log.args.buyer!,
+          txHash: log.transactionHash!,
+          blockNumber: log.blockNumber!,
+          amount: log.args.refundAmount,
+        });
+      }
+
       for (const log of completedLogs) {
         allEvents.push({
           type: "Completed",
           txHash: log.transactionHash!,
           blockNumber: log.blockNumber!,
           index: log.args.index,
+          amount: log.args.amount,
+        });
+      }
+
+      for (const log of deliveryConfirmedLogs) {
+        allEvents.push({
+          type: "DeliveryConfirmed",
+          buyer: log.args.buyer!,
+          txHash: log.transactionHash!,
+          blockNumber: log.blockNumber!,
           amount: log.args.amount,
         });
       }
@@ -1003,15 +1157,19 @@ export function useMyListings(address: Address | null) {
     return {
       totalProduced: producer.length,
       producerOpen: producer.filter((s) => s.status === "open").length,
+      producerLocked: producer.filter((s) => s.status === "locked").length, // V6
       producerActive: producer.filter((s) => s.status === "active").length,
       producerCompleted: producer.filter((s) => s.status === "completed").length,
       totalBought: buyer.length,
+      buyerLocked: buyer.filter((s) => s.status === "locked").length, // V6
       buyerActive: buyer.filter((s) => s.status === "active").length,
       buyerCompleted: buyer.filter((s) => s.status === "completed").length,
       totalEarned: producer
-        .filter((s) => s.status !== "open")
+        .filter((s) => s.status !== "open" && s.status !== "locked")
         .reduce((sum, s) => sum + s.releasedAmount, 0n),
-      totalSpent: buyer.reduce((sum, s) => sum + s.totalAmount, 0n),
+      totalSpent: buyer
+        .filter((s) => s.status !== "cancelled") // V6: exclude cancelled
+        .reduce((sum, s) => sum + s.totalAmount, 0n),
     };
   }, [myListings]);
 

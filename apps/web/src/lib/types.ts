@@ -22,10 +22,10 @@ export interface EscrowInfo {
   title: string;
   description: string;
   imageURI: string;
-  status: "open" | "active" | "completed" | "cancelled";
+  status: "open" | "locked" | "active" | "completed" | "cancelled";
 }
 
-// v2: Listing summary (for list display)
+// V6: Listing summary (for list display)
 export interface ListingSummary {
   escrowAddress: Address;
   tokenId: bigint;
@@ -38,15 +38,15 @@ export interface ListingSummary {
   title: string;
   description: string;
   imageURI: string;
-  status: "open" | "active" | "completed" | "cancelled";
+  status: "open" | "locked" | "active" | "completed" | "cancelled";
   progress: {
     completed: number;
     total: number;
   };
 }
 
-// v2: Event types
-export type EventType = "Locked" | "Completed";
+// V6: Event types
+export type EventType = "Locked" | "Approved" | "Cancelled" | "Completed" | "DeliveryConfirmed";
 
 export interface TimelineEvent {
   type: EventType;
