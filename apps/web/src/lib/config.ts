@@ -130,9 +130,10 @@ export const CATEGORY_LABELS: Record<string, { ja: string; en: string }> = {
   craft: { ja: "工芸品", en: "Craft" },
 };
 
-// Status labels
+// Status labels (V6: added locked)
 export const STATUS_LABELS: Record<string, { ja: string; en: string; color: string }> = {
   open: { ja: "出品中", en: "Open", color: "success" },
+  locked: { ja: "承認待ち", en: "Pending Approval", color: "warning" },
   active: { ja: "進行中", en: "Active", color: "info" },
   completed: { ja: "完了", en: "Completed", color: "default" },
   cancelled: { ja: "キャンセル", en: "Cancelled", color: "error" },

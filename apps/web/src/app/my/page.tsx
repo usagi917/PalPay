@@ -29,7 +29,7 @@ import {
 import { I18nContext, translations, type Locale, type TranslationKey } from "@/lib/i18n";
 
 type TabValue = "producer" | "buyer";
-type StatusFilter = "all" | "open" | "active" | "completed";
+type StatusFilter = "all" | "open" | "locked" | "active" | "completed";
 
 export default function MyPage() {
   const [locale, setLocale] = useState<Locale>("ja");
@@ -58,18 +58,20 @@ export default function MyPage() {
     return listings.filter((l) => l.status === statusFilter);
   }, [activeTab, asProducer, asBuyer, statusFilter]);
 
-  // Available status filters per tab
+  // Available status filters per tab (V6: added locked)
   const availableFilters = useMemo(() => {
     if (activeTab === "producer") {
       return [
         { value: "all" as StatusFilter, count: asProducer.length },
         { value: "open" as StatusFilter, count: stats.producerOpen },
+        { value: "locked" as StatusFilter, count: stats.producerLocked },
         { value: "active" as StatusFilter, count: stats.producerActive },
         { value: "completed" as StatusFilter, count: stats.producerCompleted },
       ];
     }
     return [
       { value: "all" as StatusFilter, count: asBuyer.length },
+      { value: "locked" as StatusFilter, count: stats.buyerLocked },
       { value: "active" as StatusFilter, count: stats.buyerActive },
       { value: "completed" as StatusFilter, count: stats.buyerCompleted },
     ];
@@ -78,6 +80,7 @@ export default function MyPage() {
   const filterLabels: Record<StatusFilter, { ja: string; en: string }> = {
     all: { ja: "すべて", en: "All" },
     open: { ja: "出品中", en: "Open" },
+    locked: { ja: "承認待ち", en: "Pending" },
     active: { ja: "進行中", en: "Active" },
     completed: { ja: "完了", en: "Completed" },
   };
@@ -196,6 +199,14 @@ export default function MyPage() {
                         </Box>
                         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
                           <Typography sx={{ color: "var(--color-text-muted)" }}>
+                            {locale === "ja" ? "承認待ち" : "Pending"}
+                          </Typography>
+                          <Typography sx={{ color: "var(--status-warning)", fontWeight: 500 }}>
+                            {stats.producerLocked}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
+                          <Typography sx={{ color: "var(--color-text-muted)" }}>
                             {locale === "ja" ? "進行中" : "Active"}
                           </Typography>
                           <Typography sx={{ color: "var(--status-info)", fontWeight: 500 }}>
@@ -239,6 +250,14 @@ export default function MyPage() {
                           </Typography>
                           <Typography sx={{ color: "var(--color-text)", fontWeight: 600 }}>
                             {stats.totalBought}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
+                          <Typography sx={{ color: "var(--color-text-muted)" }}>
+                            {locale === "ja" ? "承認待ち" : "Pending"}
+                          </Typography>
+                          <Typography sx={{ color: "var(--status-warning)", fontWeight: 500 }}>
+                            {stats.buyerLocked}
                           </Typography>
                         </Box>
                         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>

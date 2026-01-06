@@ -242,7 +242,7 @@ export async function GET(
         functionName: "categoryType",
       }),
     ]) as readonly [
-      readonly [Address, Address, Address, Address, bigint, bigint, bigint, boolean],
+      readonly [Address, Address, Address, Address, bigint, bigint, bigint, number],
       readonly [string, string, string, string, string],
       ReadonlyArray<{ bps: bigint | number; completed: boolean }>,
       number

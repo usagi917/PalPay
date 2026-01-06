@@ -76,12 +76,12 @@ export async function GET(
         functionName: "getProgress",
       }),
     ]) as [
-      [Address, Address, Address, Address, bigint, bigint, bigint, boolean],
+      [Address, Address, Address, Address, bigint, bigint, bigint, number],
       [string, string, string, string, string],
       [bigint, bigint]
     ];
 
-    const [, tokenAddress, producer, buyer, , totalAmount, releasedAmount, locked] = core;
+    const [, tokenAddress, producer, buyer, , totalAmount, releasedAmount, statusEnum] = core;
     const [category, title, description, imageURI, status] = meta;
     const [completedCount, totalCount] = progress;
     const progressPercent = totalCount > 0n
@@ -127,7 +127,7 @@ export async function GET(
       { trait_type: "Producer", value: producer },
     ];
 
-    if (locked && buyer !== "0x0000000000000000000000000000000000000000") {
+    if (statusEnum >= 1 && buyer !== "0x0000000000000000000000000000000000000000") {
       attributes.push({ trait_type: "Buyer", value: buyer });
     }
 

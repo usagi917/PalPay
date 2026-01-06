@@ -90,7 +90,7 @@ export const FACTORY_ABI = [
   },
 ] as const;
 
-// MilestoneEscrowV5 ABI (per-listing escrow with cancel support)
+// MilestoneEscrowV6 ABI (per-listing escrow with buyer approval flow)
 export const ESCROW_ABI = [
   // Events
   {
@@ -99,6 +99,23 @@ export const ESCROW_ABI = [
     inputs: [
       { name: "buyer", type: "address", indexed: true },
       { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
+  // V6: Approved event
+  {
+    type: "event",
+    name: "Approved",
+    inputs: [
+      { name: "buyer", type: "address", indexed: true },
+    ],
+  },
+  // V6: Cancelled event (buyer cancels with refund)
+  {
+    type: "event",
+    name: "Cancelled",
+    inputs: [
+      { name: "buyer", type: "address", indexed: true },
+      { name: "refundAmount", type: "uint256", indexed: false },
     ],
   },
   {
@@ -110,11 +127,14 @@ export const ESCROW_ABI = [
       { name: "evidenceHash", type: "bytes32", indexed: false },
     ],
   },
-  // V5: Cancelled event
+  // V6: DeliveryConfirmed event
   {
     type: "event",
-    name: "Cancelled",
-    inputs: [],
+    name: "DeliveryConfirmed",
+    inputs: [
+      { name: "buyer", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
   },
   // Read functions
   {
@@ -166,19 +186,19 @@ export const ESCROW_ABI = [
     outputs: [{ name: "", type: "uint256" }],
     stateMutability: "view",
   },
+  // V6: status enum (OPEN=0, LOCKED=1, ACTIVE=2, COMPLETED=3, CANCELLED=4)
   {
     type: "function",
-    name: "locked",
+    name: "status",
     inputs: [],
-    outputs: [{ name: "", type: "bool" }],
+    outputs: [{ name: "", type: "uint8" }],
     stateMutability: "view",
   },
-  // V5: cancelled state
   {
     type: "function",
-    name: "cancelled",
+    name: "getStatusEnum",
     inputs: [],
-    outputs: [{ name: "", type: "bool" }],
+    outputs: [{ name: "", type: "uint8" }],
     stateMutability: "view",
   },
   {
@@ -278,7 +298,7 @@ export const ESCROW_ABI = [
       { name: "tokenId", type: "uint256" },
       { name: "totalAmount", type: "uint256" },
       { name: "releasedAmount", type: "uint256" },
-      { name: "locked", type: "bool" },
+      { name: "status", type: "uint8" },
     ],
     stateMutability: "view",
   },
@@ -303,11 +323,29 @@ export const ESCROW_ABI = [
     outputs: [],
     stateMutability: "nonpayable",
   },
-  // V5: cancel function
+  // V6: approve function (buyer approves to start milestones)
+  {
+    type: "function",
+    name: "approve",
+    inputs: [],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  // V6: cancel function (buyer cancels with full refund, LOCKED only)
   {
     type: "function",
     name: "cancel",
     inputs: [],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  // V6: confirmDelivery function (buyer confirms final milestone)
+  {
+    type: "function",
+    name: "confirmDelivery",
+    inputs: [
+      { name: "evidenceHash", type: "bytes32" },
+    ],
     outputs: [],
     stateMutability: "nonpayable",
   },
