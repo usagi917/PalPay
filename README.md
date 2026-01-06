@@ -63,6 +63,19 @@ pnpm install
 APIは `ListingFactoryV6.tokenIdToEscrow` からエスクローを解決します。
 `ListingFactoryV6.baseURI` はアプリのオリジンに設定してください（`/api/nft/:tokenId` を参照します）。
 
+### XMTPチャット
+
+アプリはブラウザ内でXMTP SDKを使ってチャットを初期化・送受信します。
+
+- 参加者: 出品者と「現在のNFT所有者」のみ（`lock()` 実行時にNFTは購入者へ移転）
+- 表示条件: 出品詳細ページで `status` が `open` / `cancelled` 以外 かつウォレットが出品者またはNFT所有者の場合
+- NFT所有者判定: `ListingFactoryV6.ownerOf(tokenId)` を参照して取得（`useNftOwner`）
+- 接続/署名: MetaMaskの `personal_sign` で署名しXMTPクライアントを作成
+- 相手の有効化: `canMessage` が false の場合は警告を表示（相手がXMTP未有効）
+- 履歴保持: 暗号化キーを `localStorage` の `xmtp_db_key_<address>` に保存し再訪問時も復号
+- 会話スコープ: 出品者 ↔ 現在のNFT所有者の1:1 DM（NFTが転売されると新しい所有者が参加可能）
+- 環境切替: `NEXT_PUBLIC_XMTP_ENV` が `production` の時のみ本番、それ以外は `dev`
+
 ### Smart Contract Deployment（Example: Remix / Foundry）
 
 1. `contracts/MockERC20.sol` をデプロイ（テスト用）

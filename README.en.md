@@ -63,6 +63,19 @@ Note: `lock()` cannot be called by the producer.
 The API resolves escrows via `ListingFactoryV6.tokenIdToEscrow`.
 Set `ListingFactoryV6.baseURI` to your app origin so `tokenURI` points to `/api/nft/:tokenId`.
 
+### XMTP Chat
+
+The app initializes and sends/receives chat messages in the browser using the XMTP SDK.
+
+- Participants: only the producer and the current NFT owner (the NFT is transferred to the buyer on `lock()`)
+- Visibility: shown on the listing detail page when `status` is not `open` / `cancelled` and the wallet matches producer or NFT owner
+- NFT owner lookup: fetched from `ListingFactoryV6.ownerOf(tokenId)` (`useNftOwner`)
+- Initialization: creates the XMTP client by signing with MetaMask `personal_sign`
+- Peer availability: shows a warning when `canMessage` is false (peer has not enabled XMTP)
+- History persistence: stores the db encryption key in `localStorage` as `xmtp_db_key_<address>` to keep history readable across sessions
+- Conversation scope: 1:1 DM between the producer and the current NFT owner (secondary transfers grant access to the new owner)
+- Environment: `NEXT_PUBLIC_XMTP_ENV=production` uses production; otherwise `dev`
+
 ### Smart Contract Deployment (Example: Remix / Foundry)
 
 1. Deploy `contracts/MockERC20.sol` (for testing)
