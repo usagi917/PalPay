@@ -6,136 +6,138 @@
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Status](https://img.shields.io/badge/status-active-success.svg)
 
-A milestone-based escrow app for wagyu, sake, and craft listings.
-Each listing deploys its own `MilestoneEscrowV6` and mints an ERC721 NFT that transfers after buyer lock.
-After buyer approval, milestones release funds and progress is visualized via dynamic NFT + XMTP chat.
+A milestone-based escrow DApp for Wagyu, sake, and craft listings.
+Each listing deploys a `MilestoneEscrowV6` and an ERC721 NFT via `ListingFactoryV6`, and the NFT is transferred to the buyer after lock.
+Progress is reflected on-chain and surfaced via Dynamic NFT metadata and XMTP chat.
 
 ## Features
 
-- `ListingFactoryV6` deploys `MilestoneEscrowV6` per listing and mints the NFT
-- `open → locked → active → completed/cancelled` state flow with buyer approval (`approve()`)
-- Buyer cancellation with refund while LOCKED (`cancel()`)
-- Dynamic NFT metadata + SVG image API (`/api/nft/:tokenId`)
-- XMTP chat, JA/EN UI, and MetaMask chain switching
+- Deploys a per-listing `MilestoneEscrowV6` and mints an ERC721 NFT
+- State transitions `open → locked → active → completed/cancelled` with buyer approval (`approve()`)
+- ERC20 transfer on `lock()` plus milestone-based partial releases and final delivery confirmation
+- Dynamic NFT metadata/SVG image API (`/api/nft/:tokenId`)
+- XMTP chat and bilingual UI (JA/EN) with MetaMask integration
 
 ## Requirements
 
-- Node.js (compatible with Next.js 15)
-- pnpm
-- EVM wallet (MetaMask, etc.)
-- RPC endpoint (supported: Sepolia 11155111 / Base Sepolia 84532 / Base 8453 / Polygon Amoy 80002)
-- Deployed ListingFactoryV6 (ERC721) and ERC20 token addresses
-- Solidity 0.8.24 / Foundry (if you build contracts)
+- Node.js (for the Next.js app)
+- MetaMask (wallet connection)
+- RPC endpoint (supported: Sepolia / Base Sepolia / Base / Polygon Amoy)
+- Deployed ListingFactoryV6 and ERC20 token addresses
 - XMTP network (for chat)
+- Foundry + Solidity 0.8.24 (if you build contracts)
 
 ## Installation
 
 ```bash
+# Example (npm)
 cd apps/web
-pnpm install
+npm install
 ```
 
 ## Quick Start
 
 1. Go to `apps/web`
 2. Copy `.env.example` to `.env.local`
-3. Add and set required values such as `NEXT_PUBLIC_FACTORY_ADDRESS`
-4. Run `pnpm dev`
+3. Set required values such as `NEXT_PUBLIC_FACTORY_ADDRESS`
+4. Run `npm run dev`
 5. Open `http://localhost:3000`
 
 ## Usage
 
 ### App
 
-1. Producer connects a wallet and creates a listing (category, title, price, image URL)
-2. Buyer ERC20-approves and calls `lock()` (purchase lock)
-3. Buyer calls `approve()` to start milestone progress
-4. Producer submits milestones in order; funds are released step-by-step
-5. While LOCKED, Buyer can call `cancel()` for a refund
-
-Note: `lock()` cannot be called by the producer.
+1. Producer connects wallet and creates a listing with category, title, price, and image URL
+2. Buyer approves the ERC20 allowance and runs `lock()` (purchase lock)
+3. Buyer calls `approve()` to start the milestones (`locked → active`)
+4. Producer submits milestones in order and releases funds step by step
+5. While LOCKED, buyer can `cancel()` for refund; final step is `confirmDelivery()`
 
 ### Dynamic NFT API
 
 - Metadata: `GET /api/nft/:tokenId`
 - Image: `GET /api/nft/:tokenId/image`
 
-The API resolves escrows via `ListingFactoryV6.tokenIdToEscrow`.
-Set `ListingFactoryV6.baseURI` to your app origin so `tokenURI` points to `/api/nft/:tokenId`.
+The API resolves escrow via `ListingFactoryV6.tokenIdToEscrow`.
+Set `ListingFactoryV6.baseURI` to your app origin (e.g., `https://your-app`).
 
 ### XMTP Chat
 
-The app initializes and sends/receives chat messages in the browser using the XMTP SDK.
+- Participants: the producer and the current NFT owner
+- Visible when `status` is not `open` / `cancelled`, and user is producer or NFT owner
+- Connection/signing: MetaMask `personal_sign` to create the XMTP client
+- History: encryption key stored at `localStorage` key `xmtp_db_key_<address>`
+- Environment: production only when `NEXT_PUBLIC_XMTP_ENV=production`
 
-- Participants: only the producer and the current NFT owner (the NFT is transferred to the buyer on `lock()`)
-- Visibility: shown on the listing detail page when `status` is not `open` / `cancelled` and the wallet matches producer or NFT owner
-- NFT owner lookup: fetched from `ListingFactoryV6.ownerOf(tokenId)` (`useNftOwner`)
-- Initialization: creates the XMTP client by signing with MetaMask `personal_sign`
-- Peer availability: shows a warning when `canMessage` is false (peer has not enabled XMTP)
-- History persistence: stores the db encryption key in `localStorage` as `xmtp_db_key_<address>` to keep history readable across sessions
-- Conversation scope: 1:1 DM between the producer and the current NFT owner (secondary transfers grant access to the new owner)
-- Environment: `NEXT_PUBLIC_XMTP_ENV=production` uses production; otherwise `dev`
-
-### Smart Contract Deployment (Example: Remix / Foundry)
+### Smart Contract Deployment (Example)
 
 1. Deploy `contracts/MockERC20.sol` (for testing)
 2. Deploy `ListingFactoryV6` from `contracts/ListingFactoryV6.sol`
    - `tokenAddress`: ERC20 token address
-   - `uri`: app origin (e.g., `https://your-app`)
-3. Create listings from the app (`MilestoneEscrowV6` is deployed automatically and the NFT is minted)
+   - `uri`: app origin (used by `/api/nft/:tokenId`)
+3. Use the app to call `createListing` (auto-deploys `MilestoneEscrowV6`)
 
-## User Flow (Mermaid)
+## User Flow 
 
 ```mermaid
-graph TD
-  A[User: Open app] --> B[System: Load config and listings]
-  B --> C{Wallet connected?}
-  C -->|No| D[User: Connect wallet<br/>Switch chain]
-  C -->|Yes| E[User: Create or select listing]
-  D --> E
-  E --> F[System: Fetch escrow status and progress]
-  F --> G{Action allowed?}
-  G -->|No| E
-  G -->|Yes| H[User: Lock purchase or approve<br/>Or submit milestone]
-  H --> I[System: Send transaction<br/>Update status and NFT]
-  I --> J{Success?}
-  J -->|No| E
-  J -->|Yes| K[User: View progress and chat]
+sequenceDiagram
+    participant U as User
+    participant FE as Frontend
+    participant R as ListingFactoryV6 / MilestoneEscrowV6
+    participant J as JPYC Contract (ERC20)
+    participant N as Milestone NFT (ERC721)
+
+    U->>FE: Connect wallet
+    FE->>J: Check JPYC allowance
+    
+    alt Not approved
+        FE->>U: Request approval
+        U->>J: Approve (JPYC allowance)
+    end
+
+    U->>FE: Create listing or lock purchase
+    FE->>R: createListing(...) / lock()
+    
+    R->>J: transferFrom(User, Escrow, amount)
+    J-->>R: Transfer success
+
+    R->>N: mint/transfer (NFT issuance or transfer)
+    note right of R: Mint on listing creation, transfer to buyer on lock
+    N-->>U: NFT ownership updated
+
+    R-->>FE: Transaction complete
+    FE->>U: Show completion
 ```
 
-## System Architecture (Mermaid)
+## System Architecture 
 
 ```mermaid
-graph LR
-  subgraph Client
-    UI[Nextjs Web App]
-    Wallet[Wallet Extension]
-  end
-  subgraph Api
-    API[Nextjs API Routes]
-  end
-  subgraph Messaging
-    XMTP[XMTP Network]
-  end
-  subgraph Infra
-    RPC[RPC Provider]
-    Explorer["Block Explorer (optional)"]
-  end
-  subgraph Blockchain
-    Factory[ListingFactoryV6<br/>ERC721 NFT]
-    Escrow[MilestoneEscrowV6]
-    Token[ERC20 Token]
-  end
-  UI -->|HTTP| API
-  UI -->|Read state| RPC
-  Wallet -->|Sign and send tx| RPC
-  API -->|Read contracts| RPC
-  RPC -->|Factory calls| Factory
-  RPC -->|Escrow calls| Escrow
-  RPC -->|Token transfers| Token
-  Factory -->|Deploys| Escrow
-  UI -->|Chat messages| XMTP
-  UI -.->|Tx links| Explorer
+flowchart TD
+    User["User"]
+    
+    subgraph Frontend["Frontend (Next.js)"]
+        UI["User Interface"]
+        Hooks["Custom Hooks (viem / XMTP)"]
+        API["API Routes (NFT metadata/image)"]
+    end
+
+    subgraph Blockchain["EVM Network (Sepolia/Base/Polygon Amoy)"]
+        Router["ListingFactoryV6 / MilestoneEscrowV6"]
+        NFT["Milestone NFT (ERC721)"]
+        JPYC["JPYC Token Contract (ERC20)"]
+        Treasury["Producer Wallet"]
+    end
+
+    User -->|"Wallet connect & actions"| UI
+    UI --> Hooks
+    UI --> API
+    Hooks -->|"Listing / purchase tx"| Router
+    
+    Router -->|"transferFrom / transfer"| JPYC
+    JPYC -->|"JPYC transfer"| Treasury
+    
+    Router -->|"Mint/transfer"| NFT
+    NFT -->|"NFT issued/transferred"| User
 ```
 
 ## Directory Structure
@@ -146,18 +148,16 @@ hackson/
 │   └── web/                    # Next.js app
 │       ├── src/app/             # App Router UI + API routes
 │       ├── src/components/      # UI components
-│       ├── src/hooks/           # React hooks
+│       ├── src/hooks/           # Client hooks (XMTP, etc.)
 │       ├── src/lib/             # viem/xmtp/config/i18n/ABI
 │       ├── .env.example         # Environment template
 │       └── package.json
 ├── contracts/                   # Solidity smart contracts
 │   ├── ListingFactoryV6.sol     # Factory + MilestoneEscrowV6 (current)
-│   ├── ListingFactoryV5.sol     # Legacy version
+│   ├── ListingFactoryV5.sol     # Legacy
 │   └── MockERC20.sol            # Test ERC20
-├── lib/                          # OpenZeppelin contracts (submodule)
+├── lib/                          # OpenZeppelin contracts (vendor)
 ├── foundry.toml
-├── README.md
-├── README.en.md
 └── LICENSE
 ```
 
@@ -173,7 +173,7 @@ NEXT_PUBLIC_TOKEN_ADDRESS=
 NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE=
 NEXT_PUBLIC_XMTP_ENV=dev
 
-# Optional (server-side override)
+# Optional (server-side override for API routes)
 CHAIN_ID=
 
 # Optional (legacy, not used by current UI)
@@ -181,23 +181,23 @@ NEXT_PUBLIC_CONTRACT_ADDRESS=
 ```
 
 - `NEXT_PUBLIC_RPC_URL`: RPC URL for the target network
-- `NEXT_PUBLIC_CHAIN_ID`: Chain ID (supported: Sepolia 11155111 / Base Sepolia 84532 / Base 8453 / Polygon Amoy 80002)
-- `NEXT_PUBLIC_FACTORY_ADDRESS`: ListingFactoryV6 address (required by UI and API)
+- `NEXT_PUBLIC_CHAIN_ID`: Chain ID (supported: Sepolia / Base Sepolia / Base / Polygon Amoy)
+- `NEXT_PUBLIC_FACTORY_ADDRESS`: `ListingFactoryV6` address (required for UI/API)
 - `NEXT_PUBLIC_TOKEN_ADDRESS`: ERC20 token address
 - `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE`: Base URL for tx links (optional)
 - `NEXT_PUBLIC_XMTP_ENV`: XMTP environment (`dev` or `production`)
 - `CHAIN_ID`: Chain ID override for API routes (optional)
-- `NEXT_PUBLIC_CONTRACT_ADDRESS`: Legacy variable (not used in the current UI)
+- `NEXT_PUBLIC_CONTRACT_ADDRESS`: Legacy config (unused by current UI)
 
 ## Development
 
 ```bash
 cd apps/web
-pnpm dev
-pnpm dev:turbo
-pnpm build
-pnpm start
-pnpm lint
+npm run dev
+npm run dev:turbo
+npm run build
+npm run start
+npm run lint
 ```
 
 ## License
