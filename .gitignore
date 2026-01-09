@@ -57,8 +57,10 @@ typechain/
 *.tgz
 
 plan.md
+plan-v3.md
 infra.md
 UPGRADE.md
+UPGRADE_PLAN.md
 
 
 slide/
