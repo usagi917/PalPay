@@ -614,89 +614,13 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
     [escrowAddress, onSuccess]
   );
 
-  // V6: Approve function (buyer approves to start milestones)
-  const approve = useCallback(async () => {
-    if (!escrowAddress) return;
-
-    setIsLoading(true);
-    setError(null);
-    setTxHash(null);
-    setTxStep("signing");
-
-    try {
-      const wallet = createWallet();
-      const client = createClient();
-      if (!wallet) throw new Error("Walletが接続されていません");
-
-      const [account] = await wallet.getAddresses();
-
-      const hash = await wallet.writeContract({
-        address: escrowAddress,
-        abi: ESCROW_ABI,
-        functionName: "approve",
-        args: [],
-        account,
-      });
-
-      setTxStep("confirming");
-      setTxHash(hash);
-      const receipt = await client.waitForTransactionReceipt({ hash });
-      if (receipt.status !== "success") {
-        throw new Error("承認トランザクションが失敗しました");
-      }
-      setTxStep("success");
-      onSuccess?.();
-    } catch (err) {
-      setTxStep("error");
-      setError(err instanceof Error ? err.message : "承認に失敗しました");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [escrowAddress, onSuccess]);
-
-  // V6: Cancel function (buyer cancels with full refund, LOCKED only)
-  const cancel = useCallback(async () => {
-    if (!escrowAddress) return;
-
-    setIsLoading(true);
-    setError(null);
-    setTxHash(null);
-    setTxStep("signing");
-
-    try {
-      const wallet = createWallet();
-      const client = createClient();
-      if (!wallet) throw new Error("Walletが接続されていません");
-
-      const [account] = await wallet.getAddresses();
-
-      const hash = await wallet.writeContract({
-        address: escrowAddress,
-        abi: ESCROW_ABI,
-        functionName: "cancel",
-        args: [],
-        account,
-      });
-
-      setTxStep("confirming");
-      setTxHash(hash);
-      const receipt = await client.waitForTransactionReceipt({ hash });
-      if (receipt.status !== "success") {
-        throw new Error("キャンセルトランザクションが失敗しました");
-      }
-      setTxStep("success");
-      onSuccess?.();
-    } catch (err) {
-      setTxStep("error");
-      setError(err instanceof Error ? err.message : "キャンセルに失敗しました");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [escrowAddress, onSuccess]);
-
-  // V6: Confirm Delivery function (buyer confirms final milestone)
-  const confirmDelivery = useCallback(
-    async (evidenceHash?: string) => {
+  // Helper to execute simple escrow transactions
+  const executeSimpleTx = useCallback(
+    async (
+      functionName: string,
+      args: unknown[],
+      errorMessages: { tx: string; fallback: string }
+    ) => {
       if (!escrowAddress) return;
 
       setIsLoading(true);
@@ -711,15 +635,11 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
 
         const [account] = await wallet.getAddresses();
 
-        const evidenceBytes32 = evidenceHash
-          ? (evidenceHash.startsWith("0x") ? evidenceHash : `0x${evidenceHash}`)
-          : "0x0000000000000000000000000000000000000000000000000000000000000000";
-
         const hash = await wallet.writeContract({
           address: escrowAddress,
           abi: ESCROW_ABI,
-          functionName: "confirmDelivery",
-          args: [evidenceBytes32 as `0x${string}`],
+          functionName,
+          args,
           account,
         });
 
@@ -727,18 +647,50 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
         setTxHash(hash);
         const receipt = await client.waitForTransactionReceipt({ hash });
         if (receipt.status !== "success") {
-          throw new Error("納品確認トランザクションが失敗しました");
+          throw new Error(errorMessages.tx);
         }
         setTxStep("success");
         onSuccess?.();
       } catch (err) {
         setTxStep("error");
-        setError(err instanceof Error ? err.message : "納品確認に失敗しました");
+        setError(err instanceof Error ? err.message : errorMessages.fallback);
       } finally {
         setIsLoading(false);
       }
     },
     [escrowAddress, onSuccess]
+  );
+
+  // V6: Approve function (buyer approves to start milestones)
+  const approve = useCallback(
+    () => executeSimpleTx("approve", [], {
+      tx: "承認トランザクションが失敗しました",
+      fallback: "承認に失敗しました",
+    }),
+    [executeSimpleTx]
+  );
+
+  // V6: Cancel function (buyer cancels with full refund, LOCKED only)
+  const cancel = useCallback(
+    () => executeSimpleTx("cancel", [], {
+      tx: "キャンセルトランザクションが失敗しました",
+      fallback: "キャンセルに失敗しました",
+    }),
+    [executeSimpleTx]
+  );
+
+  // V6: Confirm Delivery function (buyer confirms final milestone)
+  const confirmDelivery = useCallback(
+    (evidenceHash?: string) => {
+      const evidenceBytes32 = evidenceHash
+        ? (evidenceHash.startsWith("0x") ? evidenceHash : `0x${evidenceHash}`)
+        : "0x0000000000000000000000000000000000000000000000000000000000000000";
+      return executeSimpleTx("confirmDelivery", [evidenceBytes32 as `0x${string}`], {
+        tx: "納品確認トランザクションが失敗しました",
+        fallback: "納品確認に失敗しました",
+      });
+    },
+    [executeSimpleTx]
   );
 
   return { lock, submit, approve, cancel, confirmDelivery, isLoading, error, txHash, txStep, resetState };
@@ -872,59 +824,42 @@ export function useEscrowEvents(escrowAddress: Address | null) {
         }),
       ]);
 
-      const allEvents: TimelineEvent[] = [];
-
-      for (const log of lockedLogs) {
-        allEvents.push({
-          type: "Locked",
+      const allEvents: TimelineEvent[] = [
+        ...lockedLogs.map((log) => ({
+          type: "Locked" as const,
           buyer: log.args.buyer!,
           txHash: log.transactionHash!,
           blockNumber: log.blockNumber!,
           amount: log.args.amount,
-        });
-      }
-
-      for (const log of approvedLogs) {
-        allEvents.push({
-          type: "Approved",
+        })),
+        ...approvedLogs.map((log) => ({
+          type: "Approved" as const,
           buyer: log.args.buyer!,
           txHash: log.transactionHash!,
           blockNumber: log.blockNumber!,
-        });
-      }
-
-      for (const log of cancelledLogs) {
-        allEvents.push({
-          type: "Cancelled",
+        })),
+        ...cancelledLogs.map((log) => ({
+          type: "Cancelled" as const,
           buyer: log.args.buyer!,
           txHash: log.transactionHash!,
           blockNumber: log.blockNumber!,
           amount: log.args.refundAmount,
-        });
-      }
-
-      for (const log of completedLogs) {
-        allEvents.push({
-          type: "Completed",
+        })),
+        ...completedLogs.map((log) => ({
+          type: "Completed" as const,
           txHash: log.transactionHash!,
           blockNumber: log.blockNumber!,
           index: log.args.index,
           amount: log.args.amount,
-        });
-      }
-
-      for (const log of deliveryConfirmedLogs) {
-        allEvents.push({
-          type: "DeliveryConfirmed",
+        })),
+        ...deliveryConfirmedLogs.map((log) => ({
+          type: "DeliveryConfirmed" as const,
           buyer: log.args.buyer!,
           txHash: log.transactionHash!,
           blockNumber: log.blockNumber!,
           amount: log.args.amount,
-        });
-      }
-
-      // Sort by block number
-      allEvents.sort((a, b) => Number(a.blockNumber - b.blockNumber));
+        })),
+      ].sort((a, b) => Number(a.blockNumber - b.blockNumber));
 
       setEvents(allEvents);
     } catch (err) {

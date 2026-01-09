@@ -31,6 +31,30 @@ const CATEGORIES = [
   { value: "craft", labelJa: "工芸品", labelEn: "Traditional Craft" },
 ];
 
+const textFieldSx = {
+  "& .MuiOutlinedInput-root": {
+    color: "var(--color-text)",
+    background: "var(--color-bg-elevated)",
+    borderRadius: 2,
+    "& fieldset": {
+      borderColor: "var(--color-border)",
+    },
+    "&:hover fieldset": {
+      borderColor: "var(--color-border-strong)",
+    },
+    "&.Mui-focused fieldset": {
+      borderColor: "var(--color-primary)",
+      boxShadow: "0 0 0 3px var(--color-primary-surface)",
+    },
+  },
+  "& .MuiInputLabel-root": {
+    color: "var(--color-text-muted)",
+    "&.Mui-focused": {
+      color: "var(--color-primary)",
+    },
+  },
+};
+
 export function CreateListingForm({ onSuccess }: CreateListingFormProps) {
   const { locale } = useI18n();
   const { symbol, decimals } = useTokenInfo();
@@ -224,29 +248,7 @@ export function CreateListingForm({ onSuccess }: CreateListingFormProps) {
                     onChange={(e) => setTitle(e.target.value)}
                     required
                     fullWidth
-                    sx={{
-                      "& .MuiOutlinedInput-root": {
-                        color: "var(--color-text)",
-                        background: "var(--color-bg-elevated)",
-                        borderRadius: 2,
-                        "& fieldset": {
-                          borderColor: "var(--color-border)",
-                        },
-                        "&:hover fieldset": {
-                          borderColor: "var(--color-border-strong)",
-                        },
-                        "&.Mui-focused fieldset": {
-                          borderColor: "var(--color-primary)",
-                          boxShadow: "0 0 0 3px var(--color-primary-surface)",
-                        },
-                      },
-                      "& .MuiInputLabel-root": {
-                        color: "var(--color-text-muted)",
-                        "&.Mui-focused": {
-                          color: "var(--color-primary)",
-                        },
-                      },
-                    }}
+                    sx={textFieldSx}
                   />
 
                   {/* Description */}
@@ -258,29 +260,7 @@ export function CreateListingForm({ onSuccess }: CreateListingFormProps) {
                     multiline
                     rows={3}
                     fullWidth
-                    sx={{
-                      "& .MuiOutlinedInput-root": {
-                        color: "var(--color-text)",
-                        background: "var(--color-bg-elevated)",
-                        borderRadius: 2,
-                        "& fieldset": {
-                          borderColor: "var(--color-border)",
-                        },
-                        "&:hover fieldset": {
-                          borderColor: "var(--color-border-strong)",
-                        },
-                        "&.Mui-focused fieldset": {
-                          borderColor: "var(--color-primary)",
-                          boxShadow: "0 0 0 3px var(--color-primary-surface)",
-                        },
-                      },
-                      "& .MuiInputLabel-root": {
-                        color: "var(--color-text-muted)",
-                        "&.Mui-focused": {
-                          color: "var(--color-primary)",
-                        },
-                      },
-                    }}
+                    sx={textFieldSx}
                   />
 
                   {/* Amount */}
@@ -292,29 +272,7 @@ export function CreateListingForm({ onSuccess }: CreateListingFormProps) {
                     type="number"
                     required
                     fullWidth
-                    sx={{
-                      "& .MuiOutlinedInput-root": {
-                        color: "var(--color-text)",
-                        background: "var(--color-bg-elevated)",
-                        borderRadius: 2,
-                        "& fieldset": {
-                          borderColor: "var(--color-border)",
-                        },
-                        "&:hover fieldset": {
-                          borderColor: "var(--color-border-strong)",
-                        },
-                        "&.Mui-focused fieldset": {
-                          borderColor: "var(--color-primary)",
-                          boxShadow: "0 0 0 3px var(--color-primary-surface)",
-                        },
-                      },
-                      "& .MuiInputLabel-root": {
-                        color: "var(--color-text-muted)",
-                        "&.Mui-focused": {
-                          color: "var(--color-primary)",
-                        },
-                      },
-                    }}
+                    sx={textFieldSx}
                   />
 
                   {/* Image URI */}
@@ -324,29 +282,7 @@ export function CreateListingForm({ onSuccess }: CreateListingFormProps) {
                     value={imageURI}
                     onChange={(e) => setImageURI(e.target.value)}
                     fullWidth
-                    sx={{
-                      "& .MuiOutlinedInput-root": {
-                        color: "var(--color-text)",
-                        background: "var(--color-bg-elevated)",
-                        borderRadius: 2,
-                        "& fieldset": {
-                          borderColor: "var(--color-border)",
-                        },
-                        "&:hover fieldset": {
-                          borderColor: "var(--color-border-strong)",
-                        },
-                        "&.Mui-focused fieldset": {
-                          borderColor: "var(--color-primary)",
-                          boxShadow: "0 0 0 3px var(--color-primary-surface)",
-                        },
-                      },
-                      "& .MuiInputLabel-root": {
-                        color: "var(--color-text-muted)",
-                        "&.Mui-focused": {
-                          color: "var(--color-primary)",
-                        },
-                      },
-                    }}
+                    sx={textFieldSx}
                   />
 
                   {/* Error */}

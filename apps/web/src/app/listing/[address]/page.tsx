@@ -106,10 +106,6 @@ export default function ListingDetailPage() {
   }, [txStep, resetState]);
 
   const userRole = getUserRole(wallet.address, info);
-
-  // t is available via i18nValue for future use
-  void i18nValue.t;
-
   const isLoading = infoLoading || milestonesLoading;
 
   // Progress calculation
@@ -1005,35 +1001,28 @@ export default function ListingDetailPage() {
                           </Typography>
 
                           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                            {events.map((event, index) => {
-                              const milestoneName =
-                                event.type === "Completed" && event.index !== undefined
-                                  ? milestones[Number(event.index)]?.name
-                                  : undefined;
-
-                              const getEventLabel = () => {
-                                switch (event.type) {
-                                  case "Locked":
-                                    return locale === "ja" ? "購入" : "Purchased";
-                                  case "Approved":
-                                    return locale === "ja" ? "承認" : "Approved";
-                                  case "Cancelled":
-                                    return locale === "ja" ? "キャンセル・返金" : "Cancelled & Refunded";
-                                  case "DeliveryConfirmed":
-                                    return locale === "ja" ? "納品確認・完了" : "Delivery Confirmed";
-                                  case "Completed":
-                                    return milestoneName ||
-                                      (event.index !== undefined
-                                        ? `Milestone #${event.index}`
-                                        : locale === "ja"
-                                          ? "マイルストーン"
-                                          : "Milestone");
-                                  default:
-                                    return event.type;
-                                }
+                            {(() => {
+                              const eventLabels: Record<string, { ja: string; en: string }> = {
+                                Locked: { ja: "購入", en: "Purchased" },
+                                Approved: { ja: "承認", en: "Approved" },
+                                Cancelled: { ja: "キャンセル・返金", en: "Cancelled & Refunded" },
+                                DeliveryConfirmed: { ja: "納品確認・完了", en: "Delivery Confirmed" },
                               };
 
-                              return (
+                              const getEventLabel = (event: typeof events[0]): string => {
+                                if (event.type === "Completed") {
+                                  const milestoneName = event.index !== undefined
+                                    ? milestones[Number(event.index)]?.name
+                                    : undefined;
+                                  if (milestoneName) return milestoneName;
+                                  if (event.index !== undefined) return `Milestone #${event.index}`;
+                                  return locale === "ja" ? "マイルストーン" : "Milestone";
+                                }
+                                const labels = eventLabels[event.type];
+                                return labels ? labels[locale] : event.type;
+                              };
+
+                              return events.map((event, index) => (
                                 <Box
                                   key={index}
                                   sx={{
@@ -1065,8 +1054,8 @@ export default function ListingDetailPage() {
                                     {locale === "ja" ? "TX確認" : "View TX"}
                                   </a>
                                 </Box>
-                              );
-                            })}
+                              ));
+                            })()}
                           </Box>
                         </CardContent>
                       </Card>
