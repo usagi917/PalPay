@@ -1037,7 +1037,7 @@ export default function ListingDetailPage() {
                                 >
                                   <Box>
                                     <Typography sx={{ color: "var(--color-text)", fontWeight: 500 }}>
-                                      {getEventLabel()}
+                                      {getEventLabel(event)}
                                     </Typography>
                                     {event.amount && (
                                       <Typography variant="caption" sx={{ color: "var(--color-text-muted)" }}>

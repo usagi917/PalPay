@@ -617,7 +617,7 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
   // Helper to execute simple escrow transactions
   const executeSimpleTx = useCallback(
     async (
-      functionName: string,
+      functionName: "lock" | "approve" | "cancel" | "confirmDelivery" | "submit",
       args: unknown[],
       errorMessages: { tx: string; fallback: string }
     ) => {
@@ -639,9 +639,9 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
           address: escrowAddress,
           abi: ESCROW_ABI,
           functionName,
-          args,
+          args: args as readonly unknown[],
           account,
-        });
+        } as Parameters<typeof wallet.writeContract>[0]);
 
         setTxStep("confirming");
         setTxHash(hash);
