@@ -9,17 +9,24 @@ interface MessageInputProps {
   onSend: (message: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  quickActions?: Array<{ label: string; message: string }>;
 }
 
-const quickActions = [
+const defaultQuickActions = [
   { label: "和牛を売りたい", message: "神戸牛A5ランクを50万円で売りたいです" },
   { label: "出品を見る", message: "現在の出品一覧を見せてください" },
   { label: "日本酒を売りたい", message: "純米大吟醸を10万円で売りたいです" },
 ];
 
-export function MessageInput({ onSend, disabled, placeholder }: MessageInputProps) {
+export function MessageInput({
+  onSend,
+  disabled,
+  placeholder,
+  quickActions,
+}: MessageInputProps) {
   const [input, setInput] = useState("");
   const canSend = !!input.trim() && !disabled;
+  const actions = quickActions && quickActions.length > 0 ? quickActions : defaultQuickActions;
 
   const handleSend = useCallback(() => {
     if (input.trim() && !disabled) {
@@ -59,7 +66,7 @@ export function MessageInput({ onSend, disabled, placeholder }: MessageInputProp
           "&::-webkit-scrollbar": { display: "none" },
         }}
       >
-        {quickActions.map((action) => (
+        {actions.map((action) => (
           <motion.div
             key={action.label}
             whileHover={{ scale: 1.02 }}

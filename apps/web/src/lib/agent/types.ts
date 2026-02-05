@@ -96,6 +96,8 @@ export interface ChatResponse {
   draft?: ListingDraft;
   txPrepare?: TxPrepareResult;
   sessionToken?: string;
+  nextInputHint?: string;
+  nextQuickActions?: Array<{ label: string; message: string }>;
 }
 
 // Listing summary from blockchain

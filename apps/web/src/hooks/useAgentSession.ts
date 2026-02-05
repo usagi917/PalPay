@@ -29,6 +29,8 @@ export interface UseAgentSessionReturn {
   txPrepare: TxPrepareResult | undefined;
   isLoading: boolean;
   error: string | null;
+  nextInputHint: string | null;
+  nextQuickActions: Array<{ label: string; message: string }>;
   sendMessage: (content: string, userAddress?: string) => Promise<void>;
   appendMessage: (content: string, role?: MessageRole, nextState?: AgentState) => void;
   clearSession: () => void;
@@ -44,6 +46,8 @@ export function useAgentSession(): UseAgentSessionReturn {
   const [txPrepare, setTxPrepare] = useState<TxPrepareResult | undefined>();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [nextInputHint, setNextInputHint] = useState<string | null>(null);
+  const [nextQuickActions, setNextQuickActions] = useState<Array<{ label: string; message: string }>>([]);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -156,6 +160,9 @@ export function useAgentSession(): UseAgentSessionReturn {
       if (data.sessionToken) {
         setSessionToken(data.sessionToken);
       }
+
+      setNextInputHint(data.nextInputHint ?? null);
+      setNextQuickActions(Array.isArray(data.nextQuickActions) ? data.nextQuickActions : []);
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
         return;
@@ -222,6 +229,8 @@ export function useAgentSession(): UseAgentSessionReturn {
     setSessionToken(null);
     setError(null);
     setIsLoading(false);
+    setNextInputHint(null);
+    setNextQuickActions([]);
   }, [sessionId, sessionToken]);
 
   const clearTxPrepare = useCallback(() => {
@@ -237,6 +246,8 @@ export function useAgentSession(): UseAgentSessionReturn {
     txPrepare,
     isLoading,
     error,
+    nextInputHint,
+    nextQuickActions,
     sendMessage,
     appendMessage,
     clearSession,

@@ -28,6 +28,8 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
     draft,
     txPrepare,
     isLoading,
+    nextInputHint,
+    nextQuickActions,
     sendMessage,
     appendMessage,
     clearSession,
@@ -188,8 +190,9 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
             placeholder={
               !walletConnected
                 ? "ウォレットを接続してください"
-                : "メッセージを入力...（例：和牛を売りたい）"
+                : `メッセージを入力...（例：${nextInputHint || "和牛を売りたい"}）`
             }
+            quickActions={nextQuickActions.length > 0 ? nextQuickActions : undefined}
           />
         </Box>
 

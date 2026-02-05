@@ -39,6 +39,194 @@ const RATE_LIMIT_WINDOW_MS = Number(process.env.AGENT_RATE_LIMIT_WINDOW_MS || 60
 const AUTH_DISABLED = process.env.AGENT_AUTH_DISABLED === "true";
 const AUTH_TIMESTAMP_SKEW_MS = Number(process.env.AGENT_AUTH_SKEW_MS || 5 * 60_000);
 const AUTH_TOKEN_TTL_MS = Number(process.env.AGENT_AUTH_TOKEN_TTL_MS || 30 * 60_000);
+const DEFAULT_INPUT_HINT = "和牛を売りたい";
+const DEFAULT_QUICK_ACTIONS = [
+  { label: "和牛を売りたい", message: "神戸牛A5ランクを50万円で売りたいです" },
+  { label: "出品を見る", message: "現在の出品一覧を見せてください" },
+  { label: "日本酒を売りたい", message: "純米大吟醸を10万円で売りたいです" },
+];
+
+function includesAny(text: string, keywords: string[]): boolean {
+  return keywords.some((keyword) => text.includes(keyword));
+}
+
+function deriveNextInputHint(params: {
+  state: AgentState;
+  draft?: ListingDraft;
+  txPrepare?: TxPrepareResult;
+  toolCalls: ToolCall[];
+  responseText: string;
+}): string {
+  const { state, draft, txPrepare, toolCalls, responseText } = params;
+
+  if (state === "tx_prepared" && txPrepare) {
+    switch (txPrepare.action) {
+      case "createListing":
+        return "署名して出品する";
+      case "lock":
+        return "購入を確定する";
+      case "approve":
+        return "承認する";
+      case "cancel":
+        return "キャンセルする";
+      case "confirmDelivery":
+        return "納品を確認する";
+      default:
+        return "署名して実行する";
+    }
+  }
+
+  if (state === "draft_ready" && draft) {
+    return "この内容で出品して";
+  }
+
+  if (toolCalls.some((call) => call.name === "get_listing_detail")) {
+    return "この出品を購入したい";
+  }
+
+  if (toolCalls.some((call) => call.name === "get_listings")) {
+    return "この出品の詳細を見たい";
+  }
+
+  if (state === "gathering_info") {
+    if (includesAny(responseText, ["金額", "価格", "いくら"])) {
+      return "金額は50万円";
+    }
+    if (includesAny(responseText, ["商品名", "タイトル", "品名"])) {
+      return "商品名は神戸牛A5ランク";
+    }
+    if (includesAny(responseText, ["説明", "詳細"])) {
+      return "説明文は◯◯です";
+    }
+    if (includesAny(responseText, ["カテゴリ", "カテゴリー"])) {
+      return "カテゴリは和牛";
+    }
+    return "商品名は神戸牛A5ランク";
+  }
+
+  if (state === "awaiting_confirm") {
+    return "はい";
+  }
+
+  if (state === "completed") {
+    return "別の出品を作りたい";
+  }
+
+  return DEFAULT_INPUT_HINT;
+}
+
+function deriveNextQuickActions(params: {
+  state: AgentState;
+  draft?: ListingDraft;
+  txPrepare?: TxPrepareResult;
+  toolCalls: ToolCall[];
+  responseText: string;
+}): Array<{ label: string; message: string }> {
+  const { state, draft, txPrepare, toolCalls, responseText } = params;
+
+  if (state === "tx_prepared" && txPrepare) {
+    switch (txPrepare.action) {
+      case "createListing":
+        return [
+          { label: "署名して出品", message: "署名して出品を実行して" },
+          { label: "修正したい", message: "内容を修正したいです" },
+        ];
+      case "lock":
+        return [
+          { label: "購入を確定", message: "購入を確定して" },
+          { label: "もう一度見る", message: "出品詳細をもう一度見せて" },
+        ];
+      case "approve":
+        return [
+          { label: "承認する", message: "承認して" },
+          { label: "やめる", message: "一旦やめたい" },
+        ];
+      case "cancel":
+        return [
+          { label: "キャンセル", message: "キャンセルして" },
+          { label: "やめる", message: "一旦やめたい" },
+        ];
+      case "confirmDelivery":
+        return [
+          { label: "納品確認", message: "納品を確認して" },
+          { label: "やめる", message: "一旦やめたい" },
+        ];
+      default:
+        return [
+          { label: "署名する", message: "署名して実行して" },
+          { label: "やめる", message: "一旦やめたい" },
+        ];
+    }
+  }
+
+  if (state === "draft_ready" && draft) {
+    return [
+      { label: "この内容で出品", message: "この内容で出品して" },
+      { label: "修正したい", message: "修正したい点があります" },
+    ];
+  }
+
+  if (toolCalls.some((call) => call.name === "get_listing_detail")) {
+    return [
+      { label: "購入したい", message: "この出品を購入したい" },
+      { label: "他も見る", message: "他の出品も見たい" },
+    ];
+  }
+
+  if (toolCalls.some((call) => call.name === "get_listings")) {
+    return [
+      { label: "詳細を見る", message: "この出品の詳細を見たい" },
+      { label: "購入したい", message: "この出品を購入したい" },
+    ];
+  }
+
+  if (state === "gathering_info") {
+    if (includesAny(responseText, ["金額", "価格", "いくら"])) {
+      return [
+        { label: "金額を伝える", message: "金額は50万円です" },
+        { label: "相談したい", message: "価格について相談したい" },
+      ];
+    }
+    if (includesAny(responseText, ["商品名", "タイトル", "品名"])) {
+      return [
+        { label: "商品名を伝える", message: "商品名は神戸牛A5ランクです" },
+        { label: "相談したい", message: "商品名の付け方を相談したい" },
+      ];
+    }
+    if (includesAny(responseText, ["説明", "詳細"])) {
+      return [
+        { label: "説明を伝える", message: "説明文は◯◯です" },
+        { label: "相談したい", message: "説明文を相談したい" },
+      ];
+    }
+    if (includesAny(responseText, ["カテゴリ", "カテゴリー"])) {
+      return [
+        { label: "和牛", message: "カテゴリは和牛" },
+        { label: "日本酒", message: "カテゴリは日本酒" },
+      ];
+    }
+    return [
+      { label: "商品名を伝える", message: "商品名は神戸牛A5ランクです" },
+      { label: "金額を伝える", message: "金額は50万円です" },
+    ];
+  }
+
+  if (state === "awaiting_confirm") {
+    return [
+      { label: "はい", message: "はい" },
+      { label: "修正したい", message: "修正したい点があります" },
+    ];
+  }
+
+  if (state === "completed") {
+    return [
+      { label: "別の出品", message: "別の出品を作りたい" },
+      { label: "出品を見る", message: "出品一覧を見せてください" },
+    ];
+  }
+
+  return DEFAULT_QUICK_ACTIONS;
+}
 
 function getClientKey(request: NextRequest, sessionId?: string): string {
   const forwardedFor = request.headers.get("x-forwarded-for");
@@ -267,6 +455,20 @@ export async function POST(request: NextRequest) {
 
     // Get final text response
     const responseText = response.text();
+    const nextInputHint = deriveNextInputHint({
+      state: session.state,
+      draft: session.draft,
+      txPrepare: session.txPrepare,
+      toolCalls,
+      responseText,
+    });
+    const nextQuickActions = deriveNextQuickActions({
+      state: session.state,
+      draft: session.draft,
+      txPrepare: session.txPrepare,
+      toolCalls,
+      responseText,
+    });
 
     // Update history
     session.history.push(
@@ -291,6 +493,8 @@ export async function POST(request: NextRequest) {
       draft: session.draft,
       txPrepare: session.txPrepare,
       sessionToken: session.authToken,
+      nextInputHint,
+      nextQuickActions,
     };
 
     return NextResponse.json(chatResponse);
