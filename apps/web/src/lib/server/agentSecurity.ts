@@ -11,8 +11,12 @@ type RateLimitRecord = {
   resetAt: number;
 };
 
-const nonceStore = new Map<string, NonceRecord>();
-const rateLimitStore = new Map<string, RateLimitRecord>();
+const g = globalThis as unknown as {
+  __agentNonceStore?: Map<string, NonceRecord>;
+  __agentRateLimitStore?: Map<string, RateLimitRecord>;
+};
+const nonceStore = (g.__agentNonceStore ??= new Map<string, NonceRecord>());
+const rateLimitStore = (g.__agentRateLimitStore ??= new Map<string, RateLimitRecord>());
 
 const SESSION_ID_PATTERN = /^[a-zA-Z0-9_-]{1,128}$/;
 

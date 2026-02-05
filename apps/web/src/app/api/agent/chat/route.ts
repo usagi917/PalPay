@@ -17,8 +17,8 @@ import type {
 } from "@/lib/agent/types";
 import type { Content } from "@google/generative-ai";
 
-// In-memory session store (for demo purposes)
-const sessions = new Map<string, {
+// In-memory session store (globalThis to survive HMR/webpack chunk splits)
+type SessionRecord = {
   history: Content[];
   state: AgentState;
   draft?: ListingDraft;
@@ -26,7 +26,9 @@ const sessions = new Map<string, {
   userAddress?: Address;
   authToken?: string;
   authTokenExpiresAt?: number;
-}>();
+};
+const gSessions = globalThis as unknown as { __agentSessions?: Map<string, SessionRecord> };
+const sessions = (gSessions.__agentSessions ??= new Map<string, SessionRecord>());
 
 function generateId(): string {
   return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;

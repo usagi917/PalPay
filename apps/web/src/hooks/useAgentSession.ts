@@ -145,7 +145,7 @@ export function useAgentSession(): UseAgentSessionReturn {
 
       if (!response.ok) {
         const isAuthError = response.status === 401 || response.status === 403;
-        if (isAuthError && token && authRequired) {
+        if (isAuthError && authRequired && (token || auth)) {
           // Token expired: re-auth and retry once transparently
           setSessionToken(null);
           token = null;
