@@ -4,6 +4,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { AppBar, Toolbar, Box, Typography, ToggleButtonGroup, ToggleButton, Container, Button } from "@mui/material";
 import AccountCircleIcon from "@mui/icons-material/AccountCircle";
+import SmartToyIcon from "@mui/icons-material/SmartToy";
 import { useI18n, type Locale } from "@/lib/i18n";
 
 interface HeaderProps {
@@ -91,6 +92,32 @@ export function Header({ onLocaleChange }: HeaderProps) {
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: 0.1 }}
           >
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              {/* Agent Chat Link */}
+              <Link href="/agent" style={{ textDecoration: 'none' }}>
+                <Button
+                  size="small"
+                  startIcon={<SmartToyIcon />}
+                  sx={{
+                    color: 'var(--color-primary)',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    letterSpacing: '0.05em',
+                    px: 1.5,
+                    py: 0.75,
+                    borderRadius: 2,
+                    border: '1px solid var(--color-border-accent)',
+                    background: 'rgba(212, 165, 116, 0.08)',
+                    '&:hover': {
+                      color: 'var(--color-primary)',
+                      background: 'rgba(212, 165, 116, 0.15)',
+                      borderColor: 'var(--color-primary)',
+                    },
+                  }}
+                >
+                  {locale === 'ja' ? 'AIアシスタント' : 'AI Assistant'}
+                </Button>
+              </Link>
+
               {/* My Page Link */}
               <Link href="/my" style={{ textDecoration: 'none' }}>
                 <Button
