@@ -11,7 +11,6 @@ import { MessageInput } from "./MessageInput";
 import { ThinkingPanel } from "./ThinkingPanel";
 import { DraftPreview } from "./DraftPreview";
 import { MilestoneTable } from "./MilestoneTable";
-import { TxConfirmPanel } from "./TxConfirmPanel";
 import type { Address } from "viem";
 import type { ToolCall } from "@/lib/agent/types";
 
@@ -174,7 +173,15 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
             minWidth: 0,
           }}
         >
-          <MessageList messages={messages} isLoading={isLoading} />
+          <MessageList
+            messages={messages}
+            isLoading={isLoading}
+            walletConnected={walletConnected}
+            onConfirmTx={handleTxConfirm}
+            onCancelTx={clearTxPrepare}
+            fallbackTxPrepare={txPrepare}
+            fallbackDraft={draft}
+          />
           <MessageInput
             onSend={handleSend}
             disabled={isLoading || (authRequired && !walletConnected)}
@@ -207,17 +214,6 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
               <DraftPreview draft={draft} />
               <MilestoneTable milestones={draft.milestones} totalAmount={draft.totalAmount} />
             </>
-          )}
-
-          {/* TX confirm panel */}
-          {txPrepare && (
-            <TxConfirmPanel
-              txPrepare={txPrepare}
-              draft={draft}
-              onConfirm={handleTxConfirm}
-              onCancel={clearTxPrepare}
-              walletConnected={walletConnected}
-            />
           )}
 
           {/* Empty state */}

@@ -1,17 +1,23 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useMemo } from "react";
 import { Box, Paper, Typography, Chip, Stack } from "@mui/material";
 import { motion, AnimatePresence } from "framer-motion";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
 import PersonIcon from "@mui/icons-material/Person";
 import ErrorIcon from "@mui/icons-material/Error";
 import BuildIcon from "@mui/icons-material/Build";
-import type { ChatMessage } from "@/lib/agent/types";
+import type { ChatMessage, ListingDraft, TxPrepareResult } from "@/lib/agent/types";
+import { TxConfirmPanel } from "./TxConfirmPanel";
 
 interface MessageListProps {
   messages: ChatMessage[];
   isLoading?: boolean;
+  walletConnected: boolean;
+  onConfirmTx: () => Promise<void>;
+  onCancelTx: () => void;
+  fallbackTxPrepare?: TxPrepareResult;
+  fallbackDraft?: ListingDraft;
 }
 
 function ToolCallBadge({ name }: { name: string }) {
@@ -211,8 +217,24 @@ function LoadingIndicator() {
   );
 }
 
-export function MessageList({ messages, isLoading }: MessageListProps) {
+export function MessageList({
+  messages,
+  isLoading,
+  walletConnected,
+  onConfirmTx,
+  onCancelTx,
+  fallbackTxPrepare,
+  fallbackDraft,
+}: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const lastTxPrepareMessageId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (messages[i]?.txPrepare) return messages[i].id;
+    }
+    return null;
+  }, [messages]);
+  const shouldShowTxCard = !!fallbackTxPrepare;
+  const shouldRenderFallback = shouldShowTxCard && !lastTxPrepareMessageId;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -238,10 +260,34 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
     >
       <AnimatePresence>
         {messages.map((message) => (
-          <MessageBubble key={message.id} message={message} />
+          <Box key={message.id}>
+            <MessageBubble message={message} />
+            {shouldShowTxCard && message.id === lastTxPrepareMessageId && (
+              <Box sx={{ ml: "48px", maxWidth: "75%", mb: 2 }}>
+                <TxConfirmPanel
+                  txPrepare={fallbackTxPrepare!}
+                  draft={message.draft || fallbackDraft}
+                  onConfirm={onConfirmTx}
+                  onCancel={onCancelTx}
+                  walletConnected={walletConnected}
+                />
+              </Box>
+            )}
+          </Box>
         ))}
       </AnimatePresence>
       {isLoading && <LoadingIndicator />}
+      {shouldRenderFallback && (
+        <Box sx={{ ml: "48px", maxWidth: "75%", mb: 2 }}>
+          <TxConfirmPanel
+            txPrepare={fallbackTxPrepare!}
+            draft={fallbackDraft}
+            onConfirm={onConfirmTx}
+            onCancel={onCancelTx}
+            walletConnected={walletConnected}
+          />
+        </Box>
+      )}
       <div ref={bottomRef} />
     </Box>
   );
