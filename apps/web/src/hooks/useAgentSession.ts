@@ -73,9 +73,7 @@ export function useAgentSession(): UseAgentSessionReturn {
     setError(null);
 
     try {
-      let auth: ChatRequest["auth"] | undefined;
-
-      if (authRequired && !sessionToken) {
+      const buildAuthPayload = async (): Promise<ChatRequest["auth"]> => {
         if (!userAddress) {
           throw new Error("ウォレット接続が必要です");
         }
@@ -107,40 +105,60 @@ export function useAgentSession(): UseAgentSessionReturn {
           params: [authMessage, userAddress],
         }) as string;
 
-        auth = {
+        return {
           address: userAddress,
           signature,
           nonce: nonceData.nonce,
           timestamp,
         };
-      }
-
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
       };
-      if (sessionToken) {
-        headers["X-Session-Token"] = sessionToken;
+
+      const postChat = async (params: { auth?: ChatRequest["auth"]; token?: string | null }) => {
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        if (params.token) {
+          headers["X-Session-Token"] = params.token;
+        }
+        return fetch("/api/agent/chat", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            message: content.trim(),
+            sessionId,
+            userAddress,
+            auth: params.auth,
+          }),
+          signal: abortControllerRef.current.signal,
+        });
+      };
+
+      let auth: ChatRequest["auth"] | undefined;
+      let token = sessionToken;
+
+      if (authRequired && !token) {
+        auth = await buildAuthPayload();
       }
 
-      const response = await fetch("/api/agent/chat", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          message: content.trim(),
-          sessionId,
-          userAddress,
-          auth,
-        }),
-        signal: abortControllerRef.current.signal,
-      });
+      let response = await postChat({ auth, token });
 
       if (!response.ok) {
-        if ((response.status === 401 || response.status === 403) && sessionToken) {
+        const isAuthError = response.status === 401 || response.status === 403;
+        if (isAuthError && token && authRequired) {
+          // Token expired: re-auth and retry once transparently
           setSessionToken(null);
-          throw new Error("セッション認証が切れました。もう一度送信してください。");
+          token = null;
+          auth = await buildAuthPayload();
+          response = await postChat({ auth, token });
         }
+      }
+
+      if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}`);
+        const fallback = response.status === 401 || response.status === 403
+          ? "認証に失敗しました。ウォレット接続を確認してください。"
+          : `HTTP ${response.status}`;
+        throw new Error(errorData.error || fallback);
       }
 
       const data: ChatResponse = await response.json();
