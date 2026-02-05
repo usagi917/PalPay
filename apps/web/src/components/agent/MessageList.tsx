@@ -9,6 +9,7 @@ import ErrorIcon from "@mui/icons-material/Error";
 import BuildIcon from "@mui/icons-material/Build";
 import type { ChatMessage, ListingDraft, TxPrepareResult } from "@/lib/agent/types";
 import { TxConfirmPanel } from "./TxConfirmPanel";
+import { DraftPreview } from "./DraftPreview";
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -236,9 +237,21 @@ export function MessageList({
   const shouldShowTxCard = !!fallbackTxPrepare;
   const shouldRenderFallback = shouldShowTxCard && !lastTxPrepareMessageId;
 
+  const lastDraftMessageId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const msg = messages[i];
+      if (msg?.toolCalls?.some((tc) => tc.name === "prepare_listing_draft")) {
+        return msg.id;
+      }
+    }
+    return null;
+  }, [messages]);
+  const shouldShowDraftCard = !!fallbackDraft;
+  const shouldRenderDraftFallback = shouldShowDraftCard && !lastDraftMessageId;
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isLoading]);
+  }, [messages, isLoading, fallbackDraft]);
 
   return (
     <Box
@@ -262,6 +275,11 @@ export function MessageList({
         {messages.map((message) => (
           <Box key={message.id}>
             <MessageBubble message={message} />
+            {shouldShowDraftCard && message.id === lastDraftMessageId && (
+              <Box sx={{ ml: "48px", maxWidth: "75%", mb: 2 }}>
+                <DraftPreview draft={fallbackDraft!} />
+              </Box>
+            )}
             {shouldShowTxCard && message.id === lastTxPrepareMessageId && (
               <Box sx={{ ml: "48px", maxWidth: "75%", mb: 2 }}>
                 <TxConfirmPanel
@@ -277,6 +295,11 @@ export function MessageList({
         ))}
       </AnimatePresence>
       {isLoading && <LoadingIndicator />}
+      {shouldRenderDraftFallback && (
+        <Box sx={{ ml: "48px", maxWidth: "75%", mb: 2 }}>
+          <DraftPreview draft={fallbackDraft!} />
+        </Box>
+      )}
       {shouldRenderFallback && (
         <Box sx={{ ml: "48px", maxWidth: "75%", mb: 2 }}>
           <TxConfirmPanel

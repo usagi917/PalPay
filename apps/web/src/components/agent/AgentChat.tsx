@@ -9,8 +9,6 @@ import { useAgentSession } from "@/hooks/useAgentSession";
 import { MessageList } from "./MessageList";
 import { MessageInput } from "./MessageInput";
 import { ThinkingPanel } from "./ThinkingPanel";
-import { DraftPreview } from "./DraftPreview";
-import { MilestoneTable } from "./MilestoneTable";
 import type { Address } from "viem";
 import type { ToolCall } from "@/lib/agent/types";
 
@@ -210,14 +208,6 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
         >
           {/* Thinking panel */}
           <ThinkingPanel state={state} isLoading={isLoading} toolCalls={allToolCalls} />
-
-          {/* Draft preview */}
-          {draft && (
-            <>
-              <DraftPreview draft={draft} />
-              <MilestoneTable milestones={draft.milestones} totalAmount={draft.totalAmount} />
-            </>
-          )}
 
           {/* Empty state */}
           {!draft && !txPrepare && state === "idle" && (

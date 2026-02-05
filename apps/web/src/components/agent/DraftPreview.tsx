@@ -1,11 +1,15 @@
 "use client";
 
-import { Box, Paper, Typography, Chip, Divider, Stack } from "@mui/material";
+import { useState } from "react";
+import { Box, Paper, Typography, Chip, Divider, Stack, Collapse, Button } from "@mui/material";
 import { motion } from "framer-motion";
 import DescriptionIcon from "@mui/icons-material/Description";
 import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
 import CategoryIcon from "@mui/icons-material/Category";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import type { ListingDraft } from "@/lib/agent/types";
+import { MilestoneTable } from "./MilestoneTable";
 
 interface DraftPreviewProps {
   draft: ListingDraft;
@@ -18,6 +22,7 @@ const categoryLabels: Record<string, { ja: string; emoji: string }> = {
 };
 
 export function DraftPreview({ draft }: DraftPreviewProps) {
+  const [expanded, setExpanded] = useState(false);
   const categoryInfo = categoryLabels[draft.category] || { ja: draft.category, emoji: "📦" };
 
   // Format amount with commas
@@ -203,6 +208,33 @@ export function DraftPreview({ draft }: DraftPreviewProps) {
                   />
                 )}
               </Stack>
+
+              {/* Toggle milestone details */}
+              <Button
+                size="small"
+                onClick={() => setExpanded((prev) => !prev)}
+                endIcon={expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                sx={{
+                  mt: 1.5,
+                  fontSize: "0.75rem",
+                  color: "var(--color-primary)",
+                  textTransform: "none",
+                  p: 0,
+                  minWidth: 0,
+                  "&:hover": {
+                    background: "transparent",
+                    textDecoration: "underline",
+                  },
+                }}
+              >
+                {expanded ? "閉じる" : "詳細を見る"}
+              </Button>
+
+              <Collapse in={expanded}>
+                <Box sx={{ mt: 1.5 }}>
+                  <MilestoneTable milestones={draft.milestones} totalAmount={draft.totalAmount} />
+                </Box>
+              </Collapse>
             </Box>
           </Box>
         </Stack>
