@@ -1,12 +1,16 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
+import { getMetaMaskProvider } from "@/lib/config";
+import { buildAgentAuthMessage } from "@/lib/agent/auth";
 import type {
   ChatMessage,
   AgentState,
   ListingDraft,
   TxPrepareResult,
   ChatResponse,
+  ChatRequest,
+  MessageRole,
 } from "@/lib/agent/types";
 
 function generateSessionId(): string {
@@ -26,11 +30,13 @@ export interface UseAgentSessionReturn {
   isLoading: boolean;
   error: string | null;
   sendMessage: (content: string, userAddress?: string) => Promise<void>;
+  appendMessage: (content: string, role?: MessageRole, nextState?: AgentState) => void;
   clearSession: () => void;
   clearTxPrepare: () => void;
 }
 
 export function useAgentSession(): UseAgentSessionReturn {
+  const authRequired = process.env.NEXT_PUBLIC_AGENT_AUTH_REQUIRED !== "false";
   const [sessionId] = useState<string>(() => generateSessionId());
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [state, setState] = useState<AgentState>("idle");
@@ -38,6 +44,7 @@ export function useAgentSession(): UseAgentSessionReturn {
   const [txPrepare, setTxPrepare] = useState<TxPrepareResult | undefined>();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const sendMessage = useCallback(async (content: string, userAddress?: string) => {
@@ -62,20 +69,72 @@ export function useAgentSession(): UseAgentSessionReturn {
     setError(null);
 
     try {
+      let auth: ChatRequest["auth"] | undefined;
+
+      if (authRequired && !sessionToken) {
+        if (!userAddress) {
+          throw new Error("ウォレット接続が必要です");
+        }
+        const provider = getMetaMaskProvider();
+        if (!provider) {
+          throw new Error("MetaMaskが見つかりません");
+        }
+
+        const nonceResponse = await fetch(`/api/agent/nonce?sessionId=${encodeURIComponent(sessionId)}`, {
+          method: "GET",
+          signal: abortControllerRef.current.signal,
+        });
+
+        if (!nonceResponse.ok) {
+          const errorData = await nonceResponse.json().catch(() => ({}));
+          throw new Error(errorData.error || `Nonce取得に失敗しました (HTTP ${nonceResponse.status})`);
+        }
+
+        const nonceData = await nonceResponse.json() as { nonce: string };
+        const timestamp = Date.now();
+        const authMessage = buildAgentAuthMessage({
+          sessionId,
+          nonce: nonceData.nonce,
+          timestamp,
+        });
+
+        const signature = await provider.request({
+          method: "personal_sign",
+          params: [authMessage, userAddress],
+        }) as string;
+
+        auth = {
+          address: userAddress,
+          signature,
+          nonce: nonceData.nonce,
+          timestamp,
+        };
+      }
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (sessionToken) {
+        headers["X-Session-Token"] = sessionToken;
+      }
+
       const response = await fetch("/api/agent/chat", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         body: JSON.stringify({
           message: content.trim(),
           sessionId,
           userAddress,
+          auth,
         }),
         signal: abortControllerRef.current.signal,
       });
 
       if (!response.ok) {
+        if ((response.status === 401 || response.status === 403) && sessionToken) {
+          setSessionToken(null);
+          throw new Error("セッション認証が切れました。もう一度送信してください。");
+        }
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || `HTTP ${response.status}`);
       }
@@ -92,6 +151,10 @@ export function useAgentSession(): UseAgentSessionReturn {
 
       if (data.txPrepare) {
         setTxPrepare(data.txPrepare);
+      }
+
+      if (data.sessionToken) {
+        setSessionToken(data.sessionToken);
       }
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
@@ -111,7 +174,25 @@ export function useAgentSession(): UseAgentSessionReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [sessionId]);
+  }, [authRequired, sessionId, sessionToken]);
+
+  const appendMessage = useCallback(
+    (content: string, role: MessageRole = "assistant", nextState?: AgentState) => {
+      const trimmed = content.trim();
+      if (!trimmed) return;
+      const localMessage: ChatMessage = {
+        id: generateMessageId(),
+        role,
+        content: trimmed,
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => [...prev, localMessage]);
+      if (nextState) {
+        setState(nextState);
+      }
+    },
+    []
+  );
 
   const clearSession = useCallback(async () => {
     // Cancel any pending request
@@ -121,8 +202,13 @@ export function useAgentSession(): UseAgentSessionReturn {
 
     // Clear server session
     try {
-      await fetch(`/api/agent/chat?sessionId=${sessionId}`, {
+      const headers: Record<string, string> = {};
+      if (sessionToken) {
+        headers["X-Session-Token"] = sessionToken;
+      }
+      await fetch(`/api/agent/chat?sessionId=${encodeURIComponent(sessionId)}`, {
         method: "DELETE",
+        headers,
       });
     } catch (e) {
       console.error("Failed to clear server session:", e);
@@ -133,9 +219,10 @@ export function useAgentSession(): UseAgentSessionReturn {
     setState("idle");
     setDraft(undefined);
     setTxPrepare(undefined);
+    setSessionToken(null);
     setError(null);
     setIsLoading(false);
-  }, [sessionId]);
+  }, [sessionId, sessionToken]);
 
   const clearTxPrepare = useCallback(() => {
     setTxPrepare(undefined);
@@ -151,6 +238,7 @@ export function useAgentSession(): UseAgentSessionReturn {
     isLoading,
     error,
     sendMessage,
+    appendMessage,
     clearSession,
     clearTxPrepare,
   };

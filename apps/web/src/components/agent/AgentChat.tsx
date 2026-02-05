@@ -22,6 +22,7 @@ interface AgentChatProps {
 }
 
 export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentChatProps) {
+  const authRequired = process.env.NEXT_PUBLIC_AGENT_AUTH_REQUIRED !== "false";
   const {
     messages,
     state,
@@ -29,6 +30,7 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
     txPrepare,
     isLoading,
     sendMessage,
+    appendMessage,
     clearSession,
     clearTxPrepare,
   } = useAgentSession();
@@ -50,11 +52,35 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
     [sendMessage, userAddress]
   );
 
+  const getSuccessMessage = useCallback((action: string): string => {
+    switch (action) {
+      case "createListing":
+        return "出品が完了しました。";
+      case "lock":
+        return "購入ロックが完了しました。";
+      case "approve":
+        return "承認が完了しました。";
+      case "cancel":
+        return "キャンセルが完了しました。";
+      case "confirmDelivery":
+        return "納品確認が完了しました。";
+      default:
+        return "トランザクションが完了しました。";
+    }
+  }, []);
+
   const handleTxConfirm = useCallback(async () => {
     if (!txPrepare) return;
-    await onExecuteTx(txPrepare.action, txPrepare.params);
-    clearTxPrepare();
-  }, [txPrepare, onExecuteTx, clearTxPrepare]);
+    try {
+      await onExecuteTx(txPrepare.action, txPrepare.params);
+      clearTxPrepare();
+      appendMessage(getSuccessMessage(txPrepare.action), "assistant", "completed");
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "トランザクションに失敗しました";
+      appendMessage(`エラーが発生しました: ${errorMessage}`, "system");
+      throw err;
+    }
+  }, [txPrepare, onExecuteTx, clearTxPrepare, appendMessage, getSuccessMessage]);
 
   return (
     <Box
@@ -151,7 +177,7 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
           <MessageList messages={messages} isLoading={isLoading} />
           <MessageInput
             onSend={handleSend}
-            disabled={isLoading}
+            disabled={isLoading || (authRequired && !walletConnected)}
             placeholder={
               !walletConnected
                 ? "ウォレットを接続してください"

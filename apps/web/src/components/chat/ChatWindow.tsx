@@ -133,7 +133,7 @@ export function ChatWindow({
         isSending={isSending}
         placeholder={
           isReady
-            ? "メッセージを入力... (Enterで送信)"
+            ? "メッセージを入力... (Shift+Enterで送信 / 送信ボタン)"
             : "接続を待っています..."
         }
       />

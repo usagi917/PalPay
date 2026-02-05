@@ -8,7 +8,7 @@ import { parseUnits, type Address } from "viem";
 import { Header } from "@/components/Header";
 import { AgentChat } from "@/components/agent";
 import { I18nContext, type Locale, translations } from "@/lib/i18n";
-import { createWallet, config, ensureWalletChain, getMetaMaskProvider } from "@/lib/config";
+import { createClient, createWallet, config, ensureWalletChain, getMetaMaskProvider } from "@/lib/config";
 import { FACTORY_ABI, ERC20_ABI, ESCROW_ABI } from "@/lib/abi";
 
 // Simple wallet connect button for agent page
@@ -131,6 +131,7 @@ function AgentPageContent() {
       }
       await ensureWalletChain(provider);
       const wallet = createWallet(provider);
+      const client = createClient();
       if (!wallet) {
         throw new Error("ウォレットが接続されていません");
       }
@@ -162,6 +163,10 @@ function AgentPageContent() {
             ],
             account,
           });
+          const receipt = await client.waitForTransactionReceipt({ hash });
+          if (receipt.status !== "success") {
+            throw new Error("出品トランザクションが失敗しました");
+          }
           console.log("Create listing tx:", hash);
           return;
         }
@@ -177,6 +182,10 @@ function AgentPageContent() {
             args: [escrowAddress, amountWei],
             account,
           });
+          const approveReceipt = await client.waitForTransactionReceipt({ hash: approveHash });
+          if (approveReceipt.status !== "success") {
+            throw new Error("承認トランザクションが失敗しました");
+          }
           console.log("Approve tx:", approveHash);
 
           const lockHash = await wallet.writeContract({
@@ -186,6 +195,10 @@ function AgentPageContent() {
             args: [],
             account,
           });
+          const lockReceipt = await client.waitForTransactionReceipt({ hash: lockHash });
+          if (lockReceipt.status !== "success") {
+            throw new Error("購入トランザクションが失敗しました");
+          }
           console.log("Lock tx:", lockHash);
           return;
         }
@@ -198,6 +211,10 @@ function AgentPageContent() {
             args: [],
             account,
           });
+          const receipt = await client.waitForTransactionReceipt({ hash });
+          if (receipt.status !== "success") {
+            throw new Error("承認トランザクションが失敗しました");
+          }
           console.log("Approve tx:", hash);
           return;
         }
@@ -210,6 +227,10 @@ function AgentPageContent() {
             args: [],
             account,
           });
+          const receipt = await client.waitForTransactionReceipt({ hash });
+          if (receipt.status !== "success") {
+            throw new Error("キャンセルトランザクションが失敗しました");
+          }
           console.log("Cancel tx:", hash);
           return;
         }
@@ -223,6 +244,10 @@ function AgentPageContent() {
             args: [evidenceHash],
             account,
           });
+          const receipt = await client.waitForTransactionReceipt({ hash });
+          if (receipt.status !== "success") {
+            throw new Error("納品確認トランザクションが失敗しました");
+          }
           console.log("Confirm delivery tx:", hash);
           return;
         }

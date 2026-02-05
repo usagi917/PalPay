@@ -82,6 +82,12 @@ export interface ChatRequest {
   message: string;
   sessionId: string;
   userAddress?: string;
+  auth?: {
+    address: string;
+    signature: string;
+    nonce: string;
+    timestamp: number;
+  };
 }
 
 export interface ChatResponse {
@@ -89,6 +95,7 @@ export interface ChatResponse {
   state: AgentState;
   draft?: ListingDraft;
   txPrepare?: TxPrepareResult;
+  sessionToken?: string;
 }
 
 // Listing summary from blockchain
