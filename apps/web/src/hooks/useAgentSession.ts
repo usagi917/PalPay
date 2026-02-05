@@ -58,7 +58,8 @@ export function useAgentSession(): UseAgentSessionReturn {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    abortControllerRef.current = new AbortController();
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
 
     // Add user message immediately
     const userMessage: ChatMessage = {
@@ -84,7 +85,7 @@ export function useAgentSession(): UseAgentSessionReturn {
 
         const nonceResponse = await fetch(`/api/agent/nonce?sessionId=${encodeURIComponent(sessionId)}`, {
           method: "GET",
-          signal: abortControllerRef.current.signal,
+          signal: abortController.signal,
         });
 
         if (!nonceResponse.ok) {
@@ -129,7 +130,7 @@ export function useAgentSession(): UseAgentSessionReturn {
             userAddress,
             auth: params.auth,
           }),
-          signal: abortControllerRef.current.signal,
+          signal: abortController.signal,
         });
       };
 

@@ -114,6 +114,9 @@ const getChainLabel = (chainId: number): string => {
 };
 
 export const ensureWalletChain = async (provider: typeof window.ethereum): Promise<void> => {
+  if (!provider) {
+    throw new Error("MetaMaskが見つかりません");
+  }
   const targetChain = getChain();
   const targetChainId = config.chainId;
   const targetChainHex = `0x${targetChainId.toString(16)}`;
