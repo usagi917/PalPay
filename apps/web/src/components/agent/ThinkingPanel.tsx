@@ -22,6 +22,25 @@ const stateLabels: Record<AgentState, { label: string; description: string }> = 
   completed: { label: "完了", description: "処理が完了しました" },
 };
 
+const stateChipStyles: Record<string, { background: string; color: string; border: string }> = {
+  tx_prepared: {
+    background: "rgba(34, 197, 94, 0.15)",
+    color: "#22c55e",
+    border: "1px solid rgba(34, 197, 94, 0.3)",
+  },
+  draft_ready: {
+    background: "rgba(212, 165, 116, 0.15)",
+    color: "var(--color-primary)",
+    border: "1px solid rgba(212, 165, 116, 0.3)",
+  },
+};
+
+const defaultChipStyle = {
+  background: "rgba(148, 163, 184, 0.15)",
+  color: "var(--color-text-secondary)",
+  border: "1px solid rgba(148, 163, 184, 0.3)",
+};
+
 const toolLabels: Record<string, { label: string; icon: string }> = {
   get_listings: { label: "出品一覧取得", icon: "📋" },
   get_listing_detail: { label: "出品詳細取得", icon: "🔍" },
@@ -29,6 +48,31 @@ const toolLabels: Record<string, { label: string; icon: string }> = {
   get_milestones_for_category: { label: "マイルストーン取得", icon: "📊" },
   prepare_transaction: { label: "TX準備", icon: "🔐" },
 };
+
+function getToolChipStyle(tc: ToolCall): { background: string; color: string; border: string } {
+  const hasResult = tc.result !== undefined;
+  const hasError = hasResult && typeof tc.result === "object" && tc.result !== null && "error" in tc.result;
+
+  if (!hasResult) {
+    return {
+      background: "rgba(212, 165, 116, 0.1)",
+      color: "var(--color-primary)",
+      border: "1px solid rgba(212, 165, 116, 0.3)",
+    };
+  }
+  if (hasError) {
+    return {
+      background: "rgba(239, 68, 68, 0.1)",
+      color: "#ef4444",
+      border: "1px solid rgba(239, 68, 68, 0.3)",
+    };
+  }
+  return {
+    background: "rgba(34, 197, 94, 0.1)",
+    color: "#22c55e",
+    border: "1px solid rgba(34, 197, 94, 0.3)",
+  };
+}
 
 export function ThinkingPanel({ state, isLoading, toolCalls }: ThinkingPanelProps) {
   const stateInfo = stateLabels[state] || stateLabels.idle;
@@ -74,25 +118,7 @@ export function ThinkingPanel({ state, isLoading, toolCalls }: ThinkingPanelProp
             ml: "auto",
             fontSize: "0.7rem",
             height: 22,
-            background:
-              state === "tx_prepared"
-                ? "rgba(34, 197, 94, 0.15)"
-                : state === "draft_ready"
-                  ? "rgba(212, 165, 116, 0.15)"
-                  : "rgba(148, 163, 184, 0.15)",
-            color:
-              state === "tx_prepared"
-                ? "#22c55e"
-                : state === "draft_ready"
-                  ? "var(--color-primary)"
-                  : "var(--color-text-secondary)",
-            border: `1px solid ${
-              state === "tx_prepared"
-                ? "rgba(34, 197, 94, 0.3)"
-                : state === "draft_ready"
-                  ? "rgba(212, 165, 116, 0.3)"
-                  : "rgba(148, 163, 184, 0.3)"
-            }`,
+            ...(stateChipStyles[state] || defaultChipStyle),
           }}
         />
       </Box>
@@ -152,7 +178,17 @@ export function ThinkingPanel({ state, isLoading, toolCalls }: ThinkingPanelProp
                 {recentToolCalls.map((tc, idx) => {
                   const toolInfo = toolLabels[tc.name] || { label: tc.name, icon: "🔧" };
                   const hasResult = tc.result !== undefined;
-                  const hasError = tc.result && typeof tc.result === "object" && "error" in tc.result;
+                  const hasError = hasResult && typeof tc.result === "object" && tc.result !== null && "error" in tc.result;
+                  const chipStyle = getToolChipStyle(tc);
+
+                  let chipIcon;
+                  if (!hasResult) {
+                    chipIcon = <BuildIcon sx={{ fontSize: 14 }} />;
+                  } else if (hasError) {
+                    chipIcon = <span style={{ fontSize: 14 }}>❌</span>;
+                  } else {
+                    chipIcon = <CheckCircleIcon sx={{ fontSize: 14, color: "#22c55e" }} />;
+                  }
 
                   return (
                     <motion.div
@@ -162,39 +198,13 @@ export function ThinkingPanel({ state, isLoading, toolCalls }: ThinkingPanelProp
                       transition={{ delay: idx * 0.1 }}
                     >
                       <Chip
-                        icon={
-                          hasResult ? (
-                            hasError ? (
-                              <span style={{ fontSize: 14 }}>❌</span>
-                            ) : (
-                              <CheckCircleIcon sx={{ fontSize: 14, color: "#22c55e" }} />
-                            )
-                          ) : (
-                            <BuildIcon sx={{ fontSize: 14 }} />
-                          )
-                        }
+                        icon={chipIcon}
                         label={`${toolInfo.icon} ${toolInfo.label}`}
                         size="small"
                         sx={{
                           fontSize: "0.7rem",
                           height: 26,
-                          background: hasResult
-                            ? hasError
-                              ? "rgba(239, 68, 68, 0.1)"
-                              : "rgba(34, 197, 94, 0.1)"
-                            : "rgba(212, 165, 116, 0.1)",
-                          color: hasResult
-                            ? hasError
-                              ? "#ef4444"
-                              : "#22c55e"
-                            : "var(--color-primary)",
-                          border: `1px solid ${
-                            hasResult
-                              ? hasError
-                                ? "rgba(239, 68, 68, 0.3)"
-                                : "rgba(34, 197, 94, 0.3)"
-                              : "rgba(212, 165, 116, 0.3)"
-                          }`,
+                          ...chipStyle,
                           "& .MuiChip-icon": {
                             color: "inherit",
                           },

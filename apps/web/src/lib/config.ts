@@ -92,8 +92,8 @@ export const getMetaMaskProvider = (): typeof window.ethereum | null => {
   return ethereum;
 };
 
-export const createWallet = () => {
-  const provider = getMetaMaskProvider();
+export const createWallet = (providerOverride?: typeof window.ethereum) => {
+  const provider = providerOverride || getMetaMaskProvider();
   if (!provider) {
     return null;
   }
@@ -102,6 +102,84 @@ export const createWallet = () => {
     chain,
     transport: custom(provider),
   });
+};
+
+const FALLBACK_CHAIN_LABELS: Record<number, string> = {
+  1: "Ethereum Mainnet",
+};
+
+const getChainLabel = (chainId: number): string => {
+  const chain = SUPPORTED_CHAINS[chainId as keyof typeof SUPPORTED_CHAINS];
+  return chain?.name || FALLBACK_CHAIN_LABELS[chainId] || `Chain ID ${chainId}`;
+};
+
+export const ensureWalletChain = async (provider: typeof window.ethereum): Promise<void> => {
+  const targetChain = getChain();
+  const targetChainId = config.chainId;
+  const targetChainHex = `0x${targetChainId.toString(16)}`;
+
+  const currentChainHex = await provider.request({ method: "eth_chainId" }) as string;
+  const currentChainId = parseInt(currentChainHex, 16);
+
+  if (currentChainId === targetChainId) {
+    return;
+  }
+
+  const targetLabel = targetChain?.name || `Chain ID ${targetChainId}`;
+  const currentLabel = getChainLabel(currentChainId);
+
+  const trySwitch = async () => {
+    await provider.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: targetChainHex }],
+    });
+  };
+
+  try {
+    await trySwitch();
+  } catch (switchError: unknown) {
+    const err = switchError as { code?: number };
+    if (err.code === 4001) {
+      throw new Error(`ネットワーク切替がキャンセルされました。ウォレットを${targetLabel}に切り替えてください（現在: ${currentLabel}）。`);
+    }
+    if (err.code === -32002) {
+      throw new Error(`ウォレットにネットワーク切替の承認待ちがあります。ウォレットを開き、${targetLabel}への切替を承認してください。`);
+    }
+    if (err.code === 4902) {
+      try {
+        await provider.request({
+          method: "wallet_addEthereumChain",
+          params: [
+            {
+              chainId: targetChainHex,
+              chainName: targetLabel,
+              nativeCurrency: targetChain.nativeCurrency,
+              rpcUrls: [config.rpcUrl || targetChain.rpcUrls.default.http[0]],
+              blockExplorerUrls: targetChain.blockExplorers
+                ? [targetChain.blockExplorers.default.url]
+                : undefined,
+            },
+          ],
+        });
+        await trySwitch();
+      } catch (addError: unknown) {
+        const addErr = addError as { code?: number };
+        if (addErr.code === 4001) {
+          throw new Error(`ネットワーク追加がキャンセルされました。ウォレットで${targetLabel}を追加して切り替えてください。`);
+        }
+        throw new Error(`ネットワーク追加に失敗しました。ウォレットで${targetLabel}を追加・切り替えてください。`);
+      }
+    } else {
+      throw new Error(`ネットワーク切替に失敗しました。ウォレットを${targetLabel}に切り替えてください（現在: ${currentLabel}）。`);
+    }
+  }
+
+  const verifiedHex = await provider.request({ method: "eth_chainId" }) as string;
+  const verifiedId = parseInt(verifiedHex, 16);
+  if (verifiedId !== targetChainId) {
+    const verifiedLabel = getChainLabel(verifiedId);
+    throw new Error(`ネットワークが${targetLabel}ではありません（現在: ${verifiedLabel}）。ウォレットで切り替えてください。`);
+  }
 };
 
 export const getTxUrl = (txHash: string): string => {

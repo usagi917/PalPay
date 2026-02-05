@@ -8,8 +8,8 @@ import { parseUnits, type Address } from "viem";
 import { Header } from "@/components/Header";
 import { AgentChat } from "@/components/agent";
 import { I18nContext, type Locale, translations } from "@/lib/i18n";
-import { createWallet, config, getMetaMaskProvider } from "@/lib/config";
-import { FACTORY_ABI, ERC20_ABI } from "@/lib/abi";
+import { createWallet, config, ensureWalletChain, getMetaMaskProvider } from "@/lib/config";
+import { FACTORY_ABI, ERC20_ABI, ESCROW_ABI } from "@/lib/abi";
 
 // Simple wallet connect button for agent page
 function WalletButton({
@@ -125,47 +125,51 @@ function AgentPageContent() {
   // Execute transaction based on action type
   const handleExecuteTx = useCallback(
     async (action: string, params?: Record<string, unknown>) => {
-      const wallet = createWallet();
-      if (!wallet || !userAddress) {
+      const provider = getMetaMaskProvider();
+      if (!provider || !userAddress) {
+        throw new Error("ウォレットが接続されていません");
+      }
+      await ensureWalletChain(provider);
+      const wallet = createWallet(provider);
+      if (!wallet) {
         throw new Error("ウォレットが接続されていません");
       }
 
       const [account] = await wallet.getAddresses();
 
+      function requireEscrowAddress(): Address {
+        if (!params?.escrowAddress) {
+          throw new Error("エスクローアドレスが不足しています");
+        }
+        return params.escrowAddress as Address;
+      }
+
       switch (action) {
         case "createListing": {
           if (!params) throw new Error("パラメータが不足しています");
 
-          const categoryType = params.categoryType as number;
-          const title = params.title as string;
-          const description = params.description as string;
-          const totalAmount = params.totalAmount as string;
-          const imageURI = (params.imageURI as string) || "";
-
-          // Parse amount to wei
-          const amountWei = parseUnits(totalAmount, 18);
-
-          // Call createListing on factory
+          const amountWei = parseUnits(params.totalAmount as string, 18);
           const hash = await wallet.writeContract({
             address: config.factoryAddress,
             abi: FACTORY_ABI,
             functionName: "createListing",
-            args: [categoryType, title, description, amountWei, imageURI],
+            args: [
+              params.categoryType as number,
+              params.title as string,
+              params.description as string,
+              amountWei,
+              (params.imageURI as string) || "",
+            ],
             account,
           });
-
           console.log("Create listing tx:", hash);
           return;
         }
 
         case "lock": {
-          if (!params?.escrowAddress) throw new Error("エスクローアドレスが不足しています");
+          const escrowAddress = requireEscrowAddress();
+          const amountWei = parseUnits(params!.amount as string, 18);
 
-          const escrowAddress = params.escrowAddress as Address;
-          const amount = params.amount as string;
-          const amountWei = parseUnits(amount, 18);
-
-          // First approve JPYC
           const approveHash = await wallet.writeContract({
             address: config.tokenAddress,
             abi: ERC20_ABI,
@@ -175,18 +179,9 @@ function AgentPageContent() {
           });
           console.log("Approve tx:", approveHash);
 
-          // Then lock
           const lockHash = await wallet.writeContract({
             address: escrowAddress,
-            abi: [
-              {
-                type: "function",
-                name: "lock",
-                inputs: [],
-                outputs: [],
-                stateMutability: "nonpayable",
-              },
-            ],
+            abi: ESCROW_ABI,
             functionName: "lock",
             args: [],
             account,
@@ -196,21 +191,9 @@ function AgentPageContent() {
         }
 
         case "approve": {
-          if (!params?.escrowAddress) throw new Error("エスクローアドレスが不足しています");
-
-          const escrowAddress = params.escrowAddress as Address;
-
           const hash = await wallet.writeContract({
-            address: escrowAddress,
-            abi: [
-              {
-                type: "function",
-                name: "approve",
-                inputs: [],
-                outputs: [],
-                stateMutability: "nonpayable",
-              },
-            ],
+            address: requireEscrowAddress(),
+            abi: ESCROW_ABI,
             functionName: "approve",
             args: [],
             account,
@@ -220,21 +203,9 @@ function AgentPageContent() {
         }
 
         case "cancel": {
-          if (!params?.escrowAddress) throw new Error("エスクローアドレスが不足しています");
-
-          const escrowAddress = params.escrowAddress as Address;
-
           const hash = await wallet.writeContract({
-            address: escrowAddress,
-            abi: [
-              {
-                type: "function",
-                name: "cancel",
-                inputs: [],
-                outputs: [],
-                stateMutability: "nonpayable",
-              },
-            ],
+            address: requireEscrowAddress(),
+            abi: ESCROW_ABI,
             functionName: "cancel",
             args: [],
             account,
@@ -244,22 +215,10 @@ function AgentPageContent() {
         }
 
         case "confirmDelivery": {
-          if (!params?.escrowAddress) throw new Error("エスクローアドレスが不足しています");
-
-          const escrowAddress = params.escrowAddress as Address;
-          const evidenceHash = (params.evidenceHash as `0x${string}`) || "0x0000000000000000000000000000000000000000000000000000000000000000";
-
+          const evidenceHash = (params?.evidenceHash as `0x${string}`) || "0x0000000000000000000000000000000000000000000000000000000000000000";
           const hash = await wallet.writeContract({
-            address: escrowAddress,
-            abi: [
-              {
-                type: "function",
-                name: "confirmDelivery",
-                inputs: [{ name: "evidenceHash", type: "bytes32" }],
-                outputs: [],
-                stateMutability: "nonpayable",
-              },
-            ],
+            address: requireEscrowAddress(),
+            abi: ESCROW_ABI,
             functionName: "confirmDelivery",
             args: [evidenceHash],
             account,

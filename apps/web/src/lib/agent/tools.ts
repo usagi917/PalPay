@@ -2,12 +2,13 @@ import { createPublicClient, http, type Address, formatUnits, type Chain } from 
 import { polygonAmoy, baseSepolia, base, sepolia } from "viem/chains";
 import { FACTORY_ABI, ESCROW_ABI } from "@/lib/abi";
 import { MILESTONE_NAMES } from "@/lib/constants";
-import type {
-  ListingDraft,
-  ListingSummaryForAgent,
-  MilestonePreview,
-  TxPrepareResult,
-  CategoryType,
+import {
+  CATEGORY_TYPE_MAP,
+  type ListingDraft,
+  type ListingSummaryForAgent,
+  type MilestonePreview,
+  type TxPrepareResult,
+  type CategoryType,
 } from "./types";
 
 // Get chain from environment
@@ -31,12 +32,50 @@ function getClient() {
   });
 }
 
-// Category type mapping
-const categoryTypeMap: Record<string, number> = {
-  wagyu: 0,
-  sake: 1,
-  craft: 2,
-};
+// Read escrow contract data and map to ListingSummaryForAgent
+async function readEscrowSummary(
+  client: ReturnType<typeof getClient>,
+  escrowAddress: Address,
+): Promise<ListingSummaryForAgent> {
+  const [core, meta, progress] = await Promise.all([
+    client.readContract({
+      address: escrowAddress,
+      abi: ESCROW_ABI,
+      functionName: "getCore",
+    }) as Promise<[Address, Address, Address, Address, bigint, bigint, bigint, number]>,
+    client.readContract({
+      address: escrowAddress,
+      abi: ESCROW_ABI,
+      functionName: "getMeta",
+    }) as Promise<[string, string, string, string, string]>,
+    client.readContract({
+      address: escrowAddress,
+      abi: ESCROW_ABI,
+      functionName: "getProgress",
+    }) as Promise<[bigint, bigint]>,
+  ]);
+
+  const [, , producer, buyer, tokenId, totalAmount] = core;
+  const [category, title, description, imageURI, statusStr] = meta;
+  const [completed, total] = progress;
+
+  return {
+    escrowAddress,
+    tokenId: tokenId.toString(),
+    producer,
+    buyer,
+    totalAmount: formatUnits(totalAmount, 18),
+    status: statusStr.toLowerCase(),
+    category: category.toLowerCase(),
+    title,
+    description,
+    imageURI,
+    progress: {
+      completed: Number(completed),
+      total: Number(total),
+    },
+  };
+}
 
 // Tool implementations
 export async function getListings(params: {
@@ -51,7 +90,6 @@ export async function getListings(params: {
     throw new Error("Factory address not configured");
   }
 
-  // Get all listing addresses
   const addresses = await client.readContract({
     address: factoryAddress,
     abi: FACTORY_ABI,
@@ -63,57 +101,17 @@ export async function getListings(params: {
 
   for (const escrowAddress of addresses.slice(0, Math.min(addresses.length, limit * 2))) {
     try {
-      // Get core info
-      const [core, meta, progress] = await Promise.all([
-        client.readContract({
-          address: escrowAddress,
-          abi: ESCROW_ABI,
-          functionName: "getCore",
-        }) as Promise<[Address, Address, Address, Address, bigint, bigint, bigint, number]>,
-        client.readContract({
-          address: escrowAddress,
-          abi: ESCROW_ABI,
-          functionName: "getMeta",
-        }) as Promise<[string, string, string, string, string]>,
-        client.readContract({
-          address: escrowAddress,
-          abi: ESCROW_ABI,
-          functionName: "getProgress",
-        }) as Promise<[bigint, bigint]>,
-      ]);
-
-      const [, , producer, buyer, tokenId, totalAmount] = core;
-      const [category, title, description, imageURI, statusStr] = meta;
-      const [completed, total] = progress;
-
-      const status = statusStr.toLowerCase();
-      const categoryLower = category.toLowerCase();
+      const listing = await readEscrowSummary(client, escrowAddress);
 
       // Apply filters
-      if (params.category && categoryLower !== params.category.toLowerCase()) {
+      if (params.category && listing.category !== params.category.toLowerCase()) {
         continue;
       }
-      if (params.status && status !== params.status.toLowerCase()) {
+      if (params.status && listing.status !== params.status.toLowerCase()) {
         continue;
       }
 
-      listings.push({
-        escrowAddress,
-        tokenId: tokenId.toString(),
-        producer,
-        buyer,
-        totalAmount: formatUnits(totalAmount, 18),
-        status,
-        category: categoryLower,
-        title,
-        description,
-        imageURI,
-        progress: {
-          completed: Number(completed),
-          total: Number(total),
-        },
-      });
-
+      listings.push(listing);
       if (listings.length >= limit) break;
     } catch (e) {
       console.error(`Error reading listing ${escrowAddress}:`, e);
@@ -128,47 +126,8 @@ export async function getListingDetail(params: {
   tokenId?: string;
 }): Promise<ListingSummaryForAgent | null> {
   const client = getClient();
-  const escrowAddress = params.escrowAddress as Address;
-
   try {
-    const [core, meta, progress] = await Promise.all([
-      client.readContract({
-        address: escrowAddress,
-        abi: ESCROW_ABI,
-        functionName: "getCore",
-      }) as Promise<[Address, Address, Address, Address, bigint, bigint, bigint, number]>,
-      client.readContract({
-        address: escrowAddress,
-        abi: ESCROW_ABI,
-        functionName: "getMeta",
-      }) as Promise<[string, string, string, string, string]>,
-      client.readContract({
-        address: escrowAddress,
-        abi: ESCROW_ABI,
-        functionName: "getProgress",
-      }) as Promise<[bigint, bigint]>,
-    ]);
-
-    const [, , producer, buyer, tokenId, totalAmount] = core;
-    const [category, title, description, imageURI, statusStr] = meta;
-    const [completed, total] = progress;
-
-    return {
-      escrowAddress,
-      tokenId: tokenId.toString(),
-      producer,
-      buyer,
-      totalAmount: formatUnits(totalAmount, 18),
-      status: statusStr.toLowerCase(),
-      category: category.toLowerCase(),
-      title,
-      description,
-      imageURI,
-      progress: {
-        completed: Number(completed),
-        total: Number(total),
-      },
-    };
+    return await readEscrowSummary(client, params.escrowAddress as Address);
   } catch (e) {
     console.error(`Error getting listing detail:`, e);
     return null;
@@ -178,7 +137,8 @@ export async function getListingDetail(params: {
 export function getMilestonesForCategory(params: {
   category: string;
 }): MilestonePreview[] {
-  const categoryType = categoryTypeMap[params.category.toLowerCase()] ?? 3;
+  const categoryKey = params.category.toLowerCase() as CategoryType;
+  const categoryType = CATEGORY_TYPE_MAP[categoryKey] ?? 3;
   const names = MILESTONE_NAMES[categoryType] || MILESTONE_NAMES[3];
 
   // Default BPS distribution (basis points, total = 10000)
@@ -237,7 +197,7 @@ export function prepareTransaction(params: {
     case "createListing":
       if (params.draft) {
         result.params = {
-          categoryType: categoryTypeMap[params.draft.category || "wagyu"],
+          categoryType: CATEGORY_TYPE_MAP[(params.draft.category || "wagyu") as CategoryType],
           title: params.draft.title,
           description: params.draft.description,
           totalAmount: params.draft.totalAmount,

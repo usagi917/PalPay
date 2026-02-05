@@ -1,14 +1,9 @@
 # Wagyu Milestone Escrow
 
-[![日本語](https://img.shields.io/badge/README-日本語-blue)](./README.md)
-[![English](https://img.shields.io/badge/README-English-blue)](./README.en.md)
+[![日本語](https://img.shields.io/badge/lang-日本語-green.svg)](README.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Status](https://img.shields.io/badge/status-active-success.svg)
-
-A milestone-based escrow DApp for Wagyu, sake, and craft listings.
-Each listing deploys a `MilestoneEscrowV6` and an ERC721 NFT via `ListingFactoryV6`, and the NFT is transferred to the buyer after lock.
-Progress is reflected on-chain and surfaced via Dynamic NFT metadata and XMTP chat.
+> A milestone-based escrow DApp for Wagyu, sake, and craft listings. Each listing deploys a `MilestoneEscrowV6` and an ERC721 NFT via `ListingFactoryV6`, and progress is surfaced via on-chain state, Dynamic NFT metadata, and XMTP chat.
 
 ## Features
 
@@ -17,30 +12,31 @@ Progress is reflected on-chain and surfaced via Dynamic NFT metadata and XMTP ch
 - ERC20 transfer on `lock()` plus milestone-based partial releases and final delivery confirmation
 - Dynamic NFT metadata/SVG image API (`/api/nft/:tokenId`)
 - XMTP chat and bilingual UI (JA/EN) with MetaMask integration
+- AI assistant page (`/agent`) for chat support (requires a Gemini API key)
 
 ## Requirements
 
-- Node.js (for the Next.js app)
+- Node.js and pnpm (for the Next.js app)
 - MetaMask (wallet connection)
 - RPC endpoint (supported: Sepolia / Base Sepolia / Base / Polygon Amoy)
 - Deployed ListingFactoryV6 and ERC20 token addresses
 - XMTP network (for chat)
+- Gemini API key (for the AI assistant)
 - Foundry + Solidity 0.8.24 (if you build contracts)
 
 ## Installation
 
 ```bash
-# Example (npm)
 cd apps/web
-npm install
+pnpm install
 ```
 
 ## Quick Start
 
 1. Go to `apps/web`
 2. Copy `.env.example` to `.env.local`
-3. Set required values such as `NEXT_PUBLIC_FACTORY_ADDRESS`
-4. Run `npm run dev`
+3. Set required values (`NEXT_PUBLIC_RPC_URL`, `NEXT_PUBLIC_CHAIN_ID`, `NEXT_PUBLIC_FACTORY_ADDRESS`, `NEXT_PUBLIC_TOKEN_ADDRESS`)
+4. Run `pnpm dev`
 5. Open `http://localhost:3000`
 
 ## Usage
@@ -61,6 +57,11 @@ npm install
 The API resolves escrow via `ListingFactoryV6.tokenIdToEscrow`.
 Set `ListingFactoryV6.baseURI` to your app origin (e.g., `https://your-app`).
 
+### AI Assistant
+
+- Route: `/agent`
+- Set `GEMINI_API_KEY` before starting the app
+
 ### XMTP Chat
 
 - Participants: the producer and the current NFT owner
@@ -72,12 +73,10 @@ Set `ListingFactoryV6.baseURI` to your app origin (e.g., `https://your-app`).
 ### Smart Contract Deployment (Example)
 
 1. Deploy `contracts/MockERC20.sol` (for testing)
-2. Deploy `ListingFactoryV6` from `contracts/ListingFactoryV6.sol`
-   - `tokenAddress`: ERC20 token address
-   - `uri`: app origin (used by `/api/nft/:tokenId`)
+2. Deploy `ListingFactoryV6` from `contracts/ListingFactoryV6.sol` (`tokenAddress` is the ERC20 token, `uri` is the app origin)
 3. Use the app to call `createListing` (auto-deploys `MilestoneEscrowV6`)
 
-## User Flow 
+## User Flow
 
 ```mermaid
 sequenceDiagram
@@ -89,7 +88,7 @@ sequenceDiagram
 
     U->>FE: Connect wallet
     FE->>J: Check JPYC allowance
-    
+
     alt Not approved
         FE->>U: Request approval
         U->>J: Approve (JPYC allowance)
@@ -97,7 +96,7 @@ sequenceDiagram
 
     U->>FE: Create listing or lock purchase
     FE->>R: createListing(...) / lock()
-    
+
     R->>J: transferFrom(User, Escrow, amount)
     J-->>R: Transfer success
 
@@ -109,12 +108,12 @@ sequenceDiagram
     FE->>U: Show completion
 ```
 
-## System Architecture 
+## System Architecture
 
 ```mermaid
 flowchart TD
     User["User"]
-    
+
     subgraph Frontend["Frontend (Next.js)"]
         UI["User Interface"]
         Hooks["Custom Hooks (viem / XMTP)"]
@@ -132,10 +131,10 @@ flowchart TD
     UI --> Hooks
     UI --> API
     Hooks -->|"Listing / purchase tx"| Router
-    
+
     Router -->|"transferFrom / transfer"| JPYC
     JPYC -->|"JPYC transfer"| Treasury
-    
+
     Router -->|"Mint/transfer"| NFT
     NFT -->|"NFT issued/transferred"| User
 ```
@@ -143,7 +142,7 @@ flowchart TD
 ## Directory Structure
 
 ```
-hackson/
+hackathon/
 ├── apps/
 │   └── web/                    # Next.js app
 │       ├── src/app/             # App Router UI + API routes
@@ -156,7 +155,7 @@ hackson/
 │   ├── ListingFactoryV6.sol     # Factory + MilestoneEscrowV6 (current)
 │   ├── ListingFactoryV5.sol     # Legacy
 │   └── MockERC20.sol            # Test ERC20
-├── lib/                          # OpenZeppelin contracts (vendor)
+├── lib/                         # OpenZeppelin contracts (vendor)
 ├── foundry.toml
 └── LICENSE
 ```
@@ -178,6 +177,10 @@ CHAIN_ID=
 
 # Optional (legacy, not used by current UI)
 NEXT_PUBLIC_CONTRACT_ADDRESS=
+
+# Optional (AI assistant)
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-2.5-flash-preview-05-20
 ```
 
 - `NEXT_PUBLIC_RPC_URL`: RPC URL for the target network
@@ -188,16 +191,18 @@ NEXT_PUBLIC_CONTRACT_ADDRESS=
 - `NEXT_PUBLIC_XMTP_ENV`: XMTP environment (`dev` or `production`)
 - `CHAIN_ID`: Chain ID override for API routes (optional)
 - `NEXT_PUBLIC_CONTRACT_ADDRESS`: Legacy config (unused by current UI)
+- `GEMINI_API_KEY`: API key for the AI assistant (optional)
+- `GEMINI_MODEL`: Gemini model name (optional, defaults to `gemini-2.5-flash-preview-05-20`)
 
 ## Development
 
 ```bash
 cd apps/web
-npm run dev
-npm run dev:turbo
-npm run build
-npm run start
-npm run lint
+pnpm dev
+pnpm dev:turbo
+pnpm build
+pnpm start
+pnpm lint
 ```
 
 ## License

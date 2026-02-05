@@ -42,27 +42,28 @@ function ToolCallBadge({ name }: { name: string }) {
   );
 }
 
+const roleStyles: Record<string, { icon: typeof PersonIcon; bg: string; border: string }> = {
+  user: {
+    icon: PersonIcon,
+    bg: "rgba(45, 62, 95, 0.8)",
+    border: "rgba(212, 165, 116, 0.3)",
+  },
+  system: {
+    icon: ErrorIcon,
+    bg: "rgba(239, 68, 68, 0.1)",
+    border: "rgba(239, 68, 68, 0.3)",
+  },
+  assistant: {
+    icon: SmartToyIcon,
+    bg: "rgba(30, 41, 59, 0.9)",
+    border: "rgba(148, 163, 184, 0.2)",
+  },
+};
+
 function MessageBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
-  const isSystem = message.role === "system";
-
-  const getIcon = () => {
-    if (isUser) return <PersonIcon sx={{ fontSize: 20 }} />;
-    if (isSystem) return <ErrorIcon sx={{ fontSize: 20 }} />;
-    return <SmartToyIcon sx={{ fontSize: 20 }} />;
-  };
-
-  const getBgColor = () => {
-    if (isUser) return "rgba(45, 62, 95, 0.8)";
-    if (isSystem) return "rgba(239, 68, 68, 0.1)";
-    return "rgba(30, 41, 59, 0.9)";
-  };
-
-  const getBorderColor = () => {
-    if (isUser) return "rgba(212, 165, 116, 0.3)";
-    if (isSystem) return "rgba(239, 68, 68, 0.3)";
-    return "rgba(148, 163, 184, 0.2)";
-  };
+  const style = roleStyles[message.role] || roleStyles.assistant;
+  const Icon = style.icon;
 
   return (
     <motion.div
@@ -94,7 +95,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
             flexShrink: 0,
           }}
         >
-          {getIcon()}
+          <Icon sx={{ fontSize: 20 }} />
         </Box>
 
         {/* Message content */}
@@ -103,8 +104,8 @@ function MessageBubble({ message }: { message: ChatMessage }) {
           sx={{
             maxWidth: "75%",
             p: 2,
-            background: getBgColor(),
-            border: `1px solid ${getBorderColor()}`,
+            background: style.bg,
+            border: `1px solid ${style.border}`,
             borderRadius: isUser ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
           }}
         >
@@ -122,7 +123,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
             sx={{
               fontSize: "0.9rem",
               lineHeight: 1.7,
-              color: isSystem ? "#ef4444" : "var(--color-text)",
+              color: message.role === "system" ? "#ef4444" : "var(--color-text)",
               whiteSpace: "pre-wrap",
             }}
           >

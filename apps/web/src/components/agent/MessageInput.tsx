@@ -19,6 +19,7 @@ const quickActions = [
 
 export function MessageInput({ onSend, disabled, placeholder }: MessageInputProps) {
   const [input, setInput] = useState("");
+  const canSend = !!input.trim() && !disabled;
 
   const handleSend = useCallback(() => {
     if (input.trim() && !disabled) {
@@ -135,17 +136,17 @@ export function MessageInput({ onSend, disabled, placeholder }: MessageInputProp
         <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
           <IconButton
             onClick={handleSend}
-            disabled={!input.trim() || disabled}
+            disabled={!canSend}
             sx={{
               width: 44,
               height: 44,
-              background: input.trim() && !disabled
+              background: canSend
                 ? "linear-gradient(135deg, var(--color-primary) 0%, #c49660 100%)"
                 : "rgba(148, 163, 184, 0.2)",
-              color: input.trim() && !disabled ? "#fff" : "var(--color-text-muted)",
+              color: canSend ? "#fff" : "var(--color-text-muted)",
               transition: "all 0.2s ease",
               "&:hover": {
-                background: input.trim() && !disabled
+                background: canSend
                   ? "linear-gradient(135deg, #c49660 0%, var(--color-primary) 100%)"
                   : "rgba(148, 163, 184, 0.3)",
               },

@@ -10,6 +10,16 @@ interface MilestoneTableProps {
   totalAmount?: string;
 }
 
+const headerCellSx = {
+  color: "var(--color-text-muted)",
+  fontSize: "0.7rem",
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+  borderBottom: "1px solid var(--color-border)",
+  py: 1,
+} as const;
+
 export function MilestoneTable({ milestones, totalAmount }: MilestoneTableProps) {
   const total = totalAmount ? Number(totalAmount) : 0;
 
@@ -59,61 +69,11 @@ export function MilestoneTable({ milestones, totalAmount }: MilestoneTableProps)
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell
-                  sx={{
-                    color: "var(--color-text-muted)",
-                    fontSize: "0.7rem",
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                    borderBottom: "1px solid var(--color-border)",
-                    py: 1,
-                  }}
-                >
-                  #
-                </TableCell>
-                <TableCell
-                  sx={{
-                    color: "var(--color-text-muted)",
-                    fontSize: "0.7rem",
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                    borderBottom: "1px solid var(--color-border)",
-                    py: 1,
-                  }}
-                >
-                  工程
-                </TableCell>
-                <TableCell
-                  align="right"
-                  sx={{
-                    color: "var(--color-text-muted)",
-                    fontSize: "0.7rem",
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                    borderBottom: "1px solid var(--color-border)",
-                    py: 1,
-                  }}
-                >
-                  割合
-                </TableCell>
+                <TableCell sx={headerCellSx}>#</TableCell>
+                <TableCell sx={headerCellSx}>工程</TableCell>
+                <TableCell align="right" sx={headerCellSx}>割合</TableCell>
                 {total > 0 && (
-                  <TableCell
-                    align="right"
-                    sx={{
-                      color: "var(--color-text-muted)",
-                      fontSize: "0.7rem",
-                      fontWeight: 600,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.05em",
-                      borderBottom: "1px solid var(--color-border)",
-                      py: 1,
-                    }}
-                  >
-                    金額
-                  </TableCell>
+                  <TableCell align="right" sx={headerCellSx}>金額</TableCell>
                 )}
               </TableRow>
             </TableHead>
@@ -148,9 +108,7 @@ export function MilestoneTable({ milestones, totalAmount }: MilestoneTableProps)
                         py: 1.5,
                       }}
                     >
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                        {ms.name}
-                      </Box>
+                      {ms.name}
                     </TableCell>
                     <TableCell
                       align="right"

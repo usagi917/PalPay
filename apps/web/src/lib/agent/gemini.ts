@@ -124,11 +124,8 @@ const toolDeclarations = [
 export function getGeminiModel() {
   // Cast to Tool[] since Gemini SDK accepts this format at runtime
   const tools = [{ functionDeclarations: toolDeclarations }] as unknown as Tool[];
-  const model = genAI.getGenerativeModel({
+  return genAI.getGenerativeModel({
     model: process.env.GEMINI_MODEL || "gemini-2.5-flash-preview-05-20",
     tools,
   });
-  return model;
 }
-
-export { genAI, toolDeclarations };
