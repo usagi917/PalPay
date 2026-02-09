@@ -71,7 +71,14 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
   const handleTxConfirm = useCallback(async () => {
     if (!txPrepare) return;
     try {
-      await onExecuteTx(txPrepare.action, txPrepare.params);
+      let executionParams: Record<string, unknown> | undefined = txPrepare.params
+        ? { ...txPrepare.params }
+        : undefined;
+      if (txPrepare.escrowAddress && !executionParams?.escrowAddress) {
+        (executionParams ??= {}).escrowAddress = txPrepare.escrowAddress;
+      }
+
+      await onExecuteTx(txPrepare.action, executionParams);
       clearTxPrepare();
       appendMessage(getSuccessMessage(txPrepare.action), "assistant", "completed");
     } catch (err) {

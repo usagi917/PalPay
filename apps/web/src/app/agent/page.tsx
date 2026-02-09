@@ -148,6 +148,12 @@ function AgentPageContent() {
       switch (action) {
         case "createListing": {
           if (!params) throw new Error("パラメータが不足しています");
+          if (typeof params.categoryType !== "number") {
+            throw new Error("カテゴリ情報が不足しています");
+          }
+          if (typeof params.totalAmount !== "string" || !params.totalAmount.trim()) {
+            throw new Error("金額情報が不足しています");
+          }
 
           const amountWei = parseUnits(params.totalAmount as string, 18);
           const hash = await wallet.writeContract({
@@ -173,7 +179,18 @@ function AgentPageContent() {
 
         case "lock": {
           const escrowAddress = requireEscrowAddress();
-          const amountWei = parseUnits(params!.amount as string, 18);
+          let amountWei: bigint;
+
+          if (typeof params?.amount === "string" && params.amount.trim()) {
+            amountWei = parseUnits(params.amount, 18);
+          } else {
+            const core = await client.readContract({
+              address: escrowAddress,
+              abi: ESCROW_ABI,
+              functionName: "getCore",
+            }) as [Address, Address, Address, Address, bigint, bigint, bigint, number];
+            amountWei = core[5];
+          }
 
           const approveHash = await wallet.writeContract({
             address: config.tokenAddress,

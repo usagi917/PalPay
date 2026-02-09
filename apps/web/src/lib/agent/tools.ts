@@ -13,6 +13,24 @@ import {
 
 const TOOL_TIMEOUT_MS = 8_000;
 const MAX_LISTINGS_FETCH = 50;
+const CATEGORY_ALIASES: Record<string, CategoryType> = {
+  wagyu: "wagyu",
+  "和牛": "wagyu",
+  sake: "sake",
+  "日本酒": "sake",
+  craft: "craft",
+  crafts: "craft",
+  "工芸": "craft",
+  "工芸品": "craft",
+  other: "other",
+  "その他": "other",
+};
+
+function normalizeCategory(category?: string): CategoryType {
+  if (!category) return "other";
+  const normalized = category.trim().toLowerCase();
+  return CATEGORY_ALIASES[normalized] ?? "other";
+}
 
 // Get chain from environment
 function getChain(): Chain {
@@ -183,8 +201,7 @@ export async function getListingDetail(params: {
 export function getMilestonesForCategory(params: {
   category: string;
 }): MilestonePreview[] {
-  const categoryKey = params.category.toLowerCase() as CategoryType;
-  const categoryType = CATEGORY_TYPE_MAP[categoryKey] ?? 3;
+  const categoryType = CATEGORY_TYPE_MAP[normalizeCategory(params.category)];
   const names = MILESTONE_NAMES[categoryType] || MILESTONE_NAMES[3];
 
   // Default BPS distribution (basis points, total = 10000)
@@ -211,7 +228,7 @@ export function prepareListingDraft(params: {
   totalAmount: string;
   imageURI?: string;
 }): ListingDraft {
-  const category = params.category.toLowerCase() as CategoryType;
+  const category = normalizeCategory(params.category);
   const milestones = getMilestonesForCategory({ category });
 
   return {
@@ -228,6 +245,7 @@ export function prepareTransaction(params: {
   action: string;
   escrowAddress?: string;
   draft?: Partial<ListingDraft>;
+  amount?: string;
 }): TxPrepareResult {
   const action = params.action as TxPrepareResult["action"];
 
@@ -242,8 +260,9 @@ export function prepareTransaction(params: {
   switch (action) {
     case "createListing":
       if (params.draft) {
+        const category = normalizeCategory(params.draft.category);
         result.params = {
-          categoryType: CATEGORY_TYPE_MAP[(params.draft.category || "wagyu") as CategoryType],
+          categoryType: CATEGORY_TYPE_MAP[category],
           title: params.draft.title,
           description: params.draft.description,
           totalAmount: params.draft.totalAmount,
@@ -254,11 +273,20 @@ export function prepareTransaction(params: {
 
     case "lock":
       result.requiresApproval = true;
+      if (result.escrowAddress) {
+        result.params = {
+          escrowAddress: result.escrowAddress,
+          ...(params.amount ? { amount: params.amount } : {}),
+        };
+      }
       break;
 
     case "approve":
     case "cancel":
     case "confirmDelivery":
+      if (result.escrowAddress) {
+        result.params = { escrowAddress: result.escrowAddress };
+      }
       break;
   }
 

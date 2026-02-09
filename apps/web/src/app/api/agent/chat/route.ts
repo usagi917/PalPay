@@ -335,11 +335,17 @@ export async function POST(request: NextRequest) {
           timestamp,
         });
 
-        const validSignature = await verifyMessage({
-          address: auth.address as Address,
-          message: authMessage,
-          signature: auth.signature as `0x${string}`,
-        });
+        let validSignature = false;
+        try {
+          validSignature = await verifyMessage({
+            address: auth.address as Address,
+            message: authMessage,
+            signature: auth.signature as `0x${string}`,
+          });
+        } catch (error) {
+          console.warn("[Agent] Invalid signature payload:", error);
+          return jsonError("Invalid signature", 401);
+        }
 
         if (!validSignature) {
           return jsonError("Invalid signature", 401);

@@ -114,6 +114,10 @@ const toolDeclarations: FunctionDeclaration[] = [
           type: "string",
           description: "対象のエスクローアドレス（createListing以外で必要）",
         },
+        amount: {
+          type: "string",
+          description: "lock時に必要なJPYC金額（例: 500000）。省略時は出品情報から補完されます。",
+        },
         draft: {
           type: "object",
           description: "出品ドラフト（createListingの場合）",
