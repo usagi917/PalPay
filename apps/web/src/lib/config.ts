@@ -1,6 +1,19 @@
 import { http, createPublicClient, createWalletClient, custom, type Address, type Chain } from "viem";
 import { sepolia, baseSepolia, polygonAmoy, base } from "viem/chains";
 
+type EthereumProvider = {
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+  on?: (event: string, handler: (...args: unknown[]) => void) => void;
+  removeListener?: (event: string, handler: (...args: unknown[]) => void) => void;
+  isMetaMask?: boolean;
+  providers?: unknown[];
+};
+
+const isEthereumProvider = (value: unknown): value is EthereumProvider => {
+  if (!value || typeof value !== "object") return false;
+  return typeof (value as { request?: unknown }).request === "function";
+};
+
 // Supported chains
 export const SUPPORTED_CHAINS = Object.freeze({
   [sepolia.id]: sepolia as Chain,
@@ -50,8 +63,8 @@ export const isMetaMaskBrowser = (): boolean => {
   if (typeof window === "undefined" || !window.ethereum) {
     return false;
   }
-  const ethereum = window.ethereum as { isMetaMask?: boolean };
-  return !!ethereum.isMetaMask;
+  const ethereum = window.ethereum as unknown;
+  return isEthereumProvider(ethereum) && !!ethereum.isMetaMask;
 };
 
 // MetaMask Deep Linkを開く（モバイルブラウザ用）
@@ -73,23 +86,27 @@ export const getMetaMaskProvider = (): typeof window.ethereum | null => {
     return null;
   }
 
-  const ethereum = window.ethereum as typeof window.ethereum & {
-    providers?: Array<typeof window.ethereum & { isMetaMask?: boolean }>;
-    isMetaMask?: boolean;
-  };
+  const injected = window.ethereum as unknown;
+  const rawProviders =
+    injected && typeof injected === "object"
+      ? (injected as EthereumProvider).providers
+      : undefined;
 
-  // 複数のウォレットがインストールされている場合
-  if (ethereum.providers?.length) {
-    const metaMask = ethereum.providers.find((p) => p.isMetaMask);
-    if (metaMask) return metaMask;
+  const providers: unknown[] = Array.isArray(rawProviders) ? rawProviders : [injected];
+
+  for (const provider of providers) {
+    if (isEthereumProvider(provider) && provider.isMetaMask) {
+      return provider;
+    }
   }
 
-  // 単体のMetaMaskの場合
-  if (ethereum.isMetaMask) {
-    return ethereum;
+  for (const provider of providers) {
+    if (isEthereumProvider(provider)) {
+      return provider;
+    }
   }
 
-  return ethereum;
+  return null;
 };
 
 export const createWallet = (providerOverride?: typeof window.ethereum) => {

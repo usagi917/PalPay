@@ -67,12 +67,18 @@ export function useWallet() {
         window.location.reload();
       };
 
+      if (typeof provider.on !== "function") {
+        return;
+      }
+
       provider.on("accountsChanged", handleAccountsChanged);
       provider.on("chainChanged", handleChainChanged);
 
       return () => {
-        provider.removeListener("accountsChanged", handleAccountsChanged);
-        provider.removeListener("chainChanged", handleChainChanged);
+        if (typeof provider.removeListener === "function") {
+          provider.removeListener("accountsChanged", handleAccountsChanged);
+          provider.removeListener("chainChanged", handleChainChanged);
+        }
       };
     }
   }, []);

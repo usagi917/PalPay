@@ -294,12 +294,13 @@ export async function POST(request: NextRequest) {
 
     const now = Date.now();
     if (!AUTH_DISABLED) {
-      if (session.authToken && session.authTokenExpiresAt && session.authTokenExpiresAt > now) {
-        const tokenHeader = request.headers.get("x-session-token") || "";
-        if (!tokenHeader || tokenHeader !== session.authToken) {
-          return jsonError("Unauthorized", 401);
-        }
-      } else {
+      const tokenHeader = request.headers.get("x-session-token") || "";
+      const hasValidSessionToken = !!(session.authToken && session.authTokenExpiresAt && session.authTokenExpiresAt > now);
+      const hasMatchingToken = hasValidSessionToken && tokenHeader === session.authToken;
+
+      // Token is the fast path; if token is missing (e.g. previous 500 before token reached client),
+      // allow explicit signature auth to recover the session.
+      if (!hasMatchingToken) {
         if (!auth || !auth.address || !auth.signature || !auth.nonce || auth.timestamp === undefined) {
           return jsonError("Unauthorized", 401);
         }
@@ -314,6 +315,10 @@ export async function POST(request: NextRequest) {
 
         if (userAddress && auth.address.toLowerCase() !== userAddress.toLowerCase()) {
           return jsonError("Auth address mismatch", 401);
+        }
+
+        if (session.userAddress && session.userAddress.toLowerCase() !== auth.address.toLowerCase()) {
+          return jsonError("Session address mismatch", 403);
         }
 
         const timestamp = Number(auth.timestamp);
@@ -353,7 +358,6 @@ export async function POST(request: NextRequest) {
 
         session.userAddress = auth.address as Address;
         session.authToken = randomUUID();
-        session.authTokenExpiresAt = now + AUTH_TOKEN_TTL_MS;
       }
 
       if (session.userAddress && userAddress && session.userAddress.toLowerCase() !== userAddress.toLowerCase()) {

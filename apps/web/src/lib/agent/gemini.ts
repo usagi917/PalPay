@@ -1,6 +1,6 @@
 import { GoogleGenAI, type FunctionDeclaration } from "@google/genai";
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-preview-05-20";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
 // Lazy-init to avoid build-time auth errors (Next.js collects page data at build)
 let _ai: GoogleGenAI | null = null;
@@ -9,7 +9,7 @@ function getAI(): GoogleGenAI {
     _ai = new GoogleGenAI({
       vertexai: true,
       project: process.env.GCP_PROJECT_ID || "",
-      location: process.env.GCP_LOCATION || "us-central1",
+      location: process.env.GCP_LOCATION || "global",
     });
   }
   return _ai;
