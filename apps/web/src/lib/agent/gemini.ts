@@ -1,27 +1,38 @@
-import { GoogleGenerativeAI, type Tool } from "@google/generative-ai";
+import { GoogleGenAI, type FunctionDeclaration } from "@google/genai";
 
-// Initialize Gemini client
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-preview-05-20";
 
-// Tool definitions for Gemini Function Calling
-// Using plain object schema format for compatibility
-const toolDeclarations = [
+// Lazy-init to avoid build-time auth errors (Next.js collects page data at build)
+let _ai: GoogleGenAI | null = null;
+function getAI(): GoogleGenAI {
+  if (!_ai) {
+    _ai = new GoogleGenAI({
+      vertexai: true,
+      project: process.env.GCP_PROJECT_ID || "",
+      location: process.env.GCP_LOCATION || "us-central1",
+    });
+  }
+  return _ai;
+}
+
+// Tool declarations using JSON Schema format (parametersJsonSchema)
+const toolDeclarations: FunctionDeclaration[] = [
   {
     name: "get_listings",
     description: "出品一覧を取得します。カテゴリや状態でフィルタリングできます。",
-    parameters: {
-      type: "OBJECT",
+    parametersJsonSchema: {
+      type: "object",
       properties: {
         category: {
-          type: "STRING",
+          type: "string",
           description: "カテゴリでフィルタ (wagyu, sake, craft)",
         },
         status: {
-          type: "STRING",
+          type: "string",
           description: "状態でフィルタ (open, locked, active, completed, cancelled)",
         },
         limit: {
-          type: "NUMBER",
+          type: "number",
           description: "取得件数の上限（デフォルト: 10）",
         },
       },
@@ -30,15 +41,15 @@ const toolDeclarations = [
   {
     name: "get_listing_detail",
     description: "特定の出品の詳細情報を取得します。",
-    parameters: {
-      type: "OBJECT",
+    parametersJsonSchema: {
+      type: "object",
       properties: {
         escrowAddress: {
-          type: "STRING",
+          type: "string",
           description: "出品（エスクロー）コントラクトのアドレス",
         },
         tokenId: {
-          type: "STRING",
+          type: "string",
           description: "トークンID",
         },
       },
@@ -48,27 +59,27 @@ const toolDeclarations = [
   {
     name: "prepare_listing_draft",
     description: "出品ドラフトを生成します。ユーザーの説明から出品情報を構造化します。",
-    parameters: {
-      type: "OBJECT",
+    parametersJsonSchema: {
+      type: "object",
       properties: {
         category: {
-          type: "STRING",
+          type: "string",
           description: "カテゴリ (wagyu, sake, craft)",
         },
         title: {
-          type: "STRING",
+          type: "string",
           description: "出品タイトル（例: 神戸牛A5ランク）",
         },
         description: {
-          type: "STRING",
+          type: "string",
           description: "出品の詳細説明",
         },
         totalAmount: {
-          type: "STRING",
+          type: "string",
           description: "総額（JPYC単位、例: 500000）",
         },
         imageURI: {
-          type: "STRING",
+          type: "string",
           description: "画像URI（オプション）",
         },
       },
@@ -78,11 +89,11 @@ const toolDeclarations = [
   {
     name: "get_milestones_for_category",
     description: "指定カテゴリのマイルストーン（進捗ベース支払い条件）を取得します。",
-    parameters: {
-      type: "OBJECT",
+    parametersJsonSchema: {
+      type: "object",
       properties: {
         category: {
-          type: "STRING",
+          type: "string",
           description: "カテゴリ (wagyu, sake, craft)",
         },
       },
@@ -92,40 +103,89 @@ const toolDeclarations = [
   {
     name: "prepare_transaction",
     description: "トランザクションを準備し、署名前確認UIを表示します。実際の署名はユーザーが行います。",
-    parameters: {
-      type: "OBJECT",
+    parametersJsonSchema: {
+      type: "object",
       properties: {
         action: {
-          type: "STRING",
+          type: "string",
           description: "トランザクションの種類 (createListing, lock, approve, cancel, confirmDelivery)",
         },
         escrowAddress: {
-          type: "STRING",
+          type: "string",
           description: "対象のエスクローアドレス（createListing以外で必要）",
         },
         draft: {
-          type: "OBJECT",
+          type: "object",
           description: "出品ドラフト（createListingの場合）",
           properties: {
-            category: { type: "STRING" },
-            title: { type: "STRING" },
-            description: { type: "STRING" },
-            totalAmount: { type: "STRING" },
-            imageURI: { type: "STRING" },
+            category: { type: "string" },
+            title: { type: "string" },
+            description: { type: "string" },
+            totalAmount: { type: "string" },
+            imageURI: { type: "string" },
           },
         },
       },
       required: ["action"],
     },
   },
+  {
+    name: "analyze_market",
+    description: "カテゴリ別の市場分析・価格提案を行います。出品数、平均価格、中央値、最高値、最低値を算出します。",
+    parametersJsonSchema: {
+      type: "object",
+      properties: {
+        category: {
+          type: "string",
+          description: "分析対象のカテゴリ (wagyu, sake, craft)。省略時は全カテゴリ。",
+        },
+      },
+    },
+  },
+  {
+    name: "assess_risk",
+    description: "特定の出品または出品者の購入リスクを評価します。出品者の過去実績（完了率、キャンセル率）を分析しリスクスコアを返します。",
+    parametersJsonSchema: {
+      type: "object",
+      properties: {
+        escrowAddress: {
+          type: "string",
+          description: "評価対象の出品アドレス",
+        },
+        producerAddress: {
+          type: "string",
+          description: "評価対象の出品者アドレス（escrowAddressがない場合に使用）",
+        },
+      },
+    },
+  },
+  {
+    name: "suggest_next_action",
+    description: "ユーザーの現在の状況を分析し、次に取るべきアクションを提案します。Producer/Buyer両方の役割で保有リスティングの状態を確認します。",
+    parametersJsonSchema: {
+      type: "object",
+      properties: {
+        userAddress: {
+          type: "string",
+          description: "ユーザーのウォレットアドレス",
+        },
+      },
+      required: ["userAddress"],
+    },
+  },
 ];
 
-// Get Gemini model with tools
-export function getGeminiModel() {
-  // Cast to Tool[] since Gemini SDK accepts this format at runtime
-  const tools = [{ functionDeclarations: toolDeclarations }] as unknown as Tool[];
-  return genAI.getGenerativeModel({
-    model: process.env.GEMINI_MODEL || "gemini-2.5-flash-preview-05-20",
-    tools,
+// Create a chat session with Gemini
+export function createChat(systemInstruction: string, history?: Array<{ role: string; parts: Array<{ text?: string }> }>) {
+  const ai = getAI();
+  return ai.chats.create({
+    model: GEMINI_MODEL,
+    config: {
+      systemInstruction,
+      tools: [{ functionDeclarations: toolDeclarations }],
+    },
+    history: history as Parameters<typeof ai.chats.create>[0]["history"],
   });
 }
+
+export { GEMINI_MODEL };

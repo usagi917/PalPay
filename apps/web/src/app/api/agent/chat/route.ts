@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { isAddress, verifyMessage, type Address } from "viem";
-import { getGeminiModel } from "@/lib/agent/gemini";
+import { createChat } from "@/lib/agent/gemini";
 import { executeTool } from "@/lib/agent/tools";
 import { SYSTEM_PROMPT } from "@/lib/agent/prompts";
 import { buildAgentAuthMessage } from "@/lib/agent/auth";
@@ -15,7 +15,7 @@ import type {
   ListingDraft,
   TxPrepareResult,
 } from "@/lib/agent/types";
-import type { Content } from "@google/generative-ai";
+import type { Content } from "@google/genai";
 
 // In-memory session store (globalThis to survive HMR/webpack chunk splits)
 type SessionRecord = {
@@ -359,44 +359,44 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Initialize Gemini model
-    const model = getGeminiModel();
+    // Build system instruction with optional proactive context
+    const effectiveUserAddress = session.userAddress || userAddress;
+    let systemInstruction = SYSTEM_PROMPT;
 
-    // Build conversation history for Gemini
-    const systemHistory: Content[] = [
-      {
-        role: "user",
-        parts: [{ text: SYSTEM_PROMPT }],
-      },
-      {
-        role: "model",
-        parts: [{ text: "了解しました。B2Bエスクロー決済プラットフォームのアシスタントとして、出品者と購入者のサポートを行います。何かお手伝いできることはありますか？" }],
-      },
-    ];
+    // Proactive context injection on first message
+    if (session.history.length === 0 && effectiveUserAddress) {
+      try {
+        const userContext = await executeTool("suggest_next_action", {
+          userAddress: effectiveUserAddress,
+        });
+        systemInstruction += `\n\n## 現在のユーザー状況（自動取得済み）\nウォレット: ${effectiveUserAddress}\n${JSON.stringify(userContext, null, 2)}\n\nこの情報を踏まえて、最初の応答からプロアクティブに提案してください。`;
+      } catch (e) {
+        console.error("[Agent] Failed to fetch proactive context:", e);
+      }
+    }
 
-    const chat = model.startChat({
-      history: [...systemHistory, ...session.history],
-    });
+    // Create chat session with @google/genai SDK
+    const chat = createChat(systemInstruction, session.history as Array<{ role: string; parts: Array<{ text?: string }> }>);
 
     // Send user message
-    const effectiveUserAddress = session.userAddress || userAddress;
     const userContext = effectiveUserAddress
       ? `\n\n[ユーザーウォレット: ${effectiveUserAddress}]`
       : "";
     const fullMessage = message + userContext;
 
-    let result = await chat.sendMessage(fullMessage);
-    let response = result.response;
+    let response = await chat.sendMessage({ message: fullMessage });
 
     // Collect tool calls
     const toolCalls: ToolCall[] = [];
 
     // Process function calls (tool use)
-    let functionCalls = response.functionCalls?.();
+    let functionCalls = response.functionCalls;
     while (functionCalls && functionCalls.length > 0) {
+      const functionResponses: Array<{ id: string; name: string; response: Record<string, unknown> }> = [];
+
       for (const fc of functionCalls) {
-        const toolName = fc.name;
-        const toolArgs = fc.args as Record<string, unknown>;
+        const toolName = fc.name!;
+        const toolArgs = (fc.args || {}) as Record<string, unknown>;
 
         console.log(`[Agent] Tool call: ${toolName}`, toolArgs);
 
@@ -420,16 +420,11 @@ export async function POST(request: NextRequest) {
             session.state = "gathering_info";
           }
 
-          // Send tool result back to Gemini
-          result = await chat.sendMessage([
-            {
-              functionResponse: {
-                name: toolName,
-                response: { result: toolResult },
-              },
-            },
-          ]);
-          response = result.response;
+          functionResponses.push({
+            id: fc.id || "",
+            name: toolName,
+            response: { result: toolResult },
+          });
         } catch (error) {
           console.error(`[Agent] Tool error:`, error);
 
@@ -439,24 +434,27 @@ export async function POST(request: NextRequest) {
             result: { error: String(error) },
           });
 
-          result = await chat.sendMessage([
-            {
-              functionResponse: {
-                name: toolName,
-                response: { error: String(error) },
-              },
-            },
-          ]);
-          response = result.response;
+          functionResponses.push({
+            id: fc.id || "",
+            name: toolName,
+            response: { error: String(error) },
+          });
         }
       }
 
+      // Send all function responses back to Gemini
+      response = await chat.sendMessage({
+        message: functionResponses.map((fr) => ({
+          functionResponse: fr,
+        })),
+      });
+
       // Check for more function calls
-      functionCalls = response.functionCalls?.();
+      functionCalls = response.functionCalls;
     }
 
-    // Get final text response
-    const responseText = response.text();
+    // Get final text response (property, not method)
+    const responseText = response.text ?? "";
     const nextInputHint = deriveNextInputHint({
       state: session.state,
       draft: session.draft,
