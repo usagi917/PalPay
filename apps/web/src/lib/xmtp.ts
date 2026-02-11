@@ -1,10 +1,31 @@
-import { Client, Conversation, DecodedMessage, type Signer, type Identifier } from "@xmtp/browser-sdk";
+import {
+  Client,
+  Conversation,
+  DecodedMessage,
+  Utils,
+  type Signer,
+  type Identifier,
+  type SafeInboxState,
+} from "@xmtp/browser-sdk";
 
 // XMTP environment
 const XMTP_ENV = process.env.NEXT_PUBLIC_XMTP_ENV === "production" ? "production" : "dev";
 
 // Database encryption key storage key prefix
 const DB_KEY_STORAGE_PREFIX = "xmtp_db_key_";
+const CLIENT_CACHE_PREFIX = "xmtp_client_";
+
+const INSTALLATION_LIMIT_ERROR_PATTERNS = [
+  /cannot register a new installation/i,
+  /already registered \d+\/\d+ installations/i,
+];
+
+const INSTALLATION_LIMIT_ERROR_MESSAGE =
+  "XMTP接続数が上限(10)に達しています。「他端末の接続を解除」ボタンで復旧してください。";
+
+const clientCache = new Map<string, Promise<Client>>();
+
+export type XmtpErrorKind = "installation_limit";
 
 /**
  * Convert hex string to Uint8Array
@@ -25,6 +46,58 @@ function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+/**
+ * Get normalized text from unknown error object
+ */
+function getErrorText(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof (error as { message?: unknown }).message === "string"
+  ) {
+    return (error as { message: string }).message;
+  }
+  return String(error);
+}
+
+/**
+ * Create account identifier for EOA wallet
+ */
+function toAccountIdentifier(walletAddress: string): Identifier {
+  return {
+    identifier: walletAddress,
+    identifierKind: "Ethereum",
+  };
+}
+
+/**
+ * Create XMTP signer wrapper from wallet address and sign function
+ */
+function toXmtpSigner(
+  walletAddress: string,
+  signMessage: (message: string) => Promise<string>
+): Signer {
+  return {
+    type: "EOA",
+    getIdentifier: () => toAccountIdentifier(walletAddress),
+    signMessage: async (message: string): Promise<Uint8Array> => {
+      const signature = await signMessage(message);
+      return hexToBytes(signature);
+    },
+  };
+}
+
+function getClientCacheKey(walletAddress: string): string {
+  return CLIENT_CACHE_PREFIX + XMTP_ENV + "_" + walletAddress.toLowerCase();
 }
 
 /**
@@ -54,29 +127,113 @@ export async function createXmtpClient(
   walletAddress: string,
   signMessage: (message: string) => Promise<string>
 ): Promise<Client> {
-  // Create account identifier for EOA
-  const accountIdentifier: Identifier = {
-    identifier: walletAddress,
-    identifierKind: "Ethereum",
-  };
+  const cacheKey = getClientCacheKey(walletAddress);
+  const cachedClientPromise = clientCache.get(cacheKey);
+  if (cachedClientPromise) {
+    return await cachedClientPromise;
+  }
 
-  // Create a signer object compatible with XMTP V3 browser SDK
-  const signer: Signer = {
-    type: "EOA",
-    getIdentifier: () => accountIdentifier,
-    signMessage: async (message: string): Promise<Uint8Array> => {
-      const signature = await signMessage(message);
-      return hexToBytes(signature);
-    },
-  };
+  const signer = toXmtpSigner(walletAddress, signMessage);
 
   // Get or create persistent encryption key for this wallet
   const dbEncryptionKey = getOrCreateDbEncryptionKey(walletAddress);
 
-  return await Client.create(signer, {
+  const clientPromise = Client.create(signer, {
     env: XMTP_ENV,
     dbEncryptionKey,
   });
+
+  clientCache.set(cacheKey, clientPromise);
+
+  try {
+    return await clientPromise;
+  } catch (error) {
+    clientCache.delete(cacheKey);
+    throw error;
+  }
+}
+
+/**
+ * Clear XMTP client cache for a wallet (used after installation revoke)
+ */
+export function clearXmtpClientCache(walletAddress: string): void {
+  clientCache.delete(getClientCacheKey(walletAddress));
+}
+
+/**
+ * Detect installation limit errors returned by XMTP
+ */
+export function isInstallationLimitError(error: unknown): boolean {
+  const errorText = getErrorText(error);
+  return INSTALLATION_LIMIT_ERROR_PATTERNS.some((pattern) => pattern.test(errorText));
+}
+
+/**
+ * Get user-friendly error message for known XMTP failures
+ */
+export function formatXmtpError(error: unknown): string {
+  if (isInstallationLimitError(error)) {
+    return INSTALLATION_LIMIT_ERROR_MESSAGE;
+  }
+  return getErrorText(error);
+}
+
+/**
+ * Resolve inbox state for an Ethereum address using XMTP network
+ */
+export async function getInboxStateByAddress(
+  walletAddress: string
+): Promise<SafeInboxState | null> {
+  const identifier = toAccountIdentifier(walletAddress);
+  const utils = new Utils();
+
+  await utils.init();
+
+  try {
+    const inboxId = await utils.getInboxIdForIdentifier(identifier, XMTP_ENV);
+    if (!inboxId) {
+      return null;
+    }
+
+    const inboxStates = await Client.inboxStateFromInboxIds([inboxId], XMTP_ENV);
+    return inboxStates[0] ?? null;
+  } finally {
+    utils.close();
+  }
+}
+
+export interface RevokeInstallationsResult {
+  inboxId: string;
+  installationCount: number;
+  revokedCount: number;
+}
+
+/**
+ * Revoke all installations for the wallet inbox using static API
+ * This path works even when Client.create fails because installation limit was reached.
+ */
+export async function revokeAllInstallationsByAddress(
+  walletAddress: string,
+  signMessage: (message: string) => Promise<string>
+): Promise<RevokeInstallationsResult> {
+  const inboxState = await getInboxStateByAddress(walletAddress);
+  if (!inboxState) {
+    throw new Error("XMTP inbox が見つかりません。");
+  }
+
+  const installationBytes = inboxState.installations.map((installation) => installation.bytes);
+  if (installationBytes.length > 0) {
+    const signer = toXmtpSigner(walletAddress, signMessage);
+    await Client.revokeInstallations(signer, inboxState.inboxId, installationBytes, XMTP_ENV);
+  }
+
+  clearXmtpClientCache(walletAddress);
+
+  return {
+    inboxId: inboxState.inboxId,
+    installationCount: inboxState.installations.length,
+    revokedCount: installationBytes.length,
+  };
 }
 
 /**

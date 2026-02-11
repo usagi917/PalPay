@@ -2,7 +2,18 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Client, Conversation } from "@xmtp/browser-sdk";
-import { createXmtpClient, getEscrowConversation, canMessage, formatMessage, isTextMessage, type XmtpMessage } from "@/lib/xmtp";
+import {
+  createXmtpClient,
+  getEscrowConversation,
+  canMessage,
+  formatMessage,
+  isTextMessage,
+  formatXmtpError,
+  isInstallationLimitError,
+  revokeAllInstallationsByAddress,
+  type XmtpMessage,
+  type XmtpErrorKind,
+} from "@/lib/xmtp";
 import { getMetaMaskProvider } from "@/lib/config";
 
 interface UseXmtpChatProps {
@@ -14,10 +25,13 @@ interface UseXmtpChatProps {
 interface UseXmtpChatReturn {
   messages: XmtpMessage[];
   sendMessage: (content: string) => Promise<void>;
+  recoverInstallationLimit: () => Promise<void>;
   isLoading: boolean;
   isConnecting: boolean;
   isSending: boolean;
+  isRecovering: boolean;
   error: string | null;
+  errorKind: XmtpErrorKind | null;
   canMessagePeer: boolean;
   isReady: boolean;
 }
@@ -31,15 +45,50 @@ export function useXmtpChat({
   const [isLoading, setIsLoading] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isRecovering, setIsRecovering] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorKind, setErrorKind] = useState<XmtpErrorKind | null>(null);
   const [canMessagePeer, setCanMessagePeer] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   const clientRef = useRef<Client | null>(null);
   const conversationRef = useRef<Conversation | null>(null);
   const selfAddressRef = useRef<string>("");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const streamRef = useRef<any>(null);
+
+  const closeStream = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.return?.();
+      streamRef.current = null;
+    }
+  }, []);
+
+  const getWalletContext = useCallback(async () => {
+    const provider = getMetaMaskProvider();
+    if (!provider) {
+      throw new Error("MetaMaskが接続されていません");
+    }
+
+    const accounts = await provider.request({
+      method: "eth_accounts",
+    }) as string[];
+
+    if (!accounts || accounts.length === 0) {
+      throw new Error("ウォレットが接続されていません");
+    }
+
+    const address = accounts[0];
+    const signMessage = async (message: string): Promise<string> => {
+      return await provider.request({
+        method: "personal_sign",
+        params: [message, address],
+      }) as string;
+    };
+
+    return { address, signMessage };
+  }, []);
 
   // Initialize XMTP client and conversation
   useEffect(() => {
@@ -51,35 +100,17 @@ export function useXmtpChat({
 
     const initialize = async () => {
       setIsConnecting(true);
+      setIsReady(false);
       setError(null);
+      setErrorKind(null);
+      setCanMessagePeer(false);
+      closeStream();
 
       try {
-        const provider = getMetaMaskProvider();
-        if (!provider) {
-          throw new Error("MetaMaskが接続されていません");
-        }
-
-        // Get wallet address
-        const accounts = await provider.request({
-          method: "eth_accounts",
-        }) as string[];
-
-        if (!accounts || accounts.length === 0) {
-          throw new Error("ウォレットが接続されていません");
-        }
-
-        const address = accounts[0];
+        const { address, signMessage } = await getWalletContext();
         if (!isMounted) return;
 
         selfAddressRef.current = address;
-
-        // Create sign message function
-        const signMessage = async (message: string): Promise<string> => {
-          return await provider.request({
-            method: "personal_sign",
-            params: [message, address],
-          }) as string;
-        };
 
         // Create XMTP client
         const client = await createXmtpClient(address, signMessage);
@@ -93,6 +124,7 @@ export function useXmtpChat({
         setCanMessagePeer(canMsg);
 
         if (!canMsg) {
+          setErrorKind(null);
           setError("相手がまだXMTPを有効にしていません");
           setIsConnecting(false);
           return;
@@ -139,8 +171,15 @@ export function useXmtpChat({
         }
       } catch (err) {
         if (isMounted) {
-          console.error("XMTP initialization error:", err);
-          setError(err instanceof Error ? err.message : "XMTPの初期化に失敗しました");
+          const installationLimit = isInstallationLimitError(err);
+          console.error("XMTP initialization error:", err, {
+            errorKind: installationLimit ? "installation_limit" : "unknown",
+            escrowAddress,
+            peerAddress,
+            selfAddress: selfAddressRef.current || null,
+          });
+          setErrorKind(installationLimit ? "installation_limit" : null);
+          setError(formatXmtpError(err) || "XMTPの初期化に失敗しました");
         }
       } finally {
         if (isMounted) {
@@ -154,12 +193,9 @@ export function useXmtpChat({
 
     return () => {
       isMounted = false;
-      // Clean up stream
-      if (streamRef.current) {
-        streamRef.current.return?.();
-      }
+      closeStream();
     };
-  }, [escrowAddress, peerAddress, enabled]);
+  }, [escrowAddress, peerAddress, enabled, retryNonce, closeStream, getWalletContext]);
 
   // Send message
   const sendMessage = useCallback(async (content: string) => {
@@ -169,6 +205,7 @@ export function useXmtpChat({
 
     setIsSending(true);
     setError(null);
+    setErrorKind(null);
 
     try {
       await conversationRef.current.send(content.trim());
@@ -180,13 +217,45 @@ export function useXmtpChat({
     }
   }, []);
 
+  const recoverInstallationLimit = useCallback(async () => {
+    if (errorKind !== "installation_limit") {
+      return;
+    }
+
+    setIsRecovering(true);
+    setError(null);
+
+    try {
+      const { address, signMessage } = await getWalletContext();
+      const result = await revokeAllInstallationsByAddress(address, signMessage);
+
+      console.info("XMTP installations revoked", {
+        inboxId: result.inboxId,
+        installationCount: result.installationCount,
+        revokedCount: result.revokedCount,
+      });
+
+      setError(null);
+      setErrorKind(null);
+      setRetryNonce((prev) => prev + 1);
+    } catch (err) {
+      console.error("XMTP installation recovery failed:", err);
+      setError(err instanceof Error ? err.message : "XMTP接続の復旧に失敗しました");
+    } finally {
+      setIsRecovering(false);
+    }
+  }, [errorKind, getWalletContext]);
+
   return {
     messages,
     sendMessage,
+    recoverInstallationLimit,
     isLoading,
     isConnecting,
     isSending,
+    isRecovering,
     error,
+    errorKind,
     canMessagePeer,
     isReady,
   };
