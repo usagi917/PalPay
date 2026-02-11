@@ -162,18 +162,6 @@ Optional contract build:
 forge build
 ```
 
-## Submission Assets
-
-- Zenn draft (Japanese): `docs/zenn-article-draft.md`
-- Silent subtitle demo script: `docs/demo-script.md`
-- Mermaid architecture diagram: `docs/architecture.mmd`
-- Demo video assets: `docs/demo-video/README.md`
-
-Links to update before final submission:
-
-- Cloud Run URL: `https://wagyu-escrow-cu4mgmypmq-uc.a.run.app`
-- Zenn URL: `TBD`
-- YouTube URL: `TBD`
 
 ## License
 

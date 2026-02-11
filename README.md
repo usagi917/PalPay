@@ -30,7 +30,6 @@
 ```text
 apps/web/    Next.js 15 フロントエンド + API routes
 contracts/   Solidity コントラクト (ListingFactoryV5/V6, MockERC20)
-docs/        提出用ドキュメント・図・デモ動画素材
 ```
 
 ## 前提条件
@@ -162,18 +161,6 @@ pnpm lint
 forge build
 ```
 
-## Submission Assets
-
-- Zenn記事ドラフト: `docs/zenn-article-draft.md`
-- 無音字幕デモ台本: `docs/demo-script.md`
-- Mermaid構成図: `docs/architecture.mmd`
-- デモ動画素材: `docs/demo-video/README.md`
-
-提出時に更新するリンク:
-
-- Cloud Run URL: `https://wagyu-escrow-cu4mgmypmq-uc.a.run.app`
-- Zenn URL: `TBD`
-- YouTube URL: `TBD`
 
 ## License
 
