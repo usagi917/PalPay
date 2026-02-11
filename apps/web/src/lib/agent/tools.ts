@@ -205,10 +205,11 @@ export function getMilestonesForCategory(params: {
   const names = MILESTONE_NAMES[categoryType] || MILESTONE_NAMES[3];
 
   // Default BPS distribution (basis points, total = 10000)
+  // Must match ListingFactoryV6.sol constructor values
   const bpsDistributions: Record<number, number[]> = {
-    0: [500, 500, 800, 800, 800, 800, 800, 800, 1000, 1500, 1700], // wagyu: 11 milestones
-    1: [2000, 2000, 2500, 1500, 2000], // sake: 5 milestones
-    2: [2500, 2500, 2500, 2500], // craft: 4 milestones
+    0: [300, 500, 500, 500, 500, 500, 500, 500, 700, 1500, 4000], // wagyu: 11 milestones
+    1: [1000, 1500, 1500, 2000, 4000], // sake: 5 milestones
+    2: [1000, 2000, 2500, 4500], // craft: 4 milestones
     3: [10000], // other: 1 milestone
   };
 

@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクト概要
 
-Wagyu Milestone Escrow - 和牛・日本酒・工芸品を出品できる分散型マーケットプレイスdApp。マイルストーン完了ごとにJPYCが生産者へ自動送金される。管理者不在のトラストレス設計。
+Proof of Trust - 和牛・日本酒・工芸品を出品できる分散型マーケットプレイスdApp。マイルストーン完了ごとにJPYCが生産者へ自動送金される。管理者不在のトラストレス設計。
 
 **コンセプト**: 1出品 = 1 Escrowコントラクト = 1 NFT。生産者がマイルストーン完了を自己申告し、即座に支払いが発生。
 
@@ -152,8 +152,8 @@ NEXT_PUBLIC_TOKEN_ADDRESS=       # ERC20トークンアドレス
 
 # Google Cloud（Vertex AI）
 GCP_PROJECT_ID=                  # GCPプロジェクトID
-GCP_LOCATION=us-central1         # Vertex AIリージョン
-GEMINI_MODEL=gemini-2.5-flash-preview-05-20
+GCP_LOCATION=      # Vertex AIリージョン
+GEMINI_MODEL=gemini-2.5-flash
 
 # オプション
 NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE=  # 例: https://sepolia.etherscan.io/tx/

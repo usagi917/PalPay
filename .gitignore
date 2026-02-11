@@ -61,6 +61,11 @@ plan-v3.md
 infra.md
 UPGRADE.md
 UPGRADE_PLAN.md
+CODEX_PROMPT.md
+CODEX_TASK.md
+CLAUDE.md
 
 
 slide/
+docs/
+plans/

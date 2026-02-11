@@ -4,7 +4,7 @@ export interface AgentAuthPayload {
   timestamp: number;
 }
 
-export const AGENT_AUTH_MESSAGE_PREFIX = "Wagyu Escrow Agent Authentication";
+export const AGENT_AUTH_MESSAGE_PREFIX = "Proof of Trust Agent Authentication";
 
 export function buildAgentAuthMessage({
   sessionId,
