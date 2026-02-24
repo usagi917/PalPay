@@ -76,7 +76,7 @@ export function useXmtpChat({
     }) as string[];
 
     if (!accounts || accounts.length === 0) {
-      throw new Error("ウォレットが接続されていません");
+      throw new Error("ログインが必要です");
     }
 
     const address = accounts[0];

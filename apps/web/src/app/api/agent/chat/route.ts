@@ -64,17 +64,17 @@ function deriveNextInputHint(params: {
   if (state === "tx_prepared" && txPrepare) {
     switch (txPrepare.action) {
       case "createListing":
-        return "署名して出品する";
+        return "確認して出品する";
       case "lock":
-        return "購入を確定する";
+        return "支払いを確定する";
       case "approve":
-        return "承認する";
+        return "取引を開始する";
       case "cancel":
         return "キャンセルする";
       case "confirmDelivery":
-        return "納品を確認する";
+        return "受取りを確認する";
       default:
-        return "署名して実行する";
+        return "確認して実行する";
     }
   }
 
@@ -130,17 +130,17 @@ function deriveNextQuickActions(params: {
     switch (txPrepare.action) {
       case "createListing":
         return [
-          { label: "署名して出品", message: "署名して出品を実行して" },
+          { label: "確認して出品", message: "確認して出品を実行して" },
           { label: "修正したい", message: "内容を修正したいです" },
         ];
       case "lock":
         return [
-          { label: "購入を確定", message: "購入を確定して" },
+          { label: "支払いを確定", message: "支払いを確定して" },
           { label: "もう一度見る", message: "出品詳細をもう一度見せて" },
         ];
       case "approve":
         return [
-          { label: "承認する", message: "承認して" },
+          { label: "取引を開始", message: "取引を開始して" },
           { label: "やめる", message: "一旦やめたい" },
         ];
       case "cancel":
@@ -150,12 +150,12 @@ function deriveNextQuickActions(params: {
         ];
       case "confirmDelivery":
         return [
-          { label: "納品確認", message: "納品を確認して" },
+          { label: "受取確認", message: "受取りを確認して" },
           { label: "やめる", message: "一旦やめたい" },
         ];
       default:
         return [
-          { label: "署名する", message: "署名して実行して" },
+          { label: "確認する", message: "確認して実行して" },
           { label: "やめる", message: "一旦やめたい" },
         ];
     }
@@ -379,7 +379,7 @@ export async function POST(request: NextRequest) {
         const userContext = await executeTool("suggest_next_action", {
           userAddress: effectiveUserAddress,
         });
-        systemInstruction += `\n\n## 現在のユーザー状況（自動取得済み）\nウォレット: ${effectiveUserAddress}\n${JSON.stringify(userContext, null, 2)}\n\nこの情報を踏まえて、最初の応答からプロアクティブに提案してください。`;
+        systemInstruction += `\n\n## 現在のユーザー状況（自動取得済み）\nアカウント: ${effectiveUserAddress}\n${JSON.stringify(userContext, null, 2)}\n\nこの情報を踏まえて、最初の応答からプロアクティブに提案してください。`;
       } catch (e) {
         console.error("[Agent] Failed to fetch proactive context:", e);
       }
@@ -390,7 +390,7 @@ export async function POST(request: NextRequest) {
 
     // Send user message
     const userContext = effectiveUserAddress
-      ? `\n\n[ユーザーウォレット: ${effectiveUserAddress}]`
+      ? `\n\n[ユーザーアカウント: ${effectiveUserAddress}]`
       : "";
     const fullMessage = message + userContext;
 

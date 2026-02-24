@@ -56,15 +56,15 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
       case "createListing":
         return "出品が完了しました。";
       case "lock":
-        return "購入ロックが完了しました。";
+        return "お支払いが完了しました。";
       case "approve":
-        return "承認が完了しました。";
+        return "取引が開始しました。";
       case "cancel":
         return "キャンセルが完了しました。";
       case "confirmDelivery":
-        return "納品確認が完了しました。";
+        return "受取確認が完了しました。";
       default:
-        return "トランザクションが完了しました。";
+        return "処理が完了しました。";
     }
   }, []);
 
@@ -82,7 +82,7 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
       clearTxPrepare();
       appendMessage(getSuccessMessage(txPrepare.action), "assistant", "completed");
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "トランザクションに失敗しました";
+      const errorMessage = err instanceof Error ? err.message : "処理に失敗しました";
       appendMessage(`エラーが発生しました: ${errorMessage}`, "system");
       throw err;
     }
@@ -142,8 +142,8 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
             }}
           >
             {walletConnected
-              ? `接続中: ${userAddress?.slice(0, 6)}...${userAddress?.slice(-4)}`
-              : "ウォレット未接続"}
+              ? `ID: ${userAddress?.slice(0, 6)}...${userAddress?.slice(-4)}`
+              : "未ログイン"}
           </Typography>
         </Box>
         <Tooltip title="会話をリセット">
@@ -194,7 +194,7 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
             disabled={isLoading || (authRequired && !walletConnected)}
             placeholder={
               !walletConnected
-                ? "ウォレットを接続してください"
+                ? "ログインしてください"
                 : `メッセージを入力...（例：${nextInputHint || "和牛を売りたい"}）`
             }
             quickActions={nextQuickActions.length > 0 ? nextQuickActions : undefined}

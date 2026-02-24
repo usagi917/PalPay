@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { Box, Container, Button, Chip } from "@mui/material";
-import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
+import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import LogoutIcon from "@mui/icons-material/Logout";
 import { parseUnits, type Address } from "viem";
 import { Header } from "@/components/Header";
@@ -49,7 +49,7 @@ function WalletButton({
             },
           }}
         >
-          切断
+          ログアウト
         </Button>
       </Box>
     );
@@ -58,7 +58,7 @@ function WalletButton({
   return (
     <Button
       variant="contained"
-      startIcon={<AccountBalanceWalletIcon />}
+      startIcon={<AccountCircleIcon />}
       onClick={onConnect}
       disabled={isConnecting}
       sx={{
@@ -70,7 +70,7 @@ function WalletButton({
         },
       }}
     >
-      {isConnecting ? "接続中..." : "ウォレット接続"}
+      {isConnecting ? "ログイン中..." : "ログイン"}
     </Button>
   );
 }
@@ -101,7 +101,7 @@ function AgentPageContent() {
   const handleConnect = useCallback(async () => {
     const provider = getMetaMaskProvider();
     if (!provider) {
-      alert("MetaMaskをインストールしてください");
+      alert("MetaMaskアプリが必要です");
       return;
     }
 
@@ -127,20 +127,20 @@ function AgentPageContent() {
     async (action: string, params?: Record<string, unknown>) => {
       const provider = getMetaMaskProvider();
       if (!provider || !userAddress) {
-        throw new Error("ウォレットが接続されていません");
+        throw new Error("ログインが必要です");
       }
       await ensureWalletChain(provider);
       const wallet = createWallet(provider);
       const client = createClient();
       if (!wallet) {
-        throw new Error("ウォレットが接続されていません");
+        throw new Error("ログインが必要です");
       }
 
       const [account] = await wallet.getAddresses();
 
       function requireEscrowAddress(): Address {
         if (!params?.escrowAddress) {
-          throw new Error("エスクローアドレスが不足しています");
+          throw new Error("取引アドレスが不足しています");
         }
         return params.escrowAddress as Address;
       }
@@ -171,7 +171,7 @@ function AgentPageContent() {
           });
           const receipt = await client.waitForTransactionReceipt({ hash });
           if (receipt.status !== "success") {
-            throw new Error("出品トランザクションが失敗しました");
+            throw new Error("出品登録に失敗しました");
           }
           console.log("Create listing tx:", hash);
           return;
@@ -201,7 +201,7 @@ function AgentPageContent() {
           });
           const approveReceipt = await client.waitForTransactionReceipt({ hash: approveHash });
           if (approveReceipt.status !== "success") {
-            throw new Error("承認トランザクションが失敗しました");
+            throw new Error("支払い準備に失敗しました");
           }
           console.log("Approve tx:", approveHash);
 
@@ -214,7 +214,7 @@ function AgentPageContent() {
           });
           const lockReceipt = await client.waitForTransactionReceipt({ hash: lockHash });
           if (lockReceipt.status !== "success") {
-            throw new Error("購入トランザクションが失敗しました");
+            throw new Error("お支払い処理に失敗しました");
           }
           console.log("Lock tx:", lockHash);
           return;
@@ -230,7 +230,7 @@ function AgentPageContent() {
           });
           const receipt = await client.waitForTransactionReceipt({ hash });
           if (receipt.status !== "success") {
-            throw new Error("承認トランザクションが失敗しました");
+            throw new Error("取引開始の処理に失敗しました");
           }
           console.log("Approve tx:", hash);
           return;
@@ -246,7 +246,7 @@ function AgentPageContent() {
           });
           const receipt = await client.waitForTransactionReceipt({ hash });
           if (receipt.status !== "success") {
-            throw new Error("キャンセルトランザクションが失敗しました");
+            throw new Error("キャンセル処理に失敗しました");
           }
           console.log("Cancel tx:", hash);
           return;
@@ -263,7 +263,7 @@ function AgentPageContent() {
           });
           const receipt = await client.waitForTransactionReceipt({ hash });
           if (receipt.status !== "success") {
-            throw new Error("納品確認トランザクションが失敗しました");
+            throw new Error("受取確認の処理に失敗しました");
           }
           console.log("Confirm delivery tx:", hash);
           return;

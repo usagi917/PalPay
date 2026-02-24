@@ -16,11 +16,11 @@ export const translations = {
 
 
     // Wallet
-    wallet: "ウォレット",
-    connectWallet: "ウォレット接続",
-    connecting: "接続中...",
-    disconnect: "切断",
-    noMetaMask: "MetaMaskをインストールしてください",
+    wallet: "アカウント",
+    connectWallet: "ログイン",
+    connecting: "ログイン中...",
+    disconnect: "ログアウト",
+    noMetaMask: "MetaMaskアプリが必要です",
 
     // Roles
     buyer: "バイヤー",
@@ -29,14 +29,14 @@ export const translations = {
     observer: "オブザーバー",
 
     // Contract Summary
-    contractSummary: "コントラクト概要",
-    tokenAddress: "トークン",
+    contractSummary: "取引概要",
+    tokenAddress: "通貨",
     buyerAddress: "バイヤー",
     producerAddress: "生産者",
     adminAddress: "管理者",
     totalAmount: "総額",
-    lockedAmount: "ロック済",
-    releasedAmount: "解放済",
+    lockedAmount: "預り中",
+    releasedAmount: "支払済み",
     paidAmount: "支払い済み金額",
     refundedAmount: "返金済",
     progress: "進捗",
@@ -46,8 +46,8 @@ export const translations = {
 
     // Actions
     actions: "アクション",
-    lockFunds: "資金をロック",
-    lockDescription: "総額をエスクローにロックします",
+    lockFunds: "支払いを確定する",
+    lockDescription: "お支払い金額を預け入れます",
     submitMilestone: "工程を申請",
     evidencePlaceholder: "証跡（URLまたは説明）",
     submit: "申請",
@@ -58,22 +58,22 @@ export const translations = {
     cancelRefund: "キャンセル＆返金",
     processing: "処理中...",
     success: "成功！",
-    viewTx: "TXを確認",
-    contractCancelled: "契約はキャンセルされました。操作はできません。",
+    viewTx: "詳細を確認",
+    contractCancelled: "この取引はキャンセルされました。",
     noActionsAvailable: "現在利用できるアクションはありません",
-    noActionsObserver: "このウォレットは契約参加者ではありません",
-    connectWalletHint: "ウォレットを接続するとアクションが表示されます",
+    noActionsObserver: "このアカウントは取引参加者ではありません",
+    connectWalletHint: "ログインすると操作メニューが表示されます",
 
     // Milestones
     milestones: "マイルストーン",
     code: "コード",
     description: "説明",
-    rate: "解放率",
+    rate: "支払割合",
     status: "状態",
     evidence: "証跡",
-    evidenceHash: "証跡ハッシュ",
+    evidenceHash: "証跡ID",
     completedAt: "完了日時",
-    releasedAmountLabel: "解放額",
+    releasedAmountLabel: "支払額",
     pending: "未申請",
     completed: "完了",
 
@@ -93,7 +93,7 @@ export const translations = {
     // Timeline
     timeline: "タイムライン",
     noEvents: "イベントはまだありません",
-    eventLocked: "ロック",
+    eventLocked: "お支払い",
     eventCompleted: "完了・支払い",
     eventCancelled: "キャンセル",
     actor: "実行者",
@@ -101,8 +101,8 @@ export const translations = {
     milestone: "マイルストーン",
     reason: "理由",
     refunded: "返金額",
-    tx: "TX",
-    block: "ブロック",
+    tx: "受付番号",
+    block: "処理番号",
 
     // NFT
     refresh: "更新",
@@ -123,11 +123,11 @@ export const translations = {
     heroPillEvidence: "Evidence",
 
     // Wallet
-    wallet: "Wallet",
-    connectWallet: "Connect Wallet",
-    connecting: "Connecting...",
-    disconnect: "Disconnect",
-    noMetaMask: "Please install MetaMask",
+    wallet: "Account",
+    connectWallet: "Log in",
+    connecting: "Logging in...",
+    disconnect: "Log out",
+    noMetaMask: "MetaMask app is required",
 
     // Roles
     buyer: "Buyer",
@@ -136,14 +136,14 @@ export const translations = {
     observer: "Observer",
 
     // Contract Summary
-    contractSummary: "Contract Summary",
-    tokenAddress: "Token",
+    contractSummary: "Transaction Summary",
+    tokenAddress: "Currency",
     buyerAddress: "Buyer",
     producerAddress: "Producer",
     adminAddress: "Admin",
     totalAmount: "Total",
-    lockedAmount: "Locked",
-    releasedAmount: "Released",
+    lockedAmount: "Held",
+    releasedAmount: "Paid",
     paidAmount: "Paid Amount",
     refundedAmount: "Refunded",
     progress: "Progress",
@@ -153,8 +153,8 @@ export const translations = {
 
     // Actions
     actions: "Actions",
-    lockFunds: "Lock Funds",
-    lockDescription: "Lock total amount into escrow",
+    lockFunds: "Confirm Payment",
+    lockDescription: "Deposit the payment amount",
     submitMilestone: "Submit Milestone",
     evidencePlaceholder: "Evidence (URL or description)",
     submit: "Submit",
@@ -165,22 +165,22 @@ export const translations = {
     cancelRefund: "Cancel & Refund",
     processing: "Processing...",
     success: "Success!",
-    viewTx: "View TX",
-    contractCancelled: "Contract cancelled. No actions available.",
+    viewTx: "View Details",
+    contractCancelled: "This transaction has been cancelled.",
     noActionsAvailable: "No actions available right now.",
-    noActionsObserver: "This wallet is not a contract participant.",
-    connectWalletHint: "Connect your wallet to see available actions.",
+    noActionsObserver: "This account is not a transaction participant.",
+    connectWalletHint: "Log in to see available actions.",
 
     // Milestones
     milestones: "Milestones",
     code: "Code",
     description: "Description",
-    rate: "Release Rate",
+    rate: "Payment Rate",
     status: "Status",
     evidence: "Evidence",
-    evidenceHash: "Evidence Hash",
+    evidenceHash: "Evidence ID",
     completedAt: "Completed At",
-    releasedAmountLabel: "Released Amount",
+    releasedAmountLabel: "Paid Amount",
     pending: "Pending",
     completed: "Completed",
 
@@ -200,7 +200,7 @@ export const translations = {
     // Timeline
     timeline: "Timeline",
     noEvents: "No events yet",
-    eventLocked: "Locked",
+    eventLocked: "Payment",
     eventCompleted: "Completed & Paid",
     eventCancelled: "Cancelled",
     actor: "Actor",
@@ -208,8 +208,8 @@ export const translations = {
     milestone: "Milestone",
     reason: "Reason",
     refunded: "Refunded",
-    tx: "TX",
-    block: "Block",
+    tx: "Receipt No.",
+    block: "Process No.",
 
     // NFT
     refresh: "Refresh",

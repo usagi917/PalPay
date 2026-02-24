@@ -283,7 +283,6 @@ export function ListingCard({ listing, tokenSymbol, tokenDecimals }: ListingCard
               </Typography>
               <Typography
                 sx={{
-                  fontFamily: "monospace",
                   fontSize: "0.75rem",
                   color: "var(--color-text-secondary)",
                 }}

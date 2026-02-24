@@ -76,7 +76,7 @@ export function useAgentSession(): UseAgentSessionReturn {
     try {
       const buildAuthPayload = async (): Promise<ChatRequest["auth"]> => {
         if (!userAddress) {
-          throw new Error("ウォレット接続が必要です");
+          throw new Error("ログインが必要です");
         }
         const provider = getMetaMaskProvider();
         if (!provider) {
@@ -157,7 +157,7 @@ export function useAgentSession(): UseAgentSessionReturn {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         const fallback = response.status === 401 || response.status === 403
-          ? "認証に失敗しました。ウォレット接続を確認してください。"
+          ? "認証に失敗しました。ログイン状態を確認してください。"
           : `HTTP ${response.status}`;
         throw new Error(errorData.error || fallback);
       }

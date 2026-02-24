@@ -270,11 +270,11 @@ export function useCreateListing(onSuccess?: () => void) {
 
       try {
         const provider = getMetaMaskProvider();
-        if (!provider) throw new Error("Walletが接続されていません");
+        if (!provider) throw new Error("ログインが必要です");
         await ensureWalletChain(provider);
         const wallet = createWallet(provider);
         const client = createClient();
-        if (!wallet) throw new Error("Walletが接続されていません");
+        if (!wallet) throw new Error("ログインが必要です");
 
         const [account] = await wallet.getAddresses();
 
@@ -288,7 +288,7 @@ export function useCreateListing(onSuccess?: () => void) {
 
         const receipt = await client.waitForTransactionReceipt({ hash });
         if (receipt.status !== "success") {
-          throw new Error("出品トランザクションが失敗しました");
+          throw new Error("出品登録に失敗しました");
         }
         setTxHash(hash);
         onSuccess?.();
@@ -470,11 +470,11 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
 
       try {
         const provider = getMetaMaskProvider();
-        if (!provider) throw new Error("Walletが接続されていません");
+        if (!provider) throw new Error("ログインが必要です");
         await ensureWalletChain(provider);
         const wallet = createWallet(provider);
         const client = createClient();
-        if (!wallet) throw new Error("Walletが接続されていません");
+        if (!wallet) throw new Error("ログインが必要です");
 
         const [account] = await wallet.getAddresses();
 
@@ -487,7 +487,7 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
         }) as bigint;
 
         if (balance < totalAmount) {
-          throw new Error("残高が不足しています");
+          throw new Error("お支払い可能額が不足しています");
         }
 
         // Check allowance and skip approve if already approved
@@ -515,7 +515,7 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
           setTxStep("approve-confirming");
           const approveReceipt = await client.waitForTransactionReceipt({ hash: hash1 });
           if (approveReceipt.status !== "success") {
-            throw new Error("承認トランザクションが失敗しました");
+            throw new Error("支払い準備に失敗しました");
           }
         }
 
@@ -533,13 +533,13 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
         setTxHash(hash2);
         const lockReceipt = await client.waitForTransactionReceipt({ hash: hash2 });
         if (lockReceipt.status !== "success") {
-          throw new Error("購入トランザクションが失敗しました");
+          throw new Error("お支払い処理に失敗しました");
         }
         setTxStep("success");
         onSuccess?.();
       } catch (err) {
         setTxStep("error");
-        setError(err instanceof Error ? err.message : "購入に失敗しました");
+        setError(err instanceof Error ? err.message : "お支払いに失敗しました");
       } finally {
         setIsLoading(false);
       }
@@ -558,11 +558,11 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
 
       try {
         const provider = getMetaMaskProvider();
-        if (!provider) throw new Error("Walletが接続されていません");
+        if (!provider) throw new Error("ログインが必要です");
         await ensureWalletChain(provider);
         const wallet = createWallet(provider);
         const client = createClient();
-        if (!wallet) throw new Error("Walletが接続されていません");
+        if (!wallet) throw new Error("ログインが必要です");
 
         const [account] = await wallet.getAddresses();
 
@@ -583,7 +583,7 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
         setTxHash(hash);
         const receipt = await client.waitForTransactionReceipt({ hash });
         if (receipt.status !== "success") {
-          throw new Error("完了報告トランザクションが失敗しました");
+          throw new Error("完了報告の処理に失敗しました");
         }
         setTxStep("success");
         onSuccess?.();
@@ -608,11 +608,11 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
 
     try {
       const provider = getMetaMaskProvider();
-      if (!provider) throw new Error("Walletが接続されていません");
+      if (!provider) throw new Error("ログインが必要です");
       await ensureWalletChain(provider);
       const wallet = createWallet(provider);
       const client = createClient();
-      if (!wallet) throw new Error("Walletが接続されていません");
+      if (!wallet) throw new Error("ログインが必要です");
 
       const [account] = await wallet.getAddresses();
 
@@ -628,13 +628,13 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
       setTxHash(hash);
       const receipt = await client.waitForTransactionReceipt({ hash });
       if (receipt.status !== "success") {
-        throw new Error("承認トランザクションが失敗しました");
+        throw new Error("取引開始の処理に失敗しました");
       }
       setTxStep("success");
       onSuccess?.();
     } catch (err) {
       setTxStep("error");
-      setError(err instanceof Error ? err.message : "承認に失敗しました");
+      setError(err instanceof Error ? err.message : "取引開始に失敗しました");
     } finally {
       setIsLoading(false);
     }
@@ -651,11 +651,11 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
 
     try {
       const provider = getMetaMaskProvider();
-      if (!provider) throw new Error("Walletが接続されていません");
+      if (!provider) throw new Error("ログインが必要です");
       await ensureWalletChain(provider);
       const wallet = createWallet(provider);
       const client = createClient();
-      if (!wallet) throw new Error("Walletが接続されていません");
+      if (!wallet) throw new Error("ログインが必要です");
 
       const [account] = await wallet.getAddresses();
 
@@ -671,7 +671,7 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
       setTxHash(hash);
       const receipt = await client.waitForTransactionReceipt({ hash });
       if (receipt.status !== "success") {
-        throw new Error("キャンセルトランザクションが失敗しました");
+        throw new Error("キャンセル処理に失敗しました");
       }
       setTxStep("success");
       onSuccess?.();
@@ -695,11 +695,11 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
 
       try {
         const provider = getMetaMaskProvider();
-        if (!provider) throw new Error("Walletが接続されていません");
+        if (!provider) throw new Error("ログインが必要です");
         await ensureWalletChain(provider);
         const wallet = createWallet(provider);
         const client = createClient();
-        if (!wallet) throw new Error("Walletが接続されていません");
+        if (!wallet) throw new Error("ログインが必要です");
 
         const [account] = await wallet.getAddresses();
 
@@ -719,13 +719,13 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
         setTxHash(hash);
         const receipt = await client.waitForTransactionReceipt({ hash });
         if (receipt.status !== "success") {
-          throw new Error("納品確認トランザクションが失敗しました");
+          throw new Error("受取確認の処理に失敗しました");
         }
         setTxStep("success");
         onSuccess?.();
       } catch (err) {
         setTxStep("error");
-        setError(err instanceof Error ? err.message : "納品確認に失敗しました");
+        setError(err instanceof Error ? err.message : "受取確認に失敗しました");
       } finally {
         setIsLoading(false);
       }

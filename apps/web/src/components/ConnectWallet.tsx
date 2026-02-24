@@ -12,7 +12,7 @@ import {
   Alert,
   CircularProgress,
 } from "@mui/material";
-import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
+import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import LogoutIcon from "@mui/icons-material/Logout";
 import type { Address } from "viem";
 import { useI18n } from "@/lib/i18n";
@@ -132,7 +132,7 @@ export function ConnectWallet({
                 justifyContent: 'center',
               }}
             >
-              <AccountBalanceWalletIcon sx={{ color: 'var(--color-primary)', fontSize: 20 }} />
+              <AccountCircleIcon sx={{ color: 'var(--color-primary)', fontSize: 20 }} />
             </Box>
             <Typography
               variant="h6"
@@ -250,14 +250,13 @@ export function ConnectWallet({
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography
                       sx={{
-                        fontFamily: 'monospace',
                         fontSize: '0.875rem',
                         fontWeight: 600,
                         color: 'var(--color-text)',
                         mb: 0.5,
                       }}
                     >
-                      {shortenAddress(address)}
+                      ID: {shortenAddress(address)}
                     </Typography>
                     <Chip
                       label={roleLabel}
@@ -333,7 +332,7 @@ export function ConnectWallet({
                     isConnecting ? (
                       <CircularProgress size={18} sx={{ color: 'inherit' }} />
                     ) : (
-                      <AccountBalanceWalletIcon sx={{ fontSize: 20 }} />
+                      <AccountCircleIcon sx={{ fontSize: 20 }} />
                     )
                   }
                 >

@@ -160,10 +160,10 @@ export const ensureWalletChain = async (provider: typeof window.ethereum): Promi
   } catch (switchError: unknown) {
     const err = switchError as { code?: number };
     if (err.code === 4001) {
-      throw new Error(`ネットワーク切替がキャンセルされました。ウォレットを${targetLabel}に切り替えてください（現在: ${currentLabel}）。`);
+      throw new Error(`ネットワーク切替がキャンセルされました。MetaMaskで${targetLabel}に切り替えてください（現在: ${currentLabel}）。`);
     }
     if (err.code === -32002) {
-      throw new Error(`ウォレットにネットワーク切替の承認待ちがあります。ウォレットを開き、${targetLabel}への切替を承認してください。`);
+      throw new Error(`ネットワーク切替の確認待ちがあります。MetaMaskを開き、${targetLabel}への切替を確認してください。`);
     }
     if (err.code === 4902) {
       try {
@@ -185,12 +185,12 @@ export const ensureWalletChain = async (provider: typeof window.ethereum): Promi
       } catch (addError: unknown) {
         const addErr = addError as { code?: number };
         if (addErr.code === 4001) {
-          throw new Error(`ネットワーク追加がキャンセルされました。ウォレットで${targetLabel}を追加して切り替えてください。`);
+          throw new Error(`ネットワーク追加がキャンセルされました。MetaMaskで${targetLabel}を追加して切り替えてください。`);
         }
-        throw new Error(`ネットワーク追加に失敗しました。ウォレットで${targetLabel}を追加・切り替えてください。`);
+        throw new Error(`ネットワーク追加に失敗しました。MetaMaskで${targetLabel}を追加・切り替えてください。`);
       }
     } else {
-      throw new Error(`ネットワーク切替に失敗しました。ウォレットを${targetLabel}に切り替えてください（現在: ${currentLabel}）。`);
+      throw new Error(`ネットワーク切替に失敗しました。MetaMaskを${targetLabel}に切り替えてください（現在: ${currentLabel}）。`);
     }
   }
 
@@ -198,7 +198,7 @@ export const ensureWalletChain = async (provider: typeof window.ethereum): Promi
   const verifiedId = parseInt(verifiedHex, 16);
   if (verifiedId !== targetChainId) {
     const verifiedLabel = getChainLabel(verifiedId);
-    throw new Error(`ネットワークが${targetLabel}ではありません（現在: ${verifiedLabel}）。ウォレットで切り替えてください。`);
+    throw new Error(`ネットワークが${targetLabel}ではありません（現在: ${verifiedLabel}）。MetaMaskで切り替えてください。`);
   }
 };
 
@@ -230,9 +230,9 @@ export const CATEGORY_LABELS: Record<string, { ja: string; en: string }> = {
 
 // Status labels (V6: added locked)
 export const STATUS_LABELS: Record<string, { ja: string; en: string; color: string }> = {
-  open: { ja: "出品中", en: "Open", color: "success" },
-  locked: { ja: "承認待ち", en: "Pending Approval", color: "warning" },
-  active: { ja: "進行中", en: "Active", color: "info" },
-  completed: { ja: "完了", en: "Completed", color: "default" },
-  cancelled: { ja: "キャンセル", en: "Cancelled", color: "error" },
+  open: { ja: "購入受付中", en: "Available", color: "success" },
+  locked: { ja: "条件確認中", en: "Under Review", color: "warning" },
+  active: { ja: "進行中", en: "In Progress", color: "info" },
+  completed: { ja: "取引完了", en: "Completed", color: "default" },
+  cancelled: { ja: "キャンセル済", en: "Cancelled", color: "error" },
 };

@@ -5,9 +5,9 @@ import { Box, Paper, Typography, Button, CircularProgress, Alert, Chip, Stack, D
 import { motion } from "framer-motion";
 import LockIcon from "@mui/icons-material/Lock";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import CancelIcon from "@mui/icons-material/Cancel";
 import AddCircleIcon from "@mui/icons-material/AddCircle";
-import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
 import type { TxPrepareResult, ListingDraft } from "@/lib/agent/types";
 import type { ReactElement } from "react";
 
@@ -21,19 +21,19 @@ interface TxConfirmPanelProps {
 
 const actionLabels: Record<string, { label: string; icon: ReactElement; description: string }> = {
   createListing: {
-    label: "出品作成",
+    label: "出品登録",
     icon: <AddCircleIcon />,
-    description: "新しい出品をブロックチェーンに登録します",
+    description: "新しい出品を登録します",
   },
   lock: {
-    label: "購入ロック",
+    label: "お支払い",
     icon: <LockIcon />,
-    description: "資金をエスクローにロックします",
+    description: "お支払い金額を預け入れます",
   },
   approve: {
-    label: "承認",
+    label: "取引開始",
     icon: <CheckCircleIcon />,
-    description: "取引を承認してマイルストーン支払いを開始します",
+    description: "取引を開始して工程ごとの支払いをスタートします",
   },
   cancel: {
     label: "キャンセル",
@@ -41,9 +41,9 @@ const actionLabels: Record<string, { label: string; icon: ReactElement; descript
     description: "取引をキャンセルして資金を返金します",
   },
   confirmDelivery: {
-    label: "納品確認",
+    label: "受取確認",
     icon: <CheckCircleIcon />,
-    description: "最終納品を確認して残金を解放します",
+    description: "受取りを確認して残金の支払いを完了します",
   },
 };
 
@@ -60,7 +60,7 @@ export function TxConfirmPanel({
   const actionInfo = actionLabels[txPrepare.action] || {
     label: txPrepare.action,
     icon: <LockIcon />,
-    description: "トランザクションを実行します",
+    description: "処理を実行します",
   };
 
   const handleConfirm = async () => {
@@ -69,7 +69,7 @@ export function TxConfirmPanel({
     try {
       await onConfirm();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "トランザクションに失敗しました");
+      setError(err instanceof Error ? err.message : "処理に失敗しました");
     } finally {
       setIsProcessing(false);
     }
@@ -118,7 +118,7 @@ export function TxConfirmPanel({
                 fontWeight: 600,
               }}
             >
-              署名準備完了
+              確認待ち
             </Typography>
             <Typography
               sx={{
@@ -150,7 +150,7 @@ export function TxConfirmPanel({
           {/* Action */}
           <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <Typography sx={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
-              アクション
+              操作内容
             </Typography>
             <Chip
               label={txPrepare.action}
@@ -168,7 +168,7 @@ export function TxConfirmPanel({
           {txPrepare.escrowAddress && (
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <Typography sx={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
-                コントラクト
+                取引管理
               </Typography>
               <Typography
                 sx={{
@@ -216,7 +216,7 @@ export function TxConfirmPanel({
                 },
               }}
             >
-              JPYCのApprove（承認）トランザクションが先に実行されます
+              支払いの事前承認が自動的に行われます
             </Alert>
           )}
         </Stack>
@@ -271,7 +271,7 @@ export function TxConfirmPanel({
               isProcessing ? (
                 <CircularProgress size={20} sx={{ color: "#fff" }} />
               ) : (
-                <AccountBalanceWalletIcon />
+                <CheckCircleOutlineIcon />
               )
             }
             sx={{
@@ -293,8 +293,8 @@ export function TxConfirmPanel({
             {isProcessing
               ? "処理中..."
               : walletConnected
-                ? "ウォレットで署名"
-                : "ウォレット未接続"}
+                ? "確認して実行"
+                : "ログインが必要です"}
           </Button>
         </Stack>
 
@@ -308,7 +308,7 @@ export function TxConfirmPanel({
               textAlign: "center",
             }}
           >
-            署名するにはウォレットを接続してください
+            実行するにはログインしてください
           </Typography>
         )}
       </Paper>

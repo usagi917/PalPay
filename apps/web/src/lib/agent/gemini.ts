@@ -46,7 +46,7 @@ const toolDeclarations: FunctionDeclaration[] = [
       properties: {
         escrowAddress: {
           type: "string",
-          description: "出品（エスクロー）コントラクトのアドレス",
+          description: "出品（取引管理）のアドレス",
         },
         tokenId: {
           type: "string",
@@ -102,17 +102,17 @@ const toolDeclarations: FunctionDeclaration[] = [
   },
   {
     name: "prepare_transaction",
-    description: "トランザクションを準備し、署名前確認UIを表示します。実際の署名はユーザーが行います。",
+    description: "操作を準備し、確認UIを表示します。実際の確認はユーザーが行います。",
     parametersJsonSchema: {
       type: "object",
       properties: {
         action: {
           type: "string",
-          description: "トランザクションの種類 (createListing, lock, approve, cancel, confirmDelivery)",
+          description: "操作の種類 (createListing, lock, approve, cancel, confirmDelivery)",
         },
         escrowAddress: {
           type: "string",
-          description: "対象のエスクローアドレス（createListing以外で必要）",
+          description: "対象の取引アドレス（createListing以外で必要）",
         },
         amount: {
           type: "string",
@@ -171,7 +171,7 @@ const toolDeclarations: FunctionDeclaration[] = [
       properties: {
         userAddress: {
           type: "string",
-          description: "ユーザーのウォレットアドレス",
+          description: "ユーザーのアカウントアドレス",
         },
       },
       required: ["userAddress"],

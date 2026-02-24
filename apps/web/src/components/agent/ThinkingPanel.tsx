@@ -18,7 +18,7 @@ const stateLabels: Record<AgentState, { label: string; description: string }> = 
   gathering_info: { label: "情報収集中", description: "必要な情報を取得しています" },
   draft_ready: { label: "ドラフト作成完了", description: "内容を確認してください" },
   awaiting_confirm: { label: "確認待ち", description: "ユーザーの確認を待っています" },
-  tx_prepared: { label: "署名準備完了", description: "ウォレットで署名してください" },
+  tx_prepared: { label: "確認待ち", description: "確認をお願いします" },
   completed: { label: "完了", description: "処理が完了しました" },
 };
 
@@ -46,7 +46,7 @@ const toolLabels: Record<string, { label: string; icon: string }> = {
   get_listing_detail: { label: "出品詳細取得", icon: "🔍" },
   prepare_listing_draft: { label: "ドラフト作成", icon: "✏️" },
   get_milestones_for_category: { label: "マイルストーン取得", icon: "📊" },
-  prepare_transaction: { label: "TX準備", icon: "🔐" },
+  prepare_transaction: { label: "操作準備", icon: "🔐" },
 };
 
 function getToolChipStyle(tc: ToolCall): { background: string; color: string; border: string } {
