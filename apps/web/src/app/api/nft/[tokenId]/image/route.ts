@@ -175,7 +175,7 @@ function generateSVG(
 
   <!-- Footer -->
   <text x="210" y="${svgHeight - 15}" font-family="Arial, sans-serif" font-size="8" fill="${mutedColor}40" text-anchor="middle">
-    Wagyu Milestone Escrow v2 - Dynamic NFT
+    Proof of Trust v2 - Dynamic NFT
   </text>
 </svg>
   `.trim();

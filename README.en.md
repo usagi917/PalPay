@@ -1,204 +1,167 @@
-# Wagyu Milestone Escrow
+# Proof of Trust
 
-[![日本語](https://img.shields.io/badge/README-日本語-blue)](./README.md)
-[![English](https://img.shields.io/badge/README-English-blue)](./README.en.md)
+[![日本語](https://img.shields.io/badge/lang-日本語-green.svg)](README.md)
+[![Node.js >=20](https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js)](apps/web/Dockerfile)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Status](https://img.shields.io/badge/status-active-success.svg)
+> A milestone-based escrow DApp for high-value B2B transactions (wagyu, sake, and crafts).  
+> The Next.js app runs on Cloud Run, and the AI assistant uses Vertex AI Gemini.
 
-A milestone-based escrow DApp for Wagyu, sake, and craft listings.
-Each listing deploys a `MilestoneEscrowV6` and an ERC721 NFT via `ListingFactoryV6`, and the NFT is transferred to the buyer after lock.
-Progress is reflected on-chain and surfaced via Dynamic NFT metadata and XMTP chat.
+## Google Cloud Requirement Coverage
 
-## Features
+| Requirement | Implementation | Evidence |
+| --- | --- | --- |
+| A: Runtime product usage | Next.js running on Cloud Run | `apps/web/Dockerfile`, `apps/web/scripts/deploy-cloudrun.sh` |
+| B: AI product usage | Vertex AI (`@google/genai`, `vertexai: true`) | `apps/web/src/lib/agent/gemini.ts`, `apps/web/src/app/api/agent/chat/route.ts` |
 
-- Deploys a per-listing `MilestoneEscrowV6` and mints an ERC721 NFT
-- State transitions `open → locked → active → completed/cancelled` with buyer approval (`approve()`)
-- ERC20 transfer on `lock()` plus milestone-based partial releases and final delivery confirmation
-- Dynamic NFT metadata/SVG image API (`/api/nft/:tokenId`)
-- XMTP chat and bilingual UI (JA/EN) with MetaMask integration
+## Key Features
 
-## Requirements
+- Deploys one `MilestoneEscrowV6` contract per listing and mints an ERC721 NFT
+- Supports the state flow `open -> locked -> active -> completed / cancelled`
+- Handles ERC20 lock on `lock()`, milestone-based releases, and final settlement via `confirmDelivery()`
+- Dynamic NFT APIs
+  - `GET /api/nft/:tokenId`
+  - `GET /api/nft/:tokenId/image`
+- XMTP-based encrypted P2P chat (`NEXT_PUBLIC_XMTP_ENV=dev/production`)
+- Agent page (`/agent`) for listing support, market analysis, risk assessment, and next-action suggestions
 
-- Node.js (for the Next.js app)
-- MetaMask (wallet connection)
-- RPC endpoint (supported: Sepolia / Base Sepolia / Base / Polygon Amoy)
-- Deployed ListingFactoryV6 and ERC20 token addresses
-- XMTP network (for chat)
-- Foundry + Solidity 0.8.24 (if you build contracts)
+## Repository Structure
+
+```text
+apps/web/    Next.js 15 frontend + API routes
+contracts/   Solidity contracts (ListingFactoryV5/V6, MockERC20)
+docs/        Submission docs, diagrams, and demo assets
+```
+
+## Prerequisites
+
+- Node.js 20+ (`apps/web/Dockerfile`)
+- `pnpm`
+- MetaMask
+- RPC URL and deployed contract addresses for your target chain
+  - `NEXT_PUBLIC_FACTORY_ADDRESS`
+  - `NEXT_PUBLIC_TOKEN_ADDRESS`
+- If you use `/agent`
+  - A GCP project with `run`, `cloudbuild`, `artifactregistry`, and `aiplatform` APIs enabled
+  - `gcloud` CLI
 
 ## Installation
 
 ```bash
-# Example (npm)
 cd apps/web
-npm install
+pnpm install
 ```
 
-## Quick Start
+## Quick Start (Local)
 
-1. Go to `apps/web`
-2. Copy `.env.example` to `.env.local`
-3. Set required values such as `NEXT_PUBLIC_FACTORY_ADDRESS`
-4. Run `npm run dev`
-5. Open `http://localhost:3000`
-
-## Usage
-
-### App
-
-1. Producer connects wallet and creates a listing with category, title, price, and image URL
-2. Buyer approves the ERC20 allowance and runs `lock()` (purchase lock)
-3. Buyer calls `approve()` to start the milestones (`locked → active`)
-4. Producer submits milestones in order and releases funds step by step
-5. While LOCKED, buyer can `cancel()` for refund; final step is `confirmDelivery()`
-
-### Dynamic NFT API
-
-- Metadata: `GET /api/nft/:tokenId`
-- Image: `GET /api/nft/:tokenId/image`
-
-The API resolves escrow via `ListingFactoryV6.tokenIdToEscrow`.
-Set `ListingFactoryV6.baseURI` to your app origin (e.g., `https://your-app`).
-
-### XMTP Chat
-
-- Participants: the producer and the current NFT owner
-- Visible when `status` is not `open` / `cancelled`, and user is producer or NFT owner
-- Connection/signing: MetaMask `personal_sign` to create the XMTP client
-- History: encryption key stored at `localStorage` key `xmtp_db_key_<address>`
-- Environment: production only when `NEXT_PUBLIC_XMTP_ENV=production`
-
-### Smart Contract Deployment (Example)
-
-1. Deploy `contracts/MockERC20.sol` (for testing)
-2. Deploy `ListingFactoryV6` from `contracts/ListingFactoryV6.sol`
-   - `tokenAddress`: ERC20 token address
-   - `uri`: app origin (used by `/api/nft/:tokenId`)
-3. Use the app to call `createListing` (auto-deploys `MilestoneEscrowV6`)
-
-## User Flow 
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant FE as Frontend
-    participant R as ListingFactoryV6 / MilestoneEscrowV6
-    participant J as JPYC Contract (ERC20)
-    participant N as Milestone NFT (ERC721)
-
-    U->>FE: Connect wallet
-    FE->>J: Check JPYC allowance
-    
-    alt Not approved
-        FE->>U: Request approval
-        U->>J: Approve (JPYC allowance)
-    end
-
-    U->>FE: Create listing or lock purchase
-    FE->>R: createListing(...) / lock()
-    
-    R->>J: transferFrom(User, Escrow, amount)
-    J-->>R: Transfer success
-
-    R->>N: mint/transfer (NFT issuance or transfer)
-    note right of R: Mint on listing creation, transfer to buyer on lock
-    N-->>U: NFT ownership updated
-
-    R-->>FE: Transaction complete
-    FE->>U: Show completion
+```bash
+cd apps/web
+cp .env.example .env.local
+pnpm dev
 ```
 
-## System Architecture 
+At minimum, set the following values in `apps/web/.env.local`:
 
-```mermaid
-flowchart TD
-    User["User"]
-    
-    subgraph Frontend["Frontend (Next.js)"]
-        UI["User Interface"]
-        Hooks["Custom Hooks (viem / XMTP)"]
-        API["API Routes (NFT metadata/image)"]
-    end
+- `NEXT_PUBLIC_RPC_URL`
+- `NEXT_PUBLIC_CHAIN_ID`
+- `NEXT_PUBLIC_FACTORY_ADDRESS`
+- `NEXT_PUBLIC_TOKEN_ADDRESS`
 
-    subgraph Blockchain["EVM Network (Sepolia/Base/Polygon Amoy)"]
-        Router["ListingFactoryV6 / MilestoneEscrowV6"]
-        NFT["Milestone NFT (ERC721)"]
-        JPYC["JPYC Token Contract (ERC20)"]
-        Treasury["Producer Wallet"]
-    end
+If you also use `/agent`, add:
 
-    User -->|"Wallet connect & actions"| UI
-    UI --> Hooks
-    UI --> API
-    Hooks -->|"Listing / purchase tx"| Router
-    
-    Router -->|"transferFrom / transfer"| JPYC
-    JPYC -->|"JPYC transfer"| Treasury
-    
-    Router -->|"Mint/transfer"| NFT
-    NFT -->|"NFT issued/transferred"| User
-```
+- `GCP_PROJECT_ID`
+- `GCP_LOCATION` (for example: `us-central1`)
+- `GEMINI_MODEL` (for example: `gemini-2.5-flash`)
+- Local ADC auth: `gcloud auth application-default login`
 
-## Directory Structure
-
-```
-hackson/
-├── apps/
-│   └── web/                    # Next.js app
-│       ├── src/app/             # App Router UI + API routes
-│       ├── src/components/      # UI components
-│       ├── src/hooks/           # Client hooks (XMTP, etc.)
-│       ├── src/lib/             # viem/xmtp/config/i18n/ABI
-│       ├── .env.example         # Environment template
-│       └── package.json
-├── contracts/                   # Solidity smart contracts
-│   ├── ListingFactoryV6.sol     # Factory + MilestoneEscrowV6 (current)
-│   ├── ListingFactoryV5.sol     # Legacy
-│   └── MockERC20.sol            # Test ERC20
-├── lib/                          # OpenZeppelin contracts (vendor)
-├── foundry.toml
-└── LICENSE
-```
+Then open `http://localhost:3000`.
 
 ## Configuration
 
-`apps/web/.env.local`
+Config file: `apps/web/.env.local`
 
+| Variable | Required | Description |
+| --- | --- | --- |
+| `NEXT_PUBLIC_RPC_URL` | Yes | RPC URL for the target network |
+| `NEXT_PUBLIC_CHAIN_ID` | Yes | Chain ID (example: Base Sepolia = `84532`) |
+| `NEXT_PUBLIC_FACTORY_ADDRESS` | Yes | `ListingFactoryV6` address |
+| `NEXT_PUBLIC_TOKEN_ADDRESS` | Yes | ERC20 token address for settlement |
+| `NEXT_PUBLIC_XMTP_ENV` | No | `dev` or `production` |
+| `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE` | No | Base URL for transaction links |
+| `CHAIN_ID` | No | Chain ID override for API routes |
+| `GCP_PROJECT_ID` | Required for Agent | GCP project used by Vertex AI |
+| `GCP_LOCATION` | Required for Agent | Vertex AI location |
+| `GEMINI_MODEL` | Required for Agent | Gemini model name |
+
+## API Endpoints
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/agent/nonce?sessionId=...` | Issue a nonce for request signing |
+| `POST` | `/api/agent/chat` | Agent chat endpoint (including tool execution) |
+| `GET` | `/api/nft/:tokenId` | NFT metadata JSON |
+| `GET` | `/api/nft/:tokenId/image` | NFT SVG image |
+
+## Cloud Run Deployment
+
+### 1) Setup
+
+```bash
+gcloud config set project <YOUR_PROJECT_ID>
+gcloud auth login
+gcloud auth application-default login
+gcloud services enable run.googleapis.com \
+  cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com \
+  aiplatform.googleapis.com
 ```
-NEXT_PUBLIC_RPC_URL=
-NEXT_PUBLIC_CHAIN_ID=11155111
-NEXT_PUBLIC_FACTORY_ADDRESS=
-NEXT_PUBLIC_TOKEN_ADDRESS=
-NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE=
-NEXT_PUBLIC_XMTP_ENV=dev
 
-# Optional (server-side override for API routes)
-CHAIN_ID=
+### 2) Deploy
 
-# Optional (legacy, not used by current UI)
-NEXT_PUBLIC_CONTRACT_ADDRESS=
+```bash
+cd apps/web
+
+export NEXT_PUBLIC_RPC_URL="https://sepolia.base.org"
+export NEXT_PUBLIC_CHAIN_ID="84532"
+export NEXT_PUBLIC_FACTORY_ADDRESS="<FACTORY_ADDRESS>"
+export NEXT_PUBLIC_TOKEN_ADDRESS="<TOKEN_ADDRESS>"
+export GCP_PROJECT_ID="<YOUR_PROJECT_ID>"
+export GCP_LOCATION="us-central1"
+export GEMINI_MODEL="gemini-2.5-flash"
+export NEXT_PUBLIC_XMTP_ENV="dev"
+
+bash scripts/deploy-cloudrun.sh
 ```
 
-- `NEXT_PUBLIC_RPC_URL`: RPC URL for the target network
-- `NEXT_PUBLIC_CHAIN_ID`: Chain ID (supported: Sepolia / Base Sepolia / Base / Polygon Amoy)
-- `NEXT_PUBLIC_FACTORY_ADDRESS`: `ListingFactoryV6` address (required for UI/API)
-- `NEXT_PUBLIC_TOKEN_ADDRESS`: ERC20 token address
-- `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE`: Base URL for tx links (optional)
-- `NEXT_PUBLIC_XMTP_ENV`: XMTP environment (`dev` or `production`)
-- `CHAIN_ID`: Chain ID override for API routes (optional)
-- `NEXT_PUBLIC_CONTRACT_ADDRESS`: Legacy config (unused by current UI)
+`deploy-cloudrun.sh` will:
+
+- create/check the Artifact Registry repository
+- build the image via `cloudbuild.yaml`
+- deploy to Cloud Run
+
+### 3) Post-deploy verification
+
+```bash
+bash scripts/verify-cloudrun.sh "https://<your-service>.run.app"
+```
+
+Set `TEST_TOKEN_ID` if you also want to check `/api/nft/:tokenId`.
 
 ## Development
 
 ```bash
 cd apps/web
-npm run dev
-npm run dev:turbo
-npm run build
-npm run start
-npm run lint
+pnpm dev
+pnpm build
+pnpm lint
 ```
+
+Optional contract build:
+
+```bash
+forge build
+```
+
 
 ## License
 

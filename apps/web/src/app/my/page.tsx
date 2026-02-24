@@ -79,10 +79,10 @@ export default function MyPage() {
 
   const filterLabels: Record<StatusFilter, { ja: string; en: string }> = {
     all: { ja: "すべて", en: "All" },
-    open: { ja: "出品中", en: "Open" },
-    locked: { ja: "承認待ち", en: "Pending" },
-    active: { ja: "進行中", en: "Active" },
-    completed: { ja: "完了", en: "Completed" },
+    open: { ja: "購入受付中", en: "Available" },
+    locked: { ja: "条件確認中", en: "Under Review" },
+    active: { ja: "進行中", en: "In Progress" },
+    completed: { ja: "取引完了", en: "Completed" },
   };
 
   return (
@@ -158,8 +158,8 @@ export default function MyPage() {
                 <CardContent>
                   <Typography sx={{ color: "var(--color-text-muted)" }}>
                     {locale === "ja"
-                      ? "ウォレットを接続してマイページを表示"
-                      : "Connect wallet to view your page"}
+                      ? "ログインしてマイページを表示"
+                      : "Log in to view your page"}
                   </Typography>
                 </CardContent>
               </Card>
@@ -199,7 +199,7 @@ export default function MyPage() {
                         </Box>
                         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
                           <Typography sx={{ color: "var(--color-text-muted)" }}>
-                            {locale === "ja" ? "承認待ち" : "Pending"}
+                            {locale === "ja" ? "条件確認中" : "Under Review"}
                           </Typography>
                           <Typography sx={{ color: "var(--status-warning)", fontWeight: 500 }}>
                             {stats.producerLocked}
@@ -254,7 +254,7 @@ export default function MyPage() {
                         </Box>
                         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
                           <Typography sx={{ color: "var(--color-text-muted)" }}>
-                            {locale === "ja" ? "承認待ち" : "Pending"}
+                            {locale === "ja" ? "条件確認中" : "Under Review"}
                           </Typography>
                           <Typography sx={{ color: "var(--status-warning)", fontWeight: 500 }}>
                             {stats.buyerLocked}

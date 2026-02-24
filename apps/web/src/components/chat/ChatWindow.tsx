@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Paper, Typography, Alert, CircularProgress, Chip } from "@mui/material";
+import { Box, Paper, Typography, Alert, CircularProgress, Chip, Button } from "@mui/material";
 import { Chat, CheckCircle, Error as ErrorIcon } from "@mui/icons-material";
 import { useXmtpChat } from "@/hooks/useXmtpChat";
 import { MessageList } from "./MessageList";
@@ -28,7 +28,10 @@ export function ChatWindow({
     isLoading,
     isConnecting,
     isSending,
+    isRecovering,
     error,
+    errorKind,
+    recoverInstallationLimit,
     canMessagePeer,
     isReady,
   } = useXmtpChat({ escrowAddress, peerAddress, enabled });
@@ -107,11 +110,31 @@ export function ChatWindow({
       {/* Error Display */}
       {error && (
         <Alert
-          severity={canMessagePeer ? "error" : "warning"}
+          severity={errorKind === "installation_limit" ? "warning" : canMessagePeer ? "error" : "warning"}
           icon={<ErrorIcon />}
-          sx={{ borderRadius: 0 }}
+          action={
+            errorKind === "installation_limit" ? (
+              <Button
+                color="inherit"
+                size="small"
+                onClick={recoverInstallationLimit}
+                disabled={isRecovering}
+              >
+                {isRecovering ? "解除中..." : "他端末の接続を解除"}
+              </Button>
+            ) : undefined
+          }
+          sx={{ borderRadius: 0, alignItems: "center" }}
         >
-          {error}
+          {errorKind === "installation_limit" ? (
+            <>
+              {error}
+              <br />
+              この操作で既存のXMTP接続を解除して、再接続を可能にします。
+            </>
+          ) : (
+            error
+          )}
         </Alert>
       )}
 
@@ -129,11 +152,13 @@ export function ChatWindow({
       {/* Input */}
       <MessageInput
         onSend={sendMessage}
-        disabled={!isReady}
+        disabled={!isReady || isRecovering}
         isSending={isSending}
         placeholder={
-          isReady
-            ? "メッセージを入力... (Enterで送信)"
+          isRecovering
+            ? "XMTP接続を復旧中..."
+            : isReady
+            ? "メッセージを入力... (Shift+Enterで送信 / 送信ボタン)"
             : "接続を待っています..."
         }
       />

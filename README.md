@@ -1,204 +1,166 @@
-# Wagyu Milestone Escrow
+# Proof of Trust
 
-[![日本語](https://img.shields.io/badge/README-日本語-blue)](./README.md)
-[![English](https://img.shields.io/badge/README-English-blue)](./README.en.md)
+[![English](https://img.shields.io/badge/lang-English-blue.svg)](README.en.md)
+[![Node.js >=20](https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js)](apps/web/Dockerfile)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Status](https://img.shields.io/badge/status-active-success.svg)
+> 和牛・日本酒・工芸品などの高額B2B取引を、マイルストーン連動決済で進めるエスクローDApp。  
+> Next.js アプリを Cloud Run で運用し、AIアシスタントは Vertex AI Gemini を利用します。
 
-和牛・日本酒・工芸品の出品に対応した、マイルストーン型エスクローDAppです。
-ListingFactoryV6 が出品ごとに MilestoneEscrowV6 と ERC721 NFT を生成し、購入ロック後にNFTが購入者へ移転します。
-進捗はオンチェーン状態・Dynamic NFT・XMTPチャットで確認できます。
+## Google Cloud Requirement Coverage
 
-## Features
+| 要件 | 実装 | 根拠 |
+| --- | --- | --- |
+| A: 実行プロダクト利用 | Cloud Run 上で Next.js を実行 | `apps/web/Dockerfile`, `apps/web/scripts/deploy-cloudrun.sh` |
+| B: AIプロダクト利用 | Vertex AI (`@google/genai`, `vertexai: true`) | `apps/web/src/lib/agent/gemini.ts`, `apps/web/src/app/api/agent/chat/route.ts` |
 
-- 出品ごとに `MilestoneEscrowV6` をデプロイし、ERC721 NFTを発行
-- `open → locked → active → completed/cancelled` の状態遷移と買い手承認フロー（`approve()`）
-- `lock()` 時のERC20移転、マイルストーン完了ごとの段階的支払いと最終受領確認
-- Dynamic NFTのメタデータ/SVG画像API（`/api/nft/:tokenId`）
-- XMTPチャットと日英UI切替（MetaMask連携）
+## 主な機能
 
-## Requirements
+- 1出品ごとに `MilestoneEscrowV6` をデプロイし、ERC721 NFT を発行
+- 状態遷移 `open -> locked -> active -> completed / cancelled` をサポート
+- `lock()` 時のERC20ロック、マイルストーン完了ごとの段階支払い、`confirmDelivery()` による最終確定
+- Dynamic NFT API
+  - `GET /api/nft/:tokenId`
+  - `GET /api/nft/:tokenId/image`
+- XMTPベースのP2P暗号化チャット（`NEXT_PUBLIC_XMTP_ENV=dev/production`）
+- Agentページ（`/agent`）で出品支援・市場分析・リスク評価・次アクション提案
 
-- Node.js（Next.jsアプリの実行）
-- MetaMask（ウォレット接続）
-- RPCエンドポイント（対応: Sepolia / Base Sepolia / Base / Polygon Amoy）
-- ListingFactoryV6 と ERC20トークンのデプロイ済みアドレス
-- XMTPネットワーク（チャット機能を使う場合）
-- Foundry + Solidity 0.8.24（コントラクトをビルドする場合）
+## リポジトリ構成
+
+```text
+apps/web/    Next.js 15 フロントエンド + API routes
+contracts/   Solidity コントラクト (ListingFactoryV5/V6, MockERC20)
+```
+
+## 前提条件
+
+- Node.js 20 以上（`apps/web/Dockerfile`）
+- `pnpm`
+- MetaMask
+- 対象チェーンの RPC URL とデプロイ済みコントラクトアドレス
+  - `NEXT_PUBLIC_FACTORY_ADDRESS`
+  - `NEXT_PUBLIC_TOKEN_ADDRESS`
+- `/agent` を使う場合
+  - GCP プロジェクト（`run`, `cloudbuild`, `artifactregistry`, `aiplatform` API有効）
+  - `gcloud` CLI
 
 ## Installation
 
 ```bash
-# Example (npm)
 cd apps/web
-npm install
+pnpm install
 ```
 
-## Quick Start
+## Quick Start (Local)
 
-1. `apps/web` に移動
-2. `.env.example` を `.env.local` にコピー
-3. `NEXT_PUBLIC_FACTORY_ADDRESS` など必須項目を設定
-4. `npm run dev` を実行
-5. `http://localhost:3000` を開く
-
-## Usage
-
-### アプリ
-
-1. Producerがウォレット接続し、カテゴリ・タイトル・価格・画像URLを指定して出品
-2. BuyerがERC20の `approve` を行い `lock()` を実行（購入ロック）
-3. Buyerが `approve()` で進行開始を承認（`locked → active`）
-4. Producerがマイルストーンを順に完了報告し、段階的に支払いが解放
-5. LOCKED中はBuyerが `cancel()` で返金可能、最後は `confirmDelivery()` で完了
-
-### Dynamic NFT API
-
-- メタデータ: `GET /api/nft/:tokenId`
-- 画像: `GET /api/nft/:tokenId/image`
-
-APIは `ListingFactoryV6.tokenIdToEscrow` からエスクローを解決します。
-`ListingFactoryV6.baseURI` はアプリのオリジン（例: `https://your-app`）を設定してください。
-
-### XMTPチャット
-
-- 参加者: 出品者と「現在のNFT所有者」
-- 表示条件: `status` が `open` / `cancelled` 以外、かつ出品者またはNFT所有者
-- 接続/署名: MetaMaskの `personal_sign` でXMTPクライアントを作成
-- 履歴保持: 暗号化キーを `localStorage` の `xmtp_db_key_<address>` に保存
-- 環境切替: `NEXT_PUBLIC_XMTP_ENV=production` の場合のみ本番
-
-### Smart Contract Deployment（Example）
-
-1. `contracts/MockERC20.sol` をデプロイ（テスト用）
-2. `contracts/ListingFactoryV6.sol` から `ListingFactoryV6` をデプロイ
-   - `tokenAddress`: ERC20トークンアドレス
-   - `uri`: アプリのオリジン（`/api/nft/:tokenId` を参照）
-3. アプリから `createListing` を実行（`MilestoneEscrowV6` が自動デプロイ）
-
-## User Flow 
-
-```mermaid
-sequenceDiagram
-    participant U as ユーザー
-    participant FE as フロントエンド
-    participant R as ListingFactoryV6 / MilestoneEscrowV6
-    participant J as JPYC Contract (ERC20)
-    participant N as Milestone NFT (ERC721)
-
-    U->>FE: ウォレット接続
-    FE->>J: JPYCの承認状況確認 (allowance)
-    
-    alt 未承認の場合
-        FE->>U: 承認リクエスト
-        U->>J: Approve (JPYC使用許可)
-    end
-
-    U->>FE: 出品作成 or 購入ロック
-    FE->>R: createListing(...) / lock() 実行
-    
-    R->>J: transferFrom(User, Escrow, amount)
-    J-->>R: 送金成功
-
-    R->>N: mint/transfer (NFT発行または移転)
-    note right of R: 出品作成時にミントし、購入ロック時に購入者へ移転
-    N-->>U: NFT保有者更新
-
-    R-->>FE: トランザクション完了
-    FE->>U: 完了画面表示
+```bash
+cd apps/web
+cp .env.example .env.local
+pnpm dev
 ```
 
-## System Architecture 
+`apps/web/.env.local` に最低限以下を設定してください。
 
-```mermaid
-flowchart TD
-    User["ユーザー"]
-    
-    subgraph Frontend["フロントエンド (Next.js)"]
-        UI["ユーザーインターフェース"]
-        Hooks["カスタムHooks (viem / XMTP)"]
-        API["API Routes (NFT metadata/image)"]
-    end
+- `NEXT_PUBLIC_RPC_URL`
+- `NEXT_PUBLIC_CHAIN_ID`
+- `NEXT_PUBLIC_FACTORY_ADDRESS`
+- `NEXT_PUBLIC_TOKEN_ADDRESS`
 
-    subgraph Blockchain["EVM Network (Sepolia/Base/Polygon Amoy)"]
-        Router["ListingFactoryV6 / MilestoneEscrowV6"]
-        NFT["Milestone NFT (ERC721)"]
-        JPYC["JPYC Token Contract (ERC20)"]
-        Treasury["生産者ウォレット"]
-    end
+`/agent` も使う場合は、追加で以下が必要です。
 
-    User -->|"ウォレット接続・操作"| UI
-    UI --> Hooks
-    UI --> API
-    Hooks -->|"出品/購入トランザクション"| Router
-    
-    Router -->|"transferFrom / transfer"| JPYC
-    JPYC -->|"JPYC送金"| Treasury
-    
-    Router -->|"ミント/移転"| NFT
-    NFT -->|"NFT発行/移転"| User
-```
+- `GCP_PROJECT_ID`
+- `GCP_LOCATION`（例: `us-central1`）
+- `GEMINI_MODEL`（例: `gemini-2.5-flash`）
+- ローカル ADC 認証: `gcloud auth application-default login`
 
-## Directory Structure
-
-```
-hackson/
-├── apps/
-│   └── web/                    # Next.js アプリ
-│       ├── src/app/             # App Router UI + API routes
-│       ├── src/components/      # UI components
-│       ├── src/hooks/           # XMTPなどのクライアントHook
-│       ├── src/lib/             # viem/xmtp/config/i18n/ABI
-│       ├── .env.example         # 環境変数テンプレート
-│       └── package.json
-├── contracts/                   # Solidity smart contracts
-│   ├── ListingFactoryV6.sol     # Factory + MilestoneEscrowV6（現行）
-│   ├── ListingFactoryV5.sol     # Legacy版
-│   └── MockERC20.sol            # テスト用ERC20
-├── lib/                          # OpenZeppelin contracts (vendor)
-├── foundry.toml
-└── LICENSE
-```
+ブラウザで `http://localhost:3000` を開いて動作確認します。
 
 ## Configuration
 
-`apps/web/.env.local`
+設定ファイル: `apps/web/.env.local`
 
+| 変数名 | 必須 | 説明 |
+| --- | --- | --- |
+| `NEXT_PUBLIC_RPC_URL` | Yes | 接続先RPC URL |
+| `NEXT_PUBLIC_CHAIN_ID` | Yes | チェーンID（例: Base Sepolia = `84532`） |
+| `NEXT_PUBLIC_FACTORY_ADDRESS` | Yes | `ListingFactoryV6` アドレス |
+| `NEXT_PUBLIC_TOKEN_ADDRESS` | Yes | 決済用ERC20アドレス |
+| `NEXT_PUBLIC_XMTP_ENV` | No | `dev` または `production` |
+| `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE` | No | TxリンクのベースURL |
+| `CHAIN_ID` | No | APIルート側で使うチェーンID上書き |
+| `GCP_PROJECT_ID` | Agent利用時必須 | Vertex AI利用先のGCPプロジェクト |
+| `GCP_LOCATION` | Agent利用時必須 | Vertex AIロケーション |
+| `GEMINI_MODEL` | Agent利用時必須 | 利用するGeminiモデル名 |
+
+## API Endpoints
+
+| Method | Path | 用途 |
+| --- | --- | --- |
+| `GET` | `/api/agent/nonce?sessionId=...` | 署名用nonceの発行 |
+| `POST` | `/api/agent/chat` | Agentチャット（ツール実行含む） |
+| `GET` | `/api/nft/:tokenId` | NFT metadata JSON |
+| `GET` | `/api/nft/:tokenId/image` | NFT SVG画像 |
+
+## Cloud Run Deployment
+
+### 1) 事前設定
+
+```bash
+gcloud config set project <YOUR_PROJECT_ID>
+gcloud auth login
+gcloud auth application-default login
+gcloud services enable run.googleapis.com \
+  cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com \
+  aiplatform.googleapis.com
 ```
-NEXT_PUBLIC_RPC_URL=
-NEXT_PUBLIC_CHAIN_ID=11155111
-NEXT_PUBLIC_FACTORY_ADDRESS=
-NEXT_PUBLIC_TOKEN_ADDRESS=
-NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE=
-NEXT_PUBLIC_XMTP_ENV=dev
 
-# Optional (server-side override for API routes)
-CHAIN_ID=
+### 2) デプロイ
 
-# Optional (legacy, not used by current UI)
-NEXT_PUBLIC_CONTRACT_ADDRESS=
+```bash
+cd apps/web
+
+export NEXT_PUBLIC_RPC_URL="https://sepolia.base.org"
+export NEXT_PUBLIC_CHAIN_ID="84532"
+export NEXT_PUBLIC_FACTORY_ADDRESS="<FACTORY_ADDRESS>"
+export NEXT_PUBLIC_TOKEN_ADDRESS="<TOKEN_ADDRESS>"
+export GCP_PROJECT_ID="<YOUR_PROJECT_ID>"
+export GCP_LOCATION="us-central1"
+export GEMINI_MODEL="gemini-2.5-flash"
+export NEXT_PUBLIC_XMTP_ENV="dev"
+
+bash scripts/deploy-cloudrun.sh
 ```
 
-- `NEXT_PUBLIC_RPC_URL`: 対象ネットワークのRPC URL
-- `NEXT_PUBLIC_CHAIN_ID`: Chain ID（対応: Sepolia / Base Sepolia / Base / Polygon Amoy）
-- `NEXT_PUBLIC_FACTORY_ADDRESS`: `ListingFactoryV6` のアドレス（UI/APIで必須）
-- `NEXT_PUBLIC_TOKEN_ADDRESS`: ERC20トークンのアドレス
-- `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE`: 取引URLのベース（任意）
-- `NEXT_PUBLIC_XMTP_ENV`: XMTP環境（`dev` または `production`）
-- `CHAIN_ID`: APIルート用のChain ID上書き（任意）
-- `NEXT_PUBLIC_CONTRACT_ADDRESS`: 旧構成用（現行UIでは未使用）
+`deploy-cloudrun.sh` は以下を実行します。
+
+- Artifact Registry リポジトリ作成/確認
+- `cloudbuild.yaml` で Docker build
+- Cloud Run サービスへデプロイ
+
+### 3) デプロイ後確認
+
+```bash
+bash scripts/verify-cloudrun.sh "https://<your-service>.run.app"
+```
+
+必要に応じて `TEST_TOKEN_ID` を指定すると `/api/nft/:tokenId` も確認できます。
 
 ## Development
 
 ```bash
 cd apps/web
-npm run dev
-npm run dev:turbo
-npm run build
-npm run start
-npm run lint
+pnpm dev
+pnpm build
+pnpm lint
 ```
+
+コントラクトをビルドする場合（任意）:
+
+```bash
+forge build
+```
+
 
 ## License
 

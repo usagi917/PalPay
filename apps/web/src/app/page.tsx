@@ -187,7 +187,7 @@ export default function Home() {
                       color: "var(--color-text)",
                     }}
                   >
-                    {locale === "ja" ? "出品中" : "Open Listings"}
+                    {locale === "ja" ? "購入受付中" : "Available"}
                   </Typography>
                   <Typography
                     component="span"
@@ -346,8 +346,8 @@ export default function Home() {
                 </Typography>
                 <Typography variant="body2" className="empty-state-description">
                   {locale === "ja"
-                    ? "ウォレットを接続して最初の出品を作成しましょう"
-                    : "Connect your wallet and create the first listing"}
+                    ? "ログインして最初の出品を作成しましょう"
+                    : "Log in and create the first listing"}
                 </Typography>
               </Box>
             )}

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { type Address, type Hash } from "viem";
-import { createClient, createWallet, config, getChain, getMetaMaskProvider, isMobile, openMetaMaskDeepLink } from "./config";
+import { createClient, createWallet, config, ensureWalletChain, getMetaMaskProvider, isMobile, openMetaMaskDeepLink } from "./config";
 import { FACTORY_ABI, ESCROW_ABI, ERC20_ABI } from "./abi";
 import { getMilestoneName } from "./constants";
 import type { EscrowInfo, Milestone, ListingSummary, TimelineEvent, UserRole } from "./types";
@@ -39,39 +39,7 @@ export function useWallet() {
         setAddress(accounts[0]);
       }
 
-      // Check chain
-      const chainIdHex = await provider.request({
-        method: "eth_chainId",
-      }) as string;
-      const currentChainId = parseInt(chainIdHex, 16);
-
-      if (currentChainId !== config.chainId) {
-        try {
-          await provider.request({
-            method: "wallet_switchEthereumChain",
-            params: [{ chainId: `0x${config.chainId.toString(16)}` }],
-          });
-        } catch (switchError: unknown) {
-          const err = switchError as { code?: number };
-          if (err.code === 4902) {
-            const chain = getChain();
-            await provider.request({
-              method: "wallet_addEthereumChain",
-              params: [
-                {
-                  chainId: `0x${config.chainId.toString(16)}`,
-                  chainName: chain.name,
-                  nativeCurrency: chain.nativeCurrency,
-                  rpcUrls: [config.rpcUrl || chain.rpcUrls.default.http[0]],
-                  blockExplorerUrls: chain.blockExplorers
-                    ? [chain.blockExplorers.default.url]
-                    : undefined,
-                },
-              ],
-            });
-          }
-        }
-      }
+      await ensureWalletChain(provider);
     } catch (err) {
       setError(err instanceof Error ? err.message : "接続エラー");
     } finally {
@@ -99,12 +67,18 @@ export function useWallet() {
         window.location.reload();
       };
 
+      if (typeof provider.on !== "function") {
+        return;
+      }
+
       provider.on("accountsChanged", handleAccountsChanged);
       provider.on("chainChanged", handleChainChanged);
 
       return () => {
-        provider.removeListener("accountsChanged", handleAccountsChanged);
-        provider.removeListener("chainChanged", handleChainChanged);
+        if (typeof provider.removeListener === "function") {
+          provider.removeListener("accountsChanged", handleAccountsChanged);
+          provider.removeListener("chainChanged", handleChainChanged);
+        }
       };
     }
   }, []);
@@ -295,9 +269,12 @@ export function useCreateListing(onSuccess?: () => void) {
       setTxHash(null);
 
       try {
-        const wallet = createWallet();
+        const provider = getMetaMaskProvider();
+        if (!provider) throw new Error("ログインが必要です");
+        await ensureWalletChain(provider);
+        const wallet = createWallet(provider);
         const client = createClient();
-        if (!wallet) throw new Error("Walletが接続されていません");
+        if (!wallet) throw new Error("ログインが必要です");
 
         const [account] = await wallet.getAddresses();
 
@@ -311,7 +288,7 @@ export function useCreateListing(onSuccess?: () => void) {
 
         const receipt = await client.waitForTransactionReceipt({ hash });
         if (receipt.status !== "success") {
-          throw new Error("出品トランザクションが失敗しました");
+          throw new Error("出品登録に失敗しました");
         }
         setTxHash(hash);
         onSuccess?.();
@@ -492,9 +469,12 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
       setTxStep("checking");
 
       try {
-        const wallet = createWallet();
+        const provider = getMetaMaskProvider();
+        if (!provider) throw new Error("ログインが必要です");
+        await ensureWalletChain(provider);
+        const wallet = createWallet(provider);
         const client = createClient();
-        if (!wallet) throw new Error("Walletが接続されていません");
+        if (!wallet) throw new Error("ログインが必要です");
 
         const [account] = await wallet.getAddresses();
 
@@ -507,7 +487,7 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
         }) as bigint;
 
         if (balance < totalAmount) {
-          throw new Error("残高が不足しています");
+          throw new Error("お支払い可能額が不足しています");
         }
 
         // Check allowance and skip approve if already approved
@@ -535,7 +515,7 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
           setTxStep("approve-confirming");
           const approveReceipt = await client.waitForTransactionReceipt({ hash: hash1 });
           if (approveReceipt.status !== "success") {
-            throw new Error("承認トランザクションが失敗しました");
+            throw new Error("支払い準備に失敗しました");
           }
         }
 
@@ -553,13 +533,13 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
         setTxHash(hash2);
         const lockReceipt = await client.waitForTransactionReceipt({ hash: hash2 });
         if (lockReceipt.status !== "success") {
-          throw new Error("購入トランザクションが失敗しました");
+          throw new Error("お支払い処理に失敗しました");
         }
         setTxStep("success");
         onSuccess?.();
       } catch (err) {
         setTxStep("error");
-        setError(err instanceof Error ? err.message : "購入に失敗しました");
+        setError(err instanceof Error ? err.message : "お支払いに失敗しました");
       } finally {
         setIsLoading(false);
       }
@@ -577,9 +557,12 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
       setTxStep("signing");
 
       try {
-        const wallet = createWallet();
+        const provider = getMetaMaskProvider();
+        if (!provider) throw new Error("ログインが必要です");
+        await ensureWalletChain(provider);
+        const wallet = createWallet(provider);
         const client = createClient();
-        if (!wallet) throw new Error("Walletが接続されていません");
+        if (!wallet) throw new Error("ログインが必要です");
 
         const [account] = await wallet.getAddresses();
 
@@ -600,7 +583,7 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
         setTxHash(hash);
         const receipt = await client.waitForTransactionReceipt({ hash });
         if (receipt.status !== "success") {
-          throw new Error("完了報告トランザクションが失敗しました");
+          throw new Error("完了報告の処理に失敗しました");
         }
         setTxStep("success");
         onSuccess?.();
@@ -624,9 +607,12 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
     setTxStep("signing");
 
     try {
-      const wallet = createWallet();
+      const provider = getMetaMaskProvider();
+      if (!provider) throw new Error("ログインが必要です");
+      await ensureWalletChain(provider);
+      const wallet = createWallet(provider);
       const client = createClient();
-      if (!wallet) throw new Error("Walletが接続されていません");
+      if (!wallet) throw new Error("ログインが必要です");
 
       const [account] = await wallet.getAddresses();
 
@@ -642,13 +628,13 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
       setTxHash(hash);
       const receipt = await client.waitForTransactionReceipt({ hash });
       if (receipt.status !== "success") {
-        throw new Error("承認トランザクションが失敗しました");
+        throw new Error("取引開始の処理に失敗しました");
       }
       setTxStep("success");
       onSuccess?.();
     } catch (err) {
       setTxStep("error");
-      setError(err instanceof Error ? err.message : "承認に失敗しました");
+      setError(err instanceof Error ? err.message : "取引開始に失敗しました");
     } finally {
       setIsLoading(false);
     }
@@ -664,9 +650,12 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
     setTxStep("signing");
 
     try {
-      const wallet = createWallet();
+      const provider = getMetaMaskProvider();
+      if (!provider) throw new Error("ログインが必要です");
+      await ensureWalletChain(provider);
+      const wallet = createWallet(provider);
       const client = createClient();
-      if (!wallet) throw new Error("Walletが接続されていません");
+      if (!wallet) throw new Error("ログインが必要です");
 
       const [account] = await wallet.getAddresses();
 
@@ -682,7 +671,7 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
       setTxHash(hash);
       const receipt = await client.waitForTransactionReceipt({ hash });
       if (receipt.status !== "success") {
-        throw new Error("キャンセルトランザクションが失敗しました");
+        throw new Error("キャンセル処理に失敗しました");
       }
       setTxStep("success");
       onSuccess?.();
@@ -705,9 +694,12 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
       setTxStep("signing");
 
       try {
-        const wallet = createWallet();
+        const provider = getMetaMaskProvider();
+        if (!provider) throw new Error("ログインが必要です");
+        await ensureWalletChain(provider);
+        const wallet = createWallet(provider);
         const client = createClient();
-        if (!wallet) throw new Error("Walletが接続されていません");
+        if (!wallet) throw new Error("ログインが必要です");
 
         const [account] = await wallet.getAddresses();
 
@@ -727,13 +719,13 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
         setTxHash(hash);
         const receipt = await client.waitForTransactionReceipt({ hash });
         if (receipt.status !== "success") {
-          throw new Error("納品確認トランザクションが失敗しました");
+          throw new Error("受取確認の処理に失敗しました");
         }
         setTxStep("success");
         onSuccess?.();
       } catch (err) {
         setTxStep("error");
-        setError(err instanceof Error ? err.message : "納品確認に失敗しました");
+        setError(err instanceof Error ? err.message : "受取確認に失敗しました");
       } finally {
         setIsLoading(false);
       }

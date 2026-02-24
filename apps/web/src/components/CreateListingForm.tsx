@@ -113,7 +113,7 @@ export function CreateListingForm({ onSuccess }: CreateListingFormProps) {
     submit: locale === "ja" ? "出品する" : "Submit Listing",
     cancel: locale === "ja" ? "キャンセル" : "Cancel",
     processing: locale === "ja" ? "処理中..." : "Processing...",
-    viewTx: locale === "ja" ? "トランザクションを確認" : "View Transaction",
+    viewTx: locale === "ja" ? "登録完了 — 詳細を確認" : "Registration Complete — View Details",
   };
 
   return (

@@ -21,13 +21,17 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
-import LockIcon from "@mui/icons-material/Lock";
+import PaymentIcon from "@mui/icons-material/Payment";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import SendIcon from "@mui/icons-material/Send";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import CancelIcon from "@mui/icons-material/Cancel";
 import ThumbUpIcon from "@mui/icons-material/ThumbUp";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
@@ -241,7 +245,7 @@ export default function ListingDetailPage() {
                           variant="h6"
                           sx={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--color-text)", mb: 2 }}
                         >
-                          {locale === "ja" ? "ダイナミックNFT" : "Dynamic NFT"}
+                          {locale === "ja" ? "取引証明書" : "Digital Certificate"}
                         </Typography>
                         <Box sx={{ display: "flex", justifyContent: "center" }}>
                           <div className="hero-nft-shell">
@@ -385,50 +389,74 @@ export default function ListingDetailPage() {
 
                         <Divider sx={{ borderColor: "var(--color-border)", mb: 3 }} />
 
-                        {/* Addresses */}
-                        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-                          <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                            <Typography variant="caption" sx={{ color: "var(--color-text-muted)" }}>
-                              {locale === "ja" ? "生産者" : "Producer"}
+                        {/* Addresses - Progressive Disclosure */}
+                        <Accordion
+                          sx={{
+                            background: "transparent",
+                            boxShadow: "none",
+                            border: "1px solid var(--color-border)",
+                            borderRadius: "8px !important",
+                            "&::before": { display: "none" },
+                            "&.Mui-expanded": { margin: 0 },
+                          }}
+                        >
+                          <AccordionSummary
+                            expandIcon={<ExpandMoreIcon sx={{ color: "var(--color-text-muted)" }} />}
+                            sx={{
+                              minHeight: 40,
+                              "& .MuiAccordionSummary-content": { margin: "8px 0" },
+                            }}
+                          >
+                            <Typography variant="caption" sx={{ color: "var(--color-text-muted)", fontWeight: 500 }}>
+                              {locale === "ja" ? "技術詳細" : "Technical Details"}
                             </Typography>
-                            <a
-                              href={getAddressUrl(info.producer)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{ color: "var(--color-primary)", fontFamily: "monospace", fontSize: "0.85rem" }}
-                            >
-                              {shortenAddress(info.producer)}
-                            </a>
-                          </Box>
-                          {info.locked && (
-                            <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                              <Typography variant="caption" sx={{ color: "var(--color-text-muted)" }}>
-                                {locale === "ja" ? "購入者" : "Buyer"}
-                              </Typography>
-                              <a
-                                href={getAddressUrl(info.buyer)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{ color: "var(--color-primary)", fontFamily: "monospace", fontSize: "0.85rem" }}
-                              >
-                                {shortenAddress(info.buyer)}
-                              </a>
+                          </AccordionSummary>
+                          <AccordionDetails sx={{ pt: 0 }}>
+                            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+                              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                                <Typography variant="caption" sx={{ color: "var(--color-text-muted)" }}>
+                                  {locale === "ja" ? "生産者" : "Producer"}
+                                </Typography>
+                                <a
+                                  href={getAddressUrl(info.producer)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{ color: "var(--color-primary)", fontSize: "0.85rem" }}
+                                >
+                                  {shortenAddress(info.producer)}
+                                </a>
+                              </Box>
+                              {info.locked && (
+                                <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                                  <Typography variant="caption" sx={{ color: "var(--color-text-muted)" }}>
+                                    {locale === "ja" ? "購入者" : "Buyer"}
+                                  </Typography>
+                                  <a
+                                    href={getAddressUrl(info.buyer)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{ color: "var(--color-primary)", fontSize: "0.85rem" }}
+                                  >
+                                    {shortenAddress(info.buyer)}
+                                  </a>
+                                </Box>
+                              )}
+                              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                                <Typography variant="caption" sx={{ color: "var(--color-text-muted)" }}>
+                                  {locale === "ja" ? "取引管理" : "Transaction"}
+                                </Typography>
+                                <a
+                                  href={getAddressUrl(escrowAddress)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{ color: "var(--color-primary)", fontSize: "0.85rem" }}
+                                >
+                                  {shortenAddress(escrowAddress)}
+                                </a>
+                              </Box>
                             </Box>
-                          )}
-                          <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                            <Typography variant="caption" sx={{ color: "var(--color-text-muted)" }}>
-                              {locale === "ja" ? "エスクロー" : "Escrow"}
-                            </Typography>
-                            <a
-                              href={getAddressUrl(escrowAddress)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{ color: "var(--color-primary)", fontFamily: "monospace", fontSize: "0.85rem" }}
-                            >
-                              {shortenAddress(escrowAddress)}
-                            </a>
-                          </Box>
-                        </Box>
+                          </AccordionDetails>
+                        </Accordion>
                       </CardContent>
                     </Card>
 
@@ -447,7 +475,7 @@ export default function ListingDetailPage() {
                             variant="h6"
                             sx={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--color-text)", mb: 2 }}
                           >
-                            {locale === "ja" ? "アクション" : "Actions"}
+                            {locale === "ja" ? "お手続き" : "Actions"}
                           </Typography>
 
                           {/* Transaction Progress */}
@@ -481,7 +509,7 @@ export default function ListingDetailPage() {
                                 }}
                               >
                                 <Typography variant="body2" sx={{ color: "var(--color-text-secondary)" }}>
-                                  {locale === "ja" ? "残高" : "Balance"}
+                                  {locale === "ja" ? "お支払い可能額" : "Available Funds"}
                                 </Typography>
                                 <Typography
                                   variant="body2"
@@ -496,42 +524,6 @@ export default function ListingDetailPage() {
                                 </Typography>
                               </Box>
 
-                              {/* Allowance Status */}
-                              {purchaseValidation.hasEnoughBalance && (
-                                <Box
-                                  sx={{
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    alignItems: "center",
-                                    p: 1.5,
-                                    borderRadius: 2,
-                                    background: "rgba(247, 243, 235, 0.02)",
-                                    border: "1px solid var(--color-border)",
-                                  }}
-                                >
-                                  <Typography variant="body2" sx={{ color: "var(--color-text-secondary)" }}>
-                                    {locale === "ja" ? "承認状況" : "Approval"}
-                                  </Typography>
-                                  <Typography
-                                    variant="body2"
-                                    sx={{
-                                      fontWeight: 500,
-                                      color: purchaseValidation.hasEnoughAllowance
-                                        ? "var(--status-success)"
-                                        : "var(--color-text-muted)",
-                                    }}
-                                  >
-                                    {purchaseValidation.hasEnoughAllowance
-                                      ? locale === "ja"
-                                        ? "承認済み"
-                                        : "Approved"
-                                      : locale === "ja"
-                                      ? "承認が必要"
-                                      : "Needs Approval"}
-                                  </Typography>
-                                </Box>
-                              )}
-
                               {/* Insufficient Balance Warning */}
                               {!purchaseValidation.hasEnoughBalance && (
                                 <Alert
@@ -545,8 +537,8 @@ export default function ListingDetailPage() {
                                   }}
                                 >
                                   {locale === "ja"
-                                    ? `残高が${formatAmount(info.totalAmount - purchaseValidation.balance, decimals, symbol)}不足しています`
-                                    : `Insufficient balance by ${formatAmount(info.totalAmount - purchaseValidation.balance, decimals, symbol)}`}
+                                    ? `お支払い額が${formatAmount(info.totalAmount - purchaseValidation.balance, decimals, symbol)}不足しています`
+                                    : `Insufficient funds by ${formatAmount(info.totalAmount - purchaseValidation.balance, decimals, symbol)}`}
                                 </Alert>
                               )}
                             </Box>
@@ -557,7 +549,7 @@ export default function ListingDetailPage() {
                             <Button
                               variant="contained"
                               fullWidth
-                              startIcon={actionLoading ? <CircularProgress size={20} /> : <LockIcon />}
+                              startIcon={actionLoading ? <CircularProgress size={20} /> : <PaymentIcon />}
                               onClick={handleLock}
                               disabled={actionLoading || !purchaseValidation.hasEnoughBalance}
                               sx={{
@@ -583,13 +575,9 @@ export default function ListingDetailPage() {
                                 ? locale === "ja"
                                   ? "処理中..."
                                   : "Processing..."
-                                : purchaseValidation.needsApproval
-                                ? locale === "ja"
-                                  ? `承認して購入 (${formatAmount(info.totalAmount, decimals, symbol)})`
-                                  : `Approve & Purchase (${formatAmount(info.totalAmount, decimals, symbol)})`
                                 : locale === "ja"
-                                ? `購入する (${formatAmount(info.totalAmount, decimals, symbol)})`
-                                : `Purchase (${formatAmount(info.totalAmount, decimals, symbol)})`}
+                                ? `支払いを確定する (${formatAmount(info.totalAmount, decimals, symbol)})`
+                                : `Confirm Payment (${formatAmount(info.totalAmount, decimals, symbol)})`}
                             </Button>
                           )}
 
@@ -607,8 +595,8 @@ export default function ListingDetailPage() {
                             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
                               <Alert severity="info" sx={{ borderRadius: 2 }}>
                                 {locale === "ja"
-                                  ? "出品者とチャットで条件を確認してください。問題なければ承認してマイルストーンを開始します。"
-                                  : "Chat with the producer to confirm conditions. Approve to start milestones."}
+                                  ? "出品者とチャットで条件を確認してください。問題なければ取引を開始してください。"
+                                  : "Chat with the producer to confirm conditions. Start the transaction when ready."}
                               </Alert>
                               <Button
                                 variant="contained"
@@ -633,8 +621,8 @@ export default function ListingDetailPage() {
                                     ? "処理中..."
                                     : "Processing..."
                                   : locale === "ja"
-                                  ? "承認してマイルストーン開始"
-                                  : "Approve & Start Milestones"}
+                                  ? "取引を開始する"
+                                  : "Start Transaction"}
                               </Button>
                               <Button
                                 variant="outlined"
@@ -667,11 +655,11 @@ export default function ListingDetailPage() {
                             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
                               <Alert severity="info" sx={{ borderRadius: 2 }}>
                                 {locale === "ja"
-                                  ? "購入者がチャットで条件を確認中です。承認されるとマイルストーンが開始します。"
-                                  : "Buyer is reviewing conditions. Milestones will start after approval."}
+                                  ? "購入者が条件を確認中です。確認後、取引が開始します。"
+                                  : "Buyer is reviewing conditions. Transaction will start after confirmation."}
                               </Alert>
                               <Typography sx={{ color: "var(--color-text-muted)", textAlign: "center" }}>
-                                {locale === "ja" ? "購入者の承認待ち..." : "Waiting for buyer approval..."}
+                                {locale === "ja" ? "購入者の確認待ち..." : "Waiting for buyer confirmation..."}
                               </Typography>
                             </Box>
                           )}
@@ -718,11 +706,11 @@ export default function ListingDetailPage() {
                             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
                               <Alert severity="info" sx={{ borderRadius: 2 }}>
                                 {locale === "ja"
-                                  ? "最終マイルストーンは購入者の納品確認が必要です。納品完了後、購入者に確認を依頼してください。"
-                                  : "Final milestone requires buyer confirmation. Ask buyer to confirm delivery after completion."}
+                                  ? "最終工程は購入者の受取確認が必要です。納品完了後、購入者に確認を依頼してください。"
+                                  : "Final step requires buyer's receipt confirmation. Ask buyer to confirm after delivery."}
                               </Alert>
                               <Typography sx={{ color: "var(--color-text-muted)", textAlign: "center" }}>
-                                {locale === "ja" ? "購入者の納品確認待ち..." : "Waiting for buyer to confirm delivery..."}
+                                {locale === "ja" ? "購入者の受取確認待ち..." : "Waiting for buyer to confirm receipt..."}
                               </Typography>
                             </Box>
                           )}
@@ -730,7 +718,7 @@ export default function ListingDetailPage() {
                           {/* Buyer tracking progress - not final milestone */}
                           {info.status === "active" && userRole === "buyer" && nextMilestoneIndex < milestones.length - 1 && txStep !== "success" && (
                             <Typography sx={{ color: "var(--color-text-muted)", textAlign: "center" }}>
-                              {locale === "ja" ? "生産者の進捗を確認中..." : "Tracking producer progress..."}
+                              {locale === "ja" ? "進捗を追跡中..." : "Tracking progress..."}
                             </Typography>
                           )}
 
@@ -739,8 +727,8 @@ export default function ListingDetailPage() {
                             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
                               <Alert severity="success" sx={{ borderRadius: 2 }}>
                                 {locale === "ja"
-                                  ? "商品の納品を確認してください。確認すると最終報酬が出品者に支払われます。"
-                                  : "Please confirm delivery. This will release the final payment to the producer."}
+                                  ? "商品の受取りを確認してください。確認すると残りの支払いが完了します。"
+                                  : "Please confirm receipt. This will complete the remaining payment."}
                               </Alert>
                               <Button
                                 variant="contained"
@@ -767,8 +755,8 @@ export default function ListingDetailPage() {
                                     ? "処理中..."
                                     : "Processing..."
                                   : locale === "ja"
-                                  ? "納品を確認して完了"
-                                  : "Confirm Delivery & Complete"}
+                                  ? "受取りを確認する"
+                                  : "Confirm Receipt"}
                               </Button>
                             </Box>
                           )}
@@ -839,8 +827,8 @@ export default function ListingDetailPage() {
                         <CardContent sx={{ p: 3, textAlign: "center" }}>
                           <Typography sx={{ color: "var(--color-text-muted)", mb: 2 }}>
                             {locale === "ja"
-                              ? "購入するにはウォレットを接続してください"
-                              : "Connect wallet to purchase"}
+                              ? "購入するにはログインしてください"
+                              : "Log in to purchase"}
                           </Typography>
                           <Button
                             variant="contained"
@@ -860,11 +848,11 @@ export default function ListingDetailPage() {
                           >
                             {wallet.isConnecting
                               ? locale === "ja"
-                                ? "接続中..."
-                                : "Connecting..."
+                                ? "ログイン中..."
+                                : "Logging in..."
                               : locale === "ja"
-                              ? "ウォレット接続"
-                              : "Connect Wallet"}
+                              ? "ログイン"
+                              : "Log in"}
                           </Button>
                         </CardContent>
                       </Card>
@@ -1001,7 +989,7 @@ export default function ListingDetailPage() {
                             variant="h6"
                             sx={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--color-text)", mb: 3 }}
                           >
-                            {locale === "ja" ? "イベント履歴" : "Event History"}
+                            {locale === "ja" ? "取引履歴" : "Transaction History"}
                           </Typography>
 
                           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -1014,13 +1002,13 @@ export default function ListingDetailPage() {
                               const getEventLabel = () => {
                                 switch (event.type) {
                                   case "Locked":
-                                    return locale === "ja" ? "購入" : "Purchased";
+                                    return locale === "ja" ? "お支払い" : "Payment";
                                   case "Approved":
-                                    return locale === "ja" ? "承認" : "Approved";
+                                    return locale === "ja" ? "取引開始" : "Transaction Started";
                                   case "Cancelled":
                                     return locale === "ja" ? "キャンセル・返金" : "Cancelled & Refunded";
                                   case "DeliveryConfirmed":
-                                    return locale === "ja" ? "納品確認・完了" : "Delivery Confirmed";
+                                    return locale === "ja" ? "受取確認・取引完了" : "Receipt Confirmed";
                                   case "Completed":
                                     return milestoneName ||
                                       (event.index !== undefined
@@ -1062,7 +1050,7 @@ export default function ListingDetailPage() {
                                     rel="noopener noreferrer"
                                     style={{ color: "var(--color-primary)", fontSize: "0.85rem" }}
                                   >
-                                    {locale === "ja" ? "TX確認" : "View TX"}
+                                    {locale === "ja" ? "詳細" : "Details"}
                                   </a>
                                 </Box>
                               );
