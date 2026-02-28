@@ -40,49 +40,62 @@ export function Header({ onLocaleChange }: HeaderProps) {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
           >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Link
+              href="/"
+              aria-label={locale === "ja" ? "ホームへ戻る" : "Back to home"}
+              style={{ textDecoration: "none", color: "inherit" }}
+            >
               <Box
-                component="img"
-                src="/jpyc-logo.png"
-                alt="JPYC logo"
                 sx={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: '50%',
-                  objectFit: 'cover',
-                  border: '1px solid var(--color-border-accent)',
-                  boxShadow: 'var(--shadow-subtle)',
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 2,
+                  cursor: "pointer",
                 }}
-              />
-              <Box>
-                <Typography
-                  variant="h6"
+              >
+                <Box
+                  component="img"
+                  src="/jpyc-logo.png"
+                  alt="JPYC logo"
                   sx={{
-                    fontFamily: 'var(--font-display)',
-                    fontWeight: 600,
-                    fontSize: { xs: '1rem', sm: '1.125rem' },
-                    color: 'var(--color-text)',
-                    letterSpacing: '0.02em',
-                    lineHeight: 1.2,
+                    width: 40,
+                    height: 40,
+                    borderRadius: '50%',
+                    objectFit: 'cover',
+                    border: '1px solid var(--color-border-accent)',
+                    boxShadow: 'var(--shadow-subtle)',
                   }}
-                >
-                  {t("appTitle")}
-                </Typography>
-                <Typography
-                  variant="body2"
-                  sx={{
-                    fontSize: '0.6875rem',
-                    color: 'var(--color-primary)',
-                    letterSpacing: '0.12em',
-                    textTransform: 'uppercase',
-                    fontWeight: 600,
-                    display: { xs: 'none', sm: 'block' },
-                  }}
-                >
-                  {t("appSubtitle")}
-                </Typography>
+                />
+                <Box>
+                  <Typography
+                    variant="h6"
+                    sx={{
+                      fontFamily: 'var(--font-display)',
+                      fontWeight: 600,
+                      fontSize: { xs: '1rem', sm: '1.125rem' },
+                      color: 'var(--color-text)',
+                      letterSpacing: '0.02em',
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    {t("appTitle")}
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      fontSize: '0.6875rem',
+                      color: 'var(--color-primary)',
+                      letterSpacing: '0.12em',
+                      textTransform: 'uppercase',
+                      fontWeight: 600,
+                      display: { xs: 'none', sm: 'block' },
+                    }}
+                  >
+                    {t("appSubtitle")}
+                  </Typography>
+                </Box>
               </Box>
-            </Box>
+            </Link>
           </motion.div>
 
           {/* Right side: My Page + Language Switcher */}
