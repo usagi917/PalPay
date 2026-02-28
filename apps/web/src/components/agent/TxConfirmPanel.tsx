@@ -9,6 +9,7 @@ import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import CancelIcon from "@mui/icons-material/Cancel";
 import AddCircleIcon from "@mui/icons-material/AddCircle";
 import type { TxPrepareResult, ListingDraft } from "@/lib/agent/types";
+import { useI18n } from "@/lib/i18n";
 import type { ReactElement } from "react";
 
 interface TxConfirmPanelProps {
@@ -19,34 +20,6 @@ interface TxConfirmPanelProps {
   walletConnected: boolean;
 }
 
-const actionLabels: Record<string, { label: string; icon: ReactElement; description: string }> = {
-  createListing: {
-    label: "出品登録",
-    icon: <AddCircleIcon />,
-    description: "新しい出品を登録します",
-  },
-  lock: {
-    label: "お支払い",
-    icon: <LockIcon />,
-    description: "お支払い金額を預け入れます",
-  },
-  approve: {
-    label: "取引開始",
-    icon: <CheckCircleIcon />,
-    description: "取引を開始して工程ごとの支払いをスタートします",
-  },
-  cancel: {
-    label: "キャンセル",
-    icon: <CancelIcon />,
-    description: "取引をキャンセルして資金を返金します",
-  },
-  confirmDelivery: {
-    label: "受取確認",
-    icon: <CheckCircleIcon />,
-    description: "受取りを確認して残金の支払いを完了します",
-  },
-};
-
 export function TxConfirmPanel({
   txPrepare,
   draft,
@@ -54,13 +27,42 @@ export function TxConfirmPanel({
   onCancel,
   walletConnected,
 }: TxConfirmPanelProps) {
+  const { locale, t } = useI18n();
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const actionLabels: Record<string, { label: string; icon: ReactElement; description: string }> = {
+    createListing: {
+      label: t("agentActionCreateListing"),
+      icon: <AddCircleIcon />,
+      description: t("agentActionCreateListingDescription"),
+    },
+    lock: {
+      label: t("agentActionLock"),
+      icon: <LockIcon />,
+      description: t("agentActionLockDescription"),
+    },
+    approve: {
+      label: t("agentActionApprove"),
+      icon: <CheckCircleIcon />,
+      description: t("agentActionApproveDescription"),
+    },
+    cancel: {
+      label: t("agentActionCancel"),
+      icon: <CancelIcon />,
+      description: t("agentActionCancelDescription"),
+    },
+    confirmDelivery: {
+      label: t("agentActionConfirmDelivery"),
+      icon: <CheckCircleIcon />,
+      description: t("agentActionConfirmDeliveryDescription"),
+    },
+  };
 
   const actionInfo = actionLabels[txPrepare.action] || {
     label: txPrepare.action,
     icon: <LockIcon />,
-    description: "処理を実行します",
+    description: t("agentExecuteDescription"),
   };
 
   const handleConfirm = async () => {
@@ -69,7 +71,7 @@ export function TxConfirmPanel({
     try {
       await onConfirm();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "処理に失敗しました");
+      setError(err instanceof Error ? err.message : t("agentProcessFailed"));
     } finally {
       setIsProcessing(false);
     }
@@ -118,7 +120,7 @@ export function TxConfirmPanel({
                 fontWeight: 600,
               }}
             >
-              確認待ち
+              {t("agentAwaitingConfirmation")}
             </Typography>
             <Typography
               sx={{
@@ -150,10 +152,10 @@ export function TxConfirmPanel({
           {/* Action */}
           <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <Typography sx={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
-              操作内容
+              {t("agentActionDetails")}
             </Typography>
             <Chip
-              label={txPrepare.action}
+              label={actionInfo.label}
               size="small"
               sx={{
                 fontSize: "0.75rem",
@@ -168,7 +170,7 @@ export function TxConfirmPanel({
           {txPrepare.escrowAddress && (
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <Typography sx={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
-                取引管理
+                {t("agentEscrowAddressLabel")}
               </Typography>
               <Typography
                 sx={{
@@ -186,7 +188,7 @@ export function TxConfirmPanel({
           {draft && (
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <Typography sx={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
-                金額
+                {t("agentAmountLabel")}
               </Typography>
               <Typography
                 sx={{
@@ -195,7 +197,7 @@ export function TxConfirmPanel({
                   color: "var(--color-primary)",
                 }}
               >
-                ¥{Number(draft.totalAmount).toLocaleString("ja-JP")} JPYC
+                ¥{Number(draft.totalAmount).toLocaleString(locale === "ja" ? "ja-JP" : "en-US")} JPYC
               </Typography>
             </Box>
           )}
@@ -216,7 +218,7 @@ export function TxConfirmPanel({
                 },
               }}
             >
-              支払いの事前承認が自動的に行われます
+              {t("agentAutoApprovalNotice")}
             </Alert>
           )}
         </Stack>
@@ -261,7 +263,7 @@ export function TxConfirmPanel({
               },
             }}
           >
-            キャンセル
+            {t("agentCancel")}
           </Button>
           <Button
             variant="contained"
@@ -291,10 +293,10 @@ export function TxConfirmPanel({
             }}
           >
             {isProcessing
-              ? "処理中..."
+              ? t("agentProcessing")
               : walletConnected
-                ? "確認して実行"
-                : "ログインが必要です"}
+                ? t("agentConfirmAndExecute")
+                : t("agentLoginRequired")}
           </Button>
         </Stack>
 
@@ -308,7 +310,7 @@ export function TxConfirmPanel({
               textAlign: "center",
             }}
           >
-            実行するにはログインしてください
+            {t("agentLoginToExecute")}
           </Typography>
         )}
       </Paper>

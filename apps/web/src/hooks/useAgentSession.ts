@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from "react";
 import { getMetaMaskProvider } from "@/lib/config";
 import { buildAgentAuthMessage } from "@/lib/agent/auth";
+import type { Locale } from "@/lib/locale";
 import type {
   ChatMessage,
   AgentState,
@@ -31,7 +32,7 @@ export interface UseAgentSessionReturn {
   error: string | null;
   nextInputHint: string | null;
   nextQuickActions: Array<{ label: string; message: string }>;
-  sendMessage: (content: string, userAddress?: string) => Promise<void>;
+  sendMessage: (content: string, locale: Locale, userAddress?: string) => Promise<void>;
   appendMessage: (content: string, role?: MessageRole, nextState?: AgentState) => void;
   clearSession: () => void;
   clearTxPrepare: () => void;
@@ -51,8 +52,26 @@ export function useAgentSession(): UseAgentSessionReturn {
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const sendMessage = useCallback(async (content: string, userAddress?: string) => {
+  const sendMessage = useCallback(async (content: string, locale: Locale, userAddress?: string) => {
     if (!content.trim()) return;
+
+    const labels = locale === "ja"
+      ? {
+          loginRequired: "ログインが必要です",
+          metamaskNotFound: "MetaMaskが見つかりません",
+          nonceFailed: "Nonce取得に失敗しました",
+          authFailed: "認証に失敗しました。ログイン状態を確認してください。",
+          errorPrefix: "エラーが発生しました: ",
+          unknownError: "不明なエラーが発生しました",
+        }
+      : {
+          loginRequired: "Login is required.",
+          metamaskNotFound: "MetaMask was not found.",
+          nonceFailed: "Failed to fetch nonce",
+          authFailed: "Authentication failed. Please check your login status.",
+          errorPrefix: "An error occurred: ",
+          unknownError: "Unknown error",
+        };
 
     // Cancel any pending request
     if (abortControllerRef.current) {
@@ -76,11 +95,11 @@ export function useAgentSession(): UseAgentSessionReturn {
     try {
       const buildAuthPayload = async (): Promise<ChatRequest["auth"]> => {
         if (!userAddress) {
-          throw new Error("ログインが必要です");
+          throw new Error(labels.loginRequired);
         }
         const provider = getMetaMaskProvider();
         if (!provider) {
-          throw new Error("MetaMaskが見つかりません");
+          throw new Error(labels.metamaskNotFound);
         }
 
         const nonceResponse = await fetch(`/api/agent/nonce?sessionId=${encodeURIComponent(sessionId)}`, {
@@ -90,7 +109,7 @@ export function useAgentSession(): UseAgentSessionReturn {
 
         if (!nonceResponse.ok) {
           const errorData = await nonceResponse.json().catch(() => ({}));
-          throw new Error(errorData.error || `Nonce取得に失敗しました (HTTP ${nonceResponse.status})`);
+          throw new Error(errorData.error || `${labels.nonceFailed} (HTTP ${nonceResponse.status})`);
         }
 
         const nonceData = await nonceResponse.json() as { nonce: string };
@@ -127,6 +146,7 @@ export function useAgentSession(): UseAgentSessionReturn {
           body: JSON.stringify({
             message: content.trim(),
             sessionId,
+            locale,
             userAddress,
             auth: params.auth,
           }),
@@ -157,7 +177,7 @@ export function useAgentSession(): UseAgentSessionReturn {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         const fallback = response.status === 401 || response.status === 403
-          ? "認証に失敗しました。ログイン状態を確認してください。"
+          ? labels.authFailed
           : `HTTP ${response.status}`;
         throw new Error(errorData.error || fallback);
       }
@@ -186,14 +206,14 @@ export function useAgentSession(): UseAgentSessionReturn {
       if (err instanceof Error && err.name === "AbortError") {
         return;
       }
-      const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      const errorMessage = err instanceof Error ? err.message : labels.unknownError;
       setError(errorMessage);
 
       // Add error message
       const errorMsg: ChatMessage = {
         id: generateMessageId(),
         role: "system",
-        content: `エラーが発生しました: ${errorMessage}`,
+        content: `${labels.errorPrefix}${errorMessage}`,
         timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, errorMsg]);

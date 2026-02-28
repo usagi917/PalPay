@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import PsychologyIcon from "@mui/icons-material/Psychology";
 import BuildIcon from "@mui/icons-material/Build";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import { useI18n } from "@/lib/i18n";
 import type { AgentState, ToolCall } from "@/lib/agent/types";
 
 interface ThinkingPanelProps {
@@ -12,15 +13,6 @@ interface ThinkingPanelProps {
   isLoading: boolean;
   toolCalls?: ToolCall[];
 }
-
-const stateLabels: Record<AgentState, { label: string; description: string }> = {
-  idle: { label: "待機中", description: "メッセージを入力してください" },
-  gathering_info: { label: "情報収集中", description: "必要な情報を取得しています" },
-  draft_ready: { label: "ドラフト作成完了", description: "内容を確認してください" },
-  awaiting_confirm: { label: "確認待ち", description: "ユーザーの確認を待っています" },
-  tx_prepared: { label: "確認待ち", description: "確認をお願いします" },
-  completed: { label: "完了", description: "処理が完了しました" },
-};
 
 const stateChipStyles: Record<string, { background: string; color: string; border: string }> = {
   tx_prepared: {
@@ -39,14 +31,6 @@ const defaultChipStyle = {
   background: "rgba(148, 163, 184, 0.15)",
   color: "var(--color-text-secondary)",
   border: "1px solid rgba(148, 163, 184, 0.3)",
-};
-
-const toolLabels: Record<string, { label: string; icon: string }> = {
-  get_listings: { label: "出品一覧取得", icon: "📋" },
-  get_listing_detail: { label: "出品詳細取得", icon: "🔍" },
-  prepare_listing_draft: { label: "ドラフト作成", icon: "✏️" },
-  get_milestones_for_category: { label: "マイルストーン取得", icon: "📊" },
-  prepare_transaction: { label: "操作準備", icon: "🔐" },
 };
 
 function getToolChipStyle(tc: ToolCall): { background: string; color: string; border: string } {
@@ -75,6 +59,22 @@ function getToolChipStyle(tc: ToolCall): { background: string; color: string; bo
 }
 
 export function ThinkingPanel({ state, isLoading, toolCalls }: ThinkingPanelProps) {
+  const { t } = useI18n();
+  const stateLabels: Record<AgentState, { label: string; description: string }> = {
+    idle: { label: t("agentStateIdleLabel"), description: t("agentStateIdleDescription") },
+    gathering_info: { label: t("agentStateGatheringLabel"), description: t("agentStateGatheringDescription") },
+    draft_ready: { label: t("agentStateDraftReadyLabel"), description: t("agentStateDraftReadyDescription") },
+    awaiting_confirm: { label: t("agentStateAwaitingConfirmLabel"), description: t("agentStateAwaitingConfirmDescription") },
+    tx_prepared: { label: t("agentStateTxPreparedLabel"), description: t("agentStateTxPreparedDescription") },
+    completed: { label: t("agentStateCompletedLabel"), description: t("agentStateCompletedDescription") },
+  };
+  const toolLabels: Record<string, { label: string; icon: string }> = {
+    get_listings: { label: t("agentToolGetListings"), icon: "📋" },
+    get_listing_detail: { label: t("agentToolGetListingDetail"), icon: "🔍" },
+    prepare_listing_draft: { label: t("agentToolPrepareListingDraft"), icon: "✏️" },
+    get_milestones_for_category: { label: t("agentToolGetMilestones"), icon: "📊" },
+    prepare_transaction: { label: t("agentToolPrepareTransaction"), icon: "🔐" },
+  };
   const stateInfo = stateLabels[state] || stateLabels.idle;
   const recentToolCalls = toolCalls?.slice(-3) || [];
 
@@ -109,7 +109,7 @@ export function ThinkingPanel({ state, isLoading, toolCalls }: ThinkingPanelProp
             color: "var(--color-text)",
           }}
         >
-          Agent Thinking
+          {t("agentThinkingTitle")}
         </Typography>
         <Chip
           label={stateInfo.label}
@@ -172,7 +172,7 @@ export function ThinkingPanel({ state, isLoading, toolCalls }: ThinkingPanelProp
                   letterSpacing: "0.05em",
                 }}
               >
-                Tool Use
+                {t("agentToolUse")}
               </Typography>
               <Stack direction="row" spacing={0.5} flexWrap="wrap" gap={0.5}>
                 {recentToolCalls.map((tc, idx) => {
