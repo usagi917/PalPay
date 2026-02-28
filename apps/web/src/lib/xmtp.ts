@@ -280,9 +280,23 @@ export async function canMessage(client: Client, address: string): Promise<boole
       identifierKind: "Ethereum",
     };
     const canMsg = await client.canMessage([identifier]);
-    return canMsg.get(address.toLowerCase()) ?? false;
-  } catch {
+    const direct =
+      canMsg.get(address) ??
+      canMsg.get(address.toLowerCase()) ??
+      canMsg.get(address.toUpperCase());
+
+    if (typeof direct === "boolean") {
+      return direct;
+    }
+
+    if (canMsg.size === 1) {
+      const first = canMsg.values().next().value;
+      return typeof first === "boolean" ? first : false;
+    }
+
     return false;
+  } catch (error) {
+    throw new Error(`XMTP canMessage check failed: ${getErrorText(error)}`);
   }
 }
 
@@ -309,13 +323,15 @@ export function isTextMessage(message: DecodedMessage): boolean {
  */
 export function formatMessage(
   message: DecodedMessage,
-  selfAddress: string
+  selfInboxId: string
 ): XmtpMessage {
   return {
     id: message.id,
     senderAddress: message.senderInboxId || "",
     content: typeof message.content === "string" ? message.content : JSON.stringify(message.content),
     sent: message.sentAtNs ? new Date(Number(message.sentAtNs) / 1_000_000) : new Date(),
-    isSelf: message.senderInboxId?.toLowerCase() === selfAddress.toLowerCase(),
+    isSelf:
+      !!selfInboxId &&
+      message.senderInboxId?.toLowerCase() === selfInboxId.toLowerCase(),
   };
 }

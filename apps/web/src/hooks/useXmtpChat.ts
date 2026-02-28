@@ -54,7 +54,7 @@ export function useXmtpChat({
 
   const clientRef = useRef<Client | null>(null);
   const conversationRef = useRef<Conversation | null>(null);
-  const selfAddressRef = useRef<string>("");
+  const selfInboxIdRef = useRef<string>("");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const streamRef = useRef<any>(null);
 
@@ -79,7 +79,17 @@ export function useXmtpChat({
       throw new Error("ログインが必要です");
     }
 
-    const address = accounts[0];
+    const providerWithSelected = provider as { selectedAddress?: unknown };
+    const selectedAddress =
+      typeof providerWithSelected.selectedAddress === "string"
+        ? providerWithSelected.selectedAddress
+        : null;
+
+    const address =
+      selectedAddress &&
+      accounts.some((account) => account.toLowerCase() === selectedAddress.toLowerCase())
+        ? selectedAddress
+        : accounts[0];
     const signMessage = async (message: string): Promise<string> => {
       return await provider.request({
         method: "personal_sign",
@@ -88,6 +98,26 @@ export function useXmtpChat({
     };
 
     return { address, signMessage };
+  }, []);
+
+  // Reconnect XMTP when wallet account changes in MetaMask
+  useEffect(() => {
+    const provider = getMetaMaskProvider();
+    if (!provider || typeof provider.on !== "function") {
+      return;
+    }
+
+    const handleAccountsChanged = () => {
+      setRetryNonce((prev) => prev + 1);
+    };
+
+    provider.on("accountsChanged", handleAccountsChanged);
+
+    return () => {
+      if (typeof provider.removeListener === "function") {
+        provider.removeListener("accountsChanged", handleAccountsChanged);
+      }
+    };
   }, []);
 
   // Initialize XMTP client and conversation
@@ -104,13 +134,12 @@ export function useXmtpChat({
       setError(null);
       setErrorKind(null);
       setCanMessagePeer(false);
+      setMessages([]);
       closeStream();
 
       try {
         const { address, signMessage } = await getWalletContext();
         if (!isMounted) return;
-
-        selfAddressRef.current = address;
 
         // Create XMTP client
         const client = await createXmtpClient(address, signMessage);
@@ -118,6 +147,7 @@ export function useXmtpChat({
         if (!isMounted) return;
 
         clientRef.current = client;
+        selfInboxIdRef.current = client.inboxId || "";
 
         // Check if peer can receive messages
         const canMsg = await canMessage(client, peerAddress);
@@ -146,7 +176,7 @@ export function useXmtpChat({
         setMessages(
           existingMessages
             .filter(isTextMessage)
-            .map((msg) => formatMessage(msg, address))
+            .map((msg) => formatMessage(msg, selfInboxIdRef.current))
         );
 
         setIsReady(true);
@@ -166,7 +196,7 @@ export function useXmtpChat({
             if (prev.some((m) => m.id === message.id)) {
               return prev;
             }
-            return [...prev, formatMessage(message, selfAddressRef.current)];
+            return [...prev, formatMessage(message, selfInboxIdRef.current)];
           });
         }
       } catch (err) {
@@ -176,7 +206,7 @@ export function useXmtpChat({
             errorKind: installationLimit ? "installation_limit" : "unknown",
             escrowAddress,
             peerAddress,
-            selfAddress: selfAddressRef.current || null,
+            selfInboxId: selfInboxIdRef.current || null,
           });
           setErrorKind(installationLimit ? "installation_limit" : null);
           setError(formatXmtpError(err) || "XMTPの初期化に失敗しました");
@@ -199,7 +229,11 @@ export function useXmtpChat({
 
   // Send message
   const sendMessage = useCallback(async (content: string) => {
-    if (!conversationRef.current || !content.trim()) {
+    if (!content.trim()) {
+      return;
+    }
+    if (!conversationRef.current) {
+      setError("チャットの準備ができていません。接続完了後に再度お試しください。");
       return;
     }
 
@@ -209,6 +243,14 @@ export function useXmtpChat({
 
     try {
       await conversationRef.current.send(content.trim());
+
+      // Keep UI in sync even if stream delivery is delayed or temporarily interrupted.
+      const refreshedMessages = await conversationRef.current.messages();
+      setMessages(
+        refreshedMessages
+          .filter(isTextMessage)
+          .map((msg) => formatMessage(msg, selfInboxIdRef.current))
+      );
     } catch (err) {
       console.error("Send message error:", err);
       setError(err instanceof Error ? err.message : "メッセージの送信に失敗しました");

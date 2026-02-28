@@ -238,16 +238,6 @@ export function categoryToType(category: string): number {
   }
 }
 
-// categoryType (uint8) からカテゴリ名への変換
-export function typeToCategory(categoryType: number): string {
-  switch (categoryType) {
-    case 0: return "wagyu";
-    case 1: return "sake";
-    case 2: return "craft";
-    default: return "other";
-  }
-}
-
 // getMilestoneName is now imported from ./constants
 export { getMilestoneName } from "./constants";
 
@@ -597,102 +587,10 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
     [escrowAddress, onSuccess]
   );
 
-  // V6: Approve function (buyer approves to start milestones)
-  const approve = useCallback(async () => {
-    if (!escrowAddress) return;
-
-    setIsLoading(true);
-    setError(null);
-    setTxHash(null);
-    setTxStep("signing");
-
-    try {
-      const provider = getMetaMaskProvider();
-      if (!provider) throw new Error("ログインが必要です");
-      await ensureWalletChain(provider);
-      const wallet = createWallet(provider);
-      const client = createClient();
-      if (!wallet) throw new Error("ログインが必要です");
-
-      const [account] = await wallet.getAddresses();
-
-      const hash = await wallet.writeContract({
-        address: escrowAddress,
-        abi: ESCROW_ABI,
-        functionName: "approve",
-        args: [],
-        account,
-      });
-
-      setTxStep("confirming");
-      setTxHash(hash);
-      const receipt = await client.waitForTransactionReceipt({ hash });
-      if (receipt.status !== "success") {
-        throw new Error("取引開始の処理に失敗しました");
-      }
-      setTxStep("success");
-      onSuccess?.();
-    } catch (err) {
-      setTxStep("error");
-      setError(err instanceof Error ? err.message : "取引開始に失敗しました");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [escrowAddress, onSuccess]);
-
-  // V6: Cancel function (buyer cancels with full refund, LOCKED only)
-  const cancel = useCallback(async () => {
-    if (!escrowAddress) return;
-
-    setIsLoading(true);
-    setError(null);
-    setTxHash(null);
-    setTxStep("signing");
-
-    try {
-      const provider = getMetaMaskProvider();
-      if (!provider) throw new Error("ログインが必要です");
-      await ensureWalletChain(provider);
-      const wallet = createWallet(provider);
-      const client = createClient();
-      if (!wallet) throw new Error("ログインが必要です");
-
-      const [account] = await wallet.getAddresses();
-
-      const hash = await wallet.writeContract({
-        address: escrowAddress,
-        abi: ESCROW_ABI,
-        functionName: "cancel",
-        args: [],
-        account,
-      });
-
-      setTxStep("confirming");
-      setTxHash(hash);
-      const receipt = await client.waitForTransactionReceipt({ hash });
-      if (receipt.status !== "success") {
-        throw new Error("キャンセル処理に失敗しました");
-      }
-      setTxStep("success");
-      onSuccess?.();
-    } catch (err) {
-      setTxStep("error");
-      setError(err instanceof Error ? err.message : "キャンセルに失敗しました");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [escrowAddress, onSuccess]);
-
-  // V6: Confirm Delivery function (buyer confirms final milestone)
-  const confirmDelivery = useCallback(
-    async (evidenceHash?: string) => {
+  const makeAction = useCallback(
+    (functionName: "approve" | "cancel" | "confirmDelivery", args: unknown[], errorMsg: string) => async () => {
       if (!escrowAddress) return;
-
-      setIsLoading(true);
-      setError(null);
-      setTxHash(null);
-      setTxStep("signing");
-
+      setIsLoading(true); setError(null); setTxHash(null); setTxStep("signing");
       try {
         const provider = getMetaMaskProvider();
         if (!provider) throw new Error("ログインが必要です");
@@ -700,37 +598,33 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
         const wallet = createWallet(provider);
         const client = createClient();
         if (!wallet) throw new Error("ログインが必要です");
-
         const [account] = await wallet.getAddresses();
-
-        const evidenceBytes32 = evidenceHash
-          ? (evidenceHash.startsWith("0x") ? evidenceHash : `0x${evidenceHash}`)
-          : "0x0000000000000000000000000000000000000000000000000000000000000000";
-
         const hash = await wallet.writeContract({
-          address: escrowAddress,
-          abi: ESCROW_ABI,
-          functionName: "confirmDelivery",
-          args: [evidenceBytes32 as `0x${string}`],
-          account,
+          address: escrowAddress, abi: ESCROW_ABI, functionName, args: args as never, account,
         });
-
-        setTxStep("confirming");
-        setTxHash(hash);
+        setTxStep("confirming"); setTxHash(hash);
         const receipt = await client.waitForTransactionReceipt({ hash });
-        if (receipt.status !== "success") {
-          throw new Error("受取確認の処理に失敗しました");
-        }
-        setTxStep("success");
-        onSuccess?.();
+        if (receipt.status !== "success") throw new Error(errorMsg);
+        setTxStep("success"); onSuccess?.();
       } catch (err) {
         setTxStep("error");
-        setError(err instanceof Error ? err.message : "受取確認に失敗しました");
-      } finally {
-        setIsLoading(false);
-      }
+        setError(err instanceof Error ? err.message : errorMsg);
+      } finally { setIsLoading(false); }
+    }, [escrowAddress, onSuccess]
+  );
+
+  const approve = useMemo(() => makeAction("approve", [], "取引開始に失敗しました"), [makeAction]);
+  const cancel = useMemo(() => makeAction("cancel", [], "キャンセルに失敗しました"), [makeAction]);
+
+  // confirmDelivery has unique evidenceHash logic
+  const confirmDelivery = useCallback(
+    async (evidenceHash?: string) => {
+      const evidenceBytes32 = evidenceHash
+        ? (evidenceHash.startsWith("0x") ? evidenceHash : `0x${evidenceHash}`)
+        : "0x0000000000000000000000000000000000000000000000000000000000000000";
+      await makeAction("confirmDelivery", [evidenceBytes32 as `0x${string}`], "受取確認に失敗しました")();
     },
-    [escrowAddress, onSuccess]
+    [makeAction]
   );
 
   return { lock, submit, approve, cancel, confirmDelivery, isLoading, error, txHash, txStep, resetState };

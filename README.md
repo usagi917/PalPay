@@ -29,7 +29,7 @@
 
 ```text
 apps/web/    Next.js 15 フロントエンド + API routes
-contracts/   Solidity コントラクト (ListingFactoryV5/V6, MockERC20)
+contracts/   Solidity コントラクト (ListingFactoryV6, MockERC20)
 ```
 
 ## 前提条件

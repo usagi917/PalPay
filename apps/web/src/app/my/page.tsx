@@ -49,8 +49,6 @@ export default function MyPage() {
   const { asProducer, asBuyer, stats, isLoading, error } = useMyListings(wallet.address);
   const { symbol, decimals } = useTokenInfo();
 
-  // const { t } = i18nValue; // 現在未使用
-
   // Filter listings based on tab and status
   const filteredListings = useMemo(() => {
     const listings = activeTab === "producer" ? asProducer : asBuyer;

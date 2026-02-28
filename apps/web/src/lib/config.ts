@@ -31,8 +31,6 @@ export const config = {
   factoryAddress: (process.env.NEXT_PUBLIC_FACTORY_ADDRESS || "") as Address,
   tokenAddress: (process.env.NEXT_PUBLIC_TOKEN_ADDRESS || "") as Address,
   blockExplorerTxBase: process.env.NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE || "",
-  // Legacy: for backward compatibility
-  contractAddress: (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "") as Address,
 };
 
 export const getChain = (): Chain => {
@@ -57,15 +55,6 @@ export const isMobile = (): boolean => {
   return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
     navigator.userAgent
   );
-};
-
-// MetaMaskアプリ内ブラウザかどうか判定
-export const isMetaMaskBrowser = (): boolean => {
-  if (typeof window === "undefined" || !window.ethereum) {
-    return false;
-  }
-  const ethereum = window.ethereum as unknown;
-  return isEthereumProvider(ethereum) && !!ethereum.isMetaMask;
 };
 
 // MetaMask Deep Linkを開く（モバイルブラウザ用）

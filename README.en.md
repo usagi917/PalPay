@@ -29,7 +29,7 @@
 
 ```text
 apps/web/    Next.js 15 frontend + API routes
-contracts/   Solidity contracts (ListingFactoryV5/V6, MockERC20)
+contracts/   Solidity contracts (ListingFactoryV6, MockERC20)
 docs/        Submission docs, diagrams, and demo assets
 ```
 
