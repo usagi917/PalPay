@@ -1,5 +1,5 @@
 import { createPublicClient, http, type Address, formatUnits, type Chain } from "viem";
-import { polygonAmoy, baseSepolia, base, sepolia } from "viem/chains";
+import { polygonAmoy, baseSepolia, base, sepolia, avalancheFuji } from "viem/chains";
 import { FACTORY_ABI, ESCROW_ABI } from "@/lib/abi";
 import { MILESTONE_NAMES } from "@/lib/constants";
 import {
@@ -34,14 +34,15 @@ function normalizeCategory(category?: string): CategoryType {
 
 // Get chain from environment
 function getChain(): Chain {
-  const chainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "80002");
+  const chainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "43113");
   const chains: Record<number, Chain> = {
     11155111: sepolia,
     84532: baseSepolia,
     8453: base,
     80002: polygonAmoy,
+    43113: avalancheFuji,
   };
-  return chains[chainId] || polygonAmoy;
+  return chains[chainId] || avalancheFuji;
 }
 
 // Create public client for reading blockchain

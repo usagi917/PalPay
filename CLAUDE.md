@@ -145,8 +145,8 @@ useMyListings(address)
 
 ```bash
 # 必須
-NEXT_PUBLIC_RPC_URL=             # RPCエンドポイント（Sepolia/Base Sepolia/Polygon Amoy）
-NEXT_PUBLIC_CHAIN_ID=11155111    # チェーンID
+NEXT_PUBLIC_RPC_URL=             # RPCエンドポイント（Sepolia/Base Sepolia/Polygon Amoy/Avalanche Fuji）
+NEXT_PUBLIC_CHAIN_ID=43113       # チェーンID（デフォルト: Avalanche Fuji）
 NEXT_PUBLIC_FACTORY_ADDRESS=     # ListingFactoryV6アドレス
 NEXT_PUBLIC_TOKEN_ADDRESS=       # ERC20トークンアドレス
 
@@ -156,7 +156,7 @@ GCP_LOCATION=      # Vertex AIリージョン
 GEMINI_MODEL=gemini-2.5-flash
 
 # オプション
-NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE=  # 例: https://sepolia.etherscan.io/tx/
+NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE=  # 例: https://testnet.snowtrace.io/tx/
 NEXT_PUBLIC_XMTP_ENV=dev             # XMTP環境（dev または production）
 ```
 
@@ -191,3 +191,17 @@ gcloud run deploy wagyu-escrow \
 ```
 
 **注意**: `NEXT_PUBLIC_*` 環境変数はビルド時に埋め込まれる。Cloud Buildの `--substitutions` か `.env.production` で対応。
+
+## Avalanche Fuji テストネット情報
+
+**現在のデフォルトチェーン**: Avalanche Fuji（Avalanche Build Games 2026 対応）
+
+| 項目 | 値 |
+|------|-----|
+| Chain ID | `43113` |
+| RPC URL | `https://api.avax-test.network/ext/bc/C/rpc` |
+| Block Explorer | `https://testnet.snowtrace.io` |
+| Faucet | `https://faucet.avax.network/` |
+| Native Token | AVAX (18 decimals) |
+| EVM互換 | 完全互換（Coreth） |
+| viem チェーン名 | `avalancheFuji` (from `viem/chains`) |

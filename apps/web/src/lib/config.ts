@@ -1,5 +1,5 @@
 import { http, createPublicClient, createWalletClient, custom, type Address, type Chain } from "viem";
-import { sepolia, baseSepolia, polygonAmoy, base } from "viem/chains";
+import { sepolia, baseSepolia, polygonAmoy, base, avalancheFuji } from "viem/chains";
 
 type EthereumProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
@@ -20,12 +20,13 @@ export const SUPPORTED_CHAINS = Object.freeze({
   [baseSepolia.id]: baseSepolia as Chain,
   [base.id]: base as Chain,
   [polygonAmoy.id]: polygonAmoy as Chain,
+  [avalancheFuji.id]: avalancheFuji as Chain,
 });
 
 // Environment variables
 export const config = {
   rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || "",
-  chainId: parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "80002"),
+  chainId: parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "43113"),
   // v2: Factory address (replaces single contract address)
   factoryAddress: (process.env.NEXT_PUBLIC_FACTORY_ADDRESS || "") as Address,
   tokenAddress: (process.env.NEXT_PUBLIC_TOKEN_ADDRESS || "") as Address,
@@ -37,7 +38,7 @@ export const config = {
 export const getChain = (): Chain => {
   // Ensure config.chainId is of a valid type and guard against type errors
   const chainId = config.chainId as keyof typeof SUPPORTED_CHAINS;
-  return SUPPORTED_CHAINS[chainId] || polygonAmoy;
+  return SUPPORTED_CHAINS[chainId] || avalancheFuji;
 };
 
 export const createClient = () => {
