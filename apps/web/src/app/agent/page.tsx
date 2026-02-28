@@ -7,7 +7,7 @@ import LogoutIcon from "@mui/icons-material/Logout";
 import { parseUnits, type Address } from "viem";
 import { Header } from "@/components/Header";
 import { AgentChat } from "@/components/agent";
-import { I18nContext, type Locale, translations } from "@/lib/i18n";
+import { I18nContext, type Locale, type TranslationKey, translations } from "@/lib/i18n";
 import { createClient, createWallet, config, ensureWalletChain, getMetaMaskProvider } from "@/lib/config";
 import { FACTORY_ABI, ERC20_ABI, ESCROW_ABI } from "@/lib/abi";
 
@@ -17,11 +17,17 @@ function WalletButton({
   onConnect,
   onDisconnect,
   isConnecting,
+  loginLabel,
+  loggingInLabel,
+  logoutLabel,
 }: {
   address?: Address;
   onConnect: () => void;
   onDisconnect: () => void;
   isConnecting: boolean;
+  loginLabel: string;
+  loggingInLabel: string;
+  logoutLabel: string;
 }) {
   if (address) {
     return (
@@ -49,7 +55,7 @@ function WalletButton({
             },
           }}
         >
-          ログアウト
+          {logoutLabel}
         </Button>
       </Box>
     );
@@ -70,7 +76,7 @@ function WalletButton({
         },
       }}
     >
-      {isConnecting ? "ログイン中..." : "ログイン"}
+      {isConnecting ? loggingInLabel : loginLabel}
     </Button>
   );
 }
@@ -79,6 +85,7 @@ function AgentPageContent() {
   const [userAddress, setUserAddress] = useState<Address | undefined>();
   const [isConnecting, setIsConnecting] = useState(false);
   const [locale, setLocale] = useState<Locale>("ja");
+  const t = useCallback((key: TranslationKey) => translations[locale][key] as string, [locale]);
 
   // Check if already connected
   useEffect(() => {
@@ -101,7 +108,7 @@ function AgentPageContent() {
   const handleConnect = useCallback(async () => {
     const provider = getMetaMaskProvider();
     if (!provider) {
-      alert("MetaMaskアプリが必要です");
+      alert(t("noMetaMask"));
       return;
     }
 
@@ -116,7 +123,7 @@ function AgentPageContent() {
     } finally {
       setIsConnecting(false);
     }
-  }, []);
+  }, [t]);
 
   const handleDisconnect = useCallback(() => {
     setUserAddress(undefined);
@@ -127,32 +134,32 @@ function AgentPageContent() {
     async (action: string, params?: Record<string, unknown>) => {
       const provider = getMetaMaskProvider();
       if (!provider || !userAddress) {
-        throw new Error("ログインが必要です");
+        throw new Error(t("agentLoginRequired"));
       }
       await ensureWalletChain(provider);
       const wallet = createWallet(provider);
       const client = createClient();
       if (!wallet) {
-        throw new Error("ログインが必要です");
+        throw new Error(t("agentLoginRequired"));
       }
 
       const [account] = await wallet.getAddresses();
 
       function requireEscrowAddress(): Address {
         if (!params?.escrowAddress) {
-          throw new Error("取引アドレスが不足しています");
+          throw new Error(t("agentMissingEscrowAddress"));
         }
         return params.escrowAddress as Address;
       }
 
       switch (action) {
         case "createListing": {
-          if (!params) throw new Error("パラメータが不足しています");
+          if (!params) throw new Error(t("agentMissingParams"));
           if (typeof params.categoryType !== "number") {
-            throw new Error("カテゴリ情報が不足しています");
+            throw new Error(t("agentMissingCategory"));
           }
           if (typeof params.totalAmount !== "string" || !params.totalAmount.trim()) {
-            throw new Error("金額情報が不足しています");
+            throw new Error(t("agentMissingAmount"));
           }
 
           const amountWei = parseUnits(params.totalAmount as string, 18);
@@ -171,7 +178,7 @@ function AgentPageContent() {
           });
           const receipt = await client.waitForTransactionReceipt({ hash });
           if (receipt.status !== "success") {
-            throw new Error("出品登録に失敗しました");
+            throw new Error(t("agentCreateListingFailed"));
           }
           console.log("Create listing tx:", hash);
           return;
@@ -201,7 +208,7 @@ function AgentPageContent() {
           });
           const approveReceipt = await client.waitForTransactionReceipt({ hash: approveHash });
           if (approveReceipt.status !== "success") {
-            throw new Error("支払い準備に失敗しました");
+            throw new Error(t("agentApprovePaymentFailed"));
           }
           console.log("Approve tx:", approveHash);
 
@@ -214,7 +221,7 @@ function AgentPageContent() {
           });
           const lockReceipt = await client.waitForTransactionReceipt({ hash: lockHash });
           if (lockReceipt.status !== "success") {
-            throw new Error("お支払い処理に失敗しました");
+            throw new Error(t("agentLockFailed"));
           }
           console.log("Lock tx:", lockHash);
           return;
@@ -230,7 +237,7 @@ function AgentPageContent() {
           });
           const receipt = await client.waitForTransactionReceipt({ hash });
           if (receipt.status !== "success") {
-            throw new Error("取引開始の処理に失敗しました");
+            throw new Error(t("agentApproveFailed"));
           }
           console.log("Approve tx:", hash);
           return;
@@ -246,7 +253,7 @@ function AgentPageContent() {
           });
           const receipt = await client.waitForTransactionReceipt({ hash });
           if (receipt.status !== "success") {
-            throw new Error("キャンセル処理に失敗しました");
+            throw new Error(t("agentCancelFailed"));
           }
           console.log("Cancel tx:", hash);
           return;
@@ -263,17 +270,17 @@ function AgentPageContent() {
           });
           const receipt = await client.waitForTransactionReceipt({ hash });
           if (receipt.status !== "success") {
-            throw new Error("受取確認の処理に失敗しました");
+            throw new Error(t("agentConfirmDeliveryFailed"));
           }
           console.log("Confirm delivery tx:", hash);
           return;
         }
 
         default:
-          throw new Error(`不明なアクション: ${action}`);
+          throw new Error(`${t("agentUnknownAction")}: ${action}`);
       }
     },
-    [userAddress]
+    [t, userAddress]
   );
 
   return (
@@ -281,7 +288,7 @@ function AgentPageContent() {
       value={{
         locale,
         setLocale,
-        t: (key) => translations[locale][key] || key,
+        t,
       }}
     >
       <Box
@@ -317,6 +324,9 @@ function AgentPageContent() {
               onConnect={handleConnect}
               onDisconnect={handleDisconnect}
               isConnecting={isConnecting}
+              loginLabel={t("connectWallet")}
+              loggingInLabel={t("connecting")}
+              logoutLabel={t("disconnect")}
             />
           </Box>
 

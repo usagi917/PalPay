@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
 import { useAgentSession } from "@/hooks/useAgentSession";
+import { useI18n } from "@/lib/i18n";
 import { MessageList } from "./MessageList";
 import { MessageInput } from "./MessageInput";
 import { ThinkingPanel } from "./ThinkingPanel";
@@ -20,6 +21,7 @@ interface AgentChatProps {
 
 export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentChatProps) {
   const authRequired = process.env.NEXT_PUBLIC_AGENT_AUTH_REQUIRED !== "false";
+  const { locale, t } = useI18n();
   const {
     messages,
     state,
@@ -46,27 +48,27 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
 
   const handleSend = useCallback(
     (content: string) => {
-      sendMessage(content, userAddress);
+      sendMessage(content, locale, userAddress);
     },
-    [sendMessage, userAddress]
+    [locale, sendMessage, userAddress]
   );
 
   const getSuccessMessage = useCallback((action: string): string => {
     switch (action) {
       case "createListing":
-        return "出品が完了しました。";
+        return t("agentSuccessCreateListing");
       case "lock":
-        return "お支払いが完了しました。";
+        return t("agentSuccessLock");
       case "approve":
-        return "取引が開始しました。";
+        return t("agentSuccessApprove");
       case "cancel":
-        return "キャンセルが完了しました。";
+        return t("agentSuccessCancel");
       case "confirmDelivery":
-        return "受取確認が完了しました。";
+        return t("agentSuccessConfirmDelivery");
       default:
-        return "処理が完了しました。";
+        return t("agentSuccessDefault");
     }
-  }, []);
+  }, [t]);
 
   const handleTxConfirm = useCallback(async () => {
     if (!txPrepare) return;
@@ -82,11 +84,11 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
       clearTxPrepare();
       appendMessage(getSuccessMessage(txPrepare.action), "assistant", "completed");
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "処理に失敗しました";
-      appendMessage(`エラーが発生しました: ${errorMessage}`, "system");
+      const errorMessage = err instanceof Error ? err.message : t("agentProcessFailed");
+      appendMessage(`${t("agentErrorPrefix")} ${errorMessage}`, "system");
       throw err;
     }
-  }, [txPrepare, onExecuteTx, clearTxPrepare, appendMessage, getSuccessMessage]);
+  }, [txPrepare, onExecuteTx, clearTxPrepare, appendMessage, getSuccessMessage, t]);
 
   return (
     <Box
@@ -133,7 +135,7 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
               color: "var(--color-text)",
             }}
           >
-            B2B Escrow Agent
+            {t("agentTitle")}
           </Typography>
           <Typography
             sx={{
@@ -142,11 +144,11 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
             }}
           >
             {walletConnected
-              ? `ID: ${userAddress?.slice(0, 6)}...${userAddress?.slice(-4)}`
-              : "未ログイン"}
+              ? `${t("agentIdLabel")}: ${userAddress?.slice(0, 6)}...${userAddress?.slice(-4)}`
+              : t("agentNotLoggedIn")}
           </Typography>
         </Box>
-        <Tooltip title="会話をリセット">
+        <Tooltip title={t("agentResetConversation")}>
           <IconButton
             onClick={clearSession}
             size="small"
@@ -194,8 +196,8 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
             disabled={isLoading || (authRequired && !walletConnected)}
             placeholder={
               !walletConnected
-                ? "ログインしてください"
-                : `メッセージを入力...（例：${nextInputHint || "和牛を売りたい"}）`
+                ? t("agentPleaseLogin")
+                : `${t("agentMessageInputPlaceholder")} (${t("agentExampleLabel")}: ${nextInputHint || t("agentDefaultInputHint")})`
             }
             quickActions={nextQuickActions.length > 0 ? nextQuickActions : undefined}
           />
@@ -247,7 +249,7 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
                     mb: 1,
                   }}
                 >
-                  AIアシスタントにお任せください
+                  {t("agentEmptyTitle")}
                 </Typography>
                 <Typography
                   sx={{
@@ -256,8 +258,9 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
                     lineHeight: 1.6,
                   }}
                 >
-                  「和牛を売りたい」「出品を見せて」など
-                  自然な言葉で話しかけてください
+                  {t("agentEmptyDescriptionLine1")}
+                  <br />
+                  {t("agentEmptyDescriptionLine2")}
                 </Typography>
               </Paper>
             </motion.div>

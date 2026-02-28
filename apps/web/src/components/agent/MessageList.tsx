@@ -10,6 +10,7 @@ import BuildIcon from "@mui/icons-material/Build";
 import type { ChatMessage, ListingDraft, TxPrepareResult } from "@/lib/agent/types";
 import { TxConfirmPanel } from "./TxConfirmPanel";
 import { DraftPreview } from "./DraftPreview";
+import { useI18n } from "@/lib/i18n";
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -22,12 +23,13 @@ interface MessageListProps {
 }
 
 function ToolCallBadge({ name }: { name: string }) {
+  const { t } = useI18n();
   const toolLabels: Record<string, string> = {
-    get_listings: "出品一覧取得",
-    get_listing_detail: "出品詳細取得",
-    prepare_listing_draft: "ドラフト作成",
-    get_milestones_for_category: "マイルストーン取得",
-    prepare_transaction: "TX準備",
+    get_listings: t("agentToolGetListings"),
+    get_listing_detail: t("agentToolGetListingDetail"),
+    prepare_listing_draft: t("agentToolPrepareListingDraft"),
+    get_milestones_for_category: t("agentToolGetMilestones"),
+    prepare_transaction: t("agentToolPrepareTransaction"),
   };
 
   return (
@@ -68,6 +70,7 @@ const roleStyles: Record<string, { icon: typeof PersonIcon; bg: string; border: 
 };
 
 function MessageBubble({ message }: { message: ChatMessage }) {
+  const { locale } = useI18n();
   const isUser = message.role === "user";
   const style = roleStyles[message.role] || roleStyles.assistant;
   const Icon = style.icon;
@@ -146,7 +149,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
               textAlign: isUser ? "right" : "left",
             }}
           >
-            {new Date(message.timestamp).toLocaleTimeString("ja-JP", {
+            {new Date(message.timestamp).toLocaleTimeString(locale === "ja" ? "ja-JP" : "en-US", {
               hour: "2-digit",
               minute: "2-digit",
             })}

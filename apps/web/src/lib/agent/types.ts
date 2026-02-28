@@ -1,4 +1,5 @@
 import type { Address } from "viem";
+import type { Locale } from "@/lib/locale";
 
 // Agent state machine
 export type AgentState =
@@ -82,6 +83,7 @@ export interface AgentSession {
 export interface ChatRequest {
   message: string;
   sessionId: string;
+  locale: Locale;
   userAddress?: string;
   auth?: {
     address: string;

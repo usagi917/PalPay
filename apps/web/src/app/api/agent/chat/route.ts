@@ -3,9 +3,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAddress, verifyMessage, type Address } from "viem";
 import { createChat } from "@/lib/agent/gemini";
 import { executeTool } from "@/lib/agent/tools";
-import { SYSTEM_PROMPT } from "@/lib/agent/prompts";
+import { SYSTEM_PROMPTS } from "@/lib/agent/prompts";
 import { buildAgentAuthMessage } from "@/lib/agent/auth";
 import { checkRateLimit, consumeNonce, isValidSessionId } from "@/lib/server/agentSecurity";
+import type { Locale } from "@/lib/locale";
 import type {
   ChatRequest,
   ChatResponse,
@@ -41,193 +42,326 @@ const RATE_LIMIT_WINDOW_MS = Number(process.env.AGENT_RATE_LIMIT_WINDOW_MS || 60
 const AUTH_DISABLED = process.env.AGENT_AUTH_DISABLED === "true";
 const AUTH_TIMESTAMP_SKEW_MS = Number(process.env.AGENT_AUTH_SKEW_MS || 5 * 60_000);
 const AUTH_TOKEN_TTL_MS = Number(process.env.AGENT_AUTH_TOKEN_TTL_MS || 30 * 60_000);
-const DEFAULT_INPUT_HINT = "和牛を売りたい";
-const DEFAULT_QUICK_ACTIONS = [
-  { label: "和牛を売りたい", message: "神戸牛A5ランクを50万円で売りたいです" },
-  { label: "出品を見る", message: "現在の出品一覧を見せてください" },
-  { label: "日本酒を売りたい", message: "純米大吟醸を10万円で売りたいです" },
-];
+const DEFAULT_INPUT_HINT: Record<Locale, string> = {
+  ja: "和牛を売りたい",
+  en: "I want to sell wagyu",
+};
+const DEFAULT_QUICK_ACTIONS: Record<Locale, Array<{ label: string; message: string }>> = {
+  ja: [
+    { label: "和牛を売りたい", message: "神戸牛A5ランクを50万円で売りたいです" },
+    { label: "出品を見る", message: "現在の出品一覧を見せてください" },
+    { label: "日本酒を売りたい", message: "純米大吟醸を10万円で売りたいです" },
+  ],
+  en: [
+    { label: "Sell wagyu", message: "I want to sell Kobe A5 wagyu for 500,000 JPYC." },
+    { label: "View listings", message: "Show me the current listings." },
+    { label: "Sell sake", message: "I want to sell junmai daiginjo for 100,000 JPYC." },
+  ],
+};
+const GATHERING_KEYWORDS: Record<Locale, { amount: string[]; title: string[]; description: string[]; category: string[] }> = {
+  ja: {
+    amount: ["金額", "価格", "いくら"],
+    title: ["商品名", "タイトル", "品名"],
+    description: ["説明", "詳細"],
+    category: ["カテゴリ", "カテゴリー"],
+  },
+  en: {
+    amount: ["amount", "price", "how much"],
+    title: ["title", "product name", "item name"],
+    description: ["description", "details"],
+    category: ["category", "type"],
+  },
+};
 
 function includesAny(text: string, keywords: string[]): boolean {
-  return keywords.some((keyword) => text.includes(keyword));
+  const lowered = text.toLowerCase();
+  return keywords.some((keyword) => lowered.includes(keyword.toLowerCase()));
 }
 
 function deriveNextInputHint(params: {
+  locale: Locale;
   state: AgentState;
   draft?: ListingDraft;
   txPrepare?: TxPrepareResult;
   toolCalls: ToolCall[];
   responseText: string;
 }): string {
-  const { state, draft, txPrepare, toolCalls, responseText } = params;
+  const { locale, state, draft, txPrepare, toolCalls, responseText } = params;
+  const keys = GATHERING_KEYWORDS[locale];
 
   if (state === "tx_prepared" && txPrepare) {
+    if (locale === "ja") {
+      switch (txPrepare.action) {
+        case "createListing":
+          return "確認して出品する";
+        case "lock":
+          return "支払いを確定する";
+        case "approve":
+          return "取引を開始する";
+        case "cancel":
+          return "キャンセルする";
+        case "confirmDelivery":
+          return "受取りを確認する";
+        default:
+          return "確認して実行する";
+      }
+    }
     switch (txPrepare.action) {
       case "createListing":
-        return "確認して出品する";
+        return "Confirm and create listing";
       case "lock":
-        return "支払いを確定する";
+        return "Confirm payment deposit";
       case "approve":
-        return "取引を開始する";
+        return "Start this transaction";
       case "cancel":
-        return "キャンセルする";
+        return "Cancel this transaction";
       case "confirmDelivery":
-        return "受取りを確認する";
+        return "Confirm delivery receipt";
       default:
-        return "確認して実行する";
+        return "Confirm and execute";
     }
   }
 
   if (state === "draft_ready" && draft) {
-    return "この内容で出品して";
+    return locale === "ja" ? "この内容で出品して" : "Create this listing";
   }
 
   if (toolCalls.some((call) => call.name === "get_listing_detail")) {
-    return "この出品を購入したい";
+    return locale === "ja" ? "この出品を購入したい" : "I want to buy this listing";
   }
 
   if (toolCalls.some((call) => call.name === "get_listings")) {
-    return "この出品の詳細を見たい";
+    return locale === "ja" ? "この出品の詳細を見たい" : "Show me details for this listing";
   }
 
   if (state === "gathering_info") {
-    if (includesAny(responseText, ["金額", "価格", "いくら"])) {
-      return "金額は50万円";
+    if (includesAny(responseText, keys.amount)) {
+      return locale === "ja" ? "金額は50万円" : "The amount is 500,000 JPYC";
     }
-    if (includesAny(responseText, ["商品名", "タイトル", "品名"])) {
-      return "商品名は神戸牛A5ランク";
+    if (includesAny(responseText, keys.title)) {
+      return locale === "ja" ? "商品名は神戸牛A5ランク" : "The product title is Kobe A5 wagyu";
     }
-    if (includesAny(responseText, ["説明", "詳細"])) {
-      return "説明文は◯◯です";
+    if (includesAny(responseText, keys.description)) {
+      return locale === "ja" ? "説明文は◯◯です" : "The description is: ...";
     }
-    if (includesAny(responseText, ["カテゴリ", "カテゴリー"])) {
-      return "カテゴリは和牛";
+    if (includesAny(responseText, keys.category)) {
+      return locale === "ja" ? "カテゴリは和牛" : "The category is wagyu";
     }
-    return "商品名は神戸牛A5ランク";
+    return locale === "ja" ? "商品名は神戸牛A5ランク" : "The product title is Kobe A5 wagyu";
   }
 
   if (state === "awaiting_confirm") {
-    return "はい";
+    return locale === "ja" ? "はい" : "Yes";
   }
 
   if (state === "completed") {
-    return "別の出品を作りたい";
+    return locale === "ja" ? "別の出品を作りたい" : "I want to create another listing";
   }
 
-  return DEFAULT_INPUT_HINT;
+  return DEFAULT_INPUT_HINT[locale];
 }
 
 function deriveNextQuickActions(params: {
+  locale: Locale;
   state: AgentState;
   draft?: ListingDraft;
   txPrepare?: TxPrepareResult;
   toolCalls: ToolCall[];
   responseText: string;
 }): Array<{ label: string; message: string }> {
-  const { state, draft, txPrepare, toolCalls, responseText } = params;
+  const { locale, state, draft, txPrepare, toolCalls, responseText } = params;
+  const keys = GATHERING_KEYWORDS[locale];
 
   if (state === "tx_prepared" && txPrepare) {
+    if (locale === "ja") {
+      switch (txPrepare.action) {
+        case "createListing":
+          return [
+            { label: "確認して出品", message: "確認して出品を実行して" },
+            { label: "修正したい", message: "内容を修正したいです" },
+          ];
+        case "lock":
+          return [
+            { label: "支払いを確定", message: "支払いを確定して" },
+            { label: "もう一度見る", message: "出品詳細をもう一度見せて" },
+          ];
+        case "approve":
+          return [
+            { label: "取引を開始", message: "取引を開始して" },
+            { label: "やめる", message: "一旦やめたい" },
+          ];
+        case "cancel":
+          return [
+            { label: "キャンセル", message: "キャンセルして" },
+            { label: "やめる", message: "一旦やめたい" },
+          ];
+        case "confirmDelivery":
+          return [
+            { label: "受取確認", message: "受取りを確認して" },
+            { label: "やめる", message: "一旦やめたい" },
+          ];
+        default:
+          return [
+            { label: "確認する", message: "確認して実行して" },
+            { label: "やめる", message: "一旦やめたい" },
+          ];
+      }
+    }
     switch (txPrepare.action) {
       case "createListing":
         return [
-          { label: "確認して出品", message: "確認して出品を実行して" },
-          { label: "修正したい", message: "内容を修正したいです" },
+          { label: "Confirm listing", message: "Confirm and create this listing." },
+          { label: "Edit draft", message: "I want to revise the draft." },
         ];
       case "lock":
         return [
-          { label: "支払いを確定", message: "支払いを確定して" },
-          { label: "もう一度見る", message: "出品詳細をもう一度見せて" },
+          { label: "Confirm payment", message: "Confirm the payment deposit." },
+          { label: "Review again", message: "Show the listing details again." },
         ];
       case "approve":
         return [
-          { label: "取引を開始", message: "取引を開始して" },
-          { label: "やめる", message: "一旦やめたい" },
+          { label: "Start transaction", message: "Start this transaction." },
+          { label: "Not now", message: "I want to pause for now." },
         ];
       case "cancel":
         return [
-          { label: "キャンセル", message: "キャンセルして" },
-          { label: "やめる", message: "一旦やめたい" },
+          { label: "Cancel", message: "Cancel this transaction." },
+          { label: "Not now", message: "I want to pause for now." },
         ];
       case "confirmDelivery":
         return [
-          { label: "受取確認", message: "受取りを確認して" },
-          { label: "やめる", message: "一旦やめたい" },
+          { label: "Confirm receipt", message: "Confirm delivery receipt." },
+          { label: "Not now", message: "I want to pause for now." },
         ];
       default:
         return [
-          { label: "確認する", message: "確認して実行して" },
-          { label: "やめる", message: "一旦やめたい" },
+          { label: "Confirm", message: "Confirm and execute this action." },
+          { label: "Not now", message: "I want to pause for now." },
         ];
     }
   }
 
   if (state === "draft_ready" && draft) {
-    return [
-      { label: "この内容で出品", message: "この内容で出品して" },
-      { label: "修正したい", message: "修正したい点があります" },
-    ];
+    return locale === "ja"
+      ? [
+          { label: "この内容で出品", message: "この内容で出品して" },
+          { label: "修正したい", message: "修正したい点があります" },
+        ]
+      : [
+          { label: "Create listing", message: "Create this listing." },
+          { label: "Edit draft", message: "I want to revise this draft." },
+        ];
   }
 
   if (toolCalls.some((call) => call.name === "get_listing_detail")) {
-    return [
-      { label: "購入したい", message: "この出品を購入したい" },
-      { label: "他も見る", message: "他の出品も見たい" },
-    ];
+    return locale === "ja"
+      ? [
+          { label: "購入したい", message: "この出品を購入したい" },
+          { label: "他も見る", message: "他の出品も見たい" },
+        ]
+      : [
+          { label: "Buy this", message: "I want to buy this listing." },
+          { label: "View more", message: "Show me other listings too." },
+        ];
   }
 
   if (toolCalls.some((call) => call.name === "get_listings")) {
-    return [
-      { label: "詳細を見る", message: "この出品の詳細を見たい" },
-      { label: "購入したい", message: "この出品を購入したい" },
-    ];
+    return locale === "ja"
+      ? [
+          { label: "詳細を見る", message: "この出品の詳細を見たい" },
+          { label: "購入したい", message: "この出品を購入したい" },
+        ]
+      : [
+          { label: "View details", message: "Show me details for this listing." },
+          { label: "I want to buy", message: "I want to buy this listing." },
+        ];
   }
 
   if (state === "gathering_info") {
-    if (includesAny(responseText, ["金額", "価格", "いくら"])) {
-      return [
-        { label: "金額を伝える", message: "金額は50万円です" },
-        { label: "相談したい", message: "価格について相談したい" },
-      ];
+    if (includesAny(responseText, keys.amount)) {
+      return locale === "ja"
+        ? [
+            { label: "金額を伝える", message: "金額は50万円です" },
+            { label: "相談したい", message: "価格について相談したい" },
+          ]
+        : [
+            { label: "Share amount", message: "The amount is 500,000 JPYC." },
+            { label: "Need advice", message: "I want pricing advice." },
+          ];
     }
-    if (includesAny(responseText, ["商品名", "タイトル", "品名"])) {
-      return [
-        { label: "商品名を伝える", message: "商品名は神戸牛A5ランクです" },
-        { label: "相談したい", message: "商品名の付け方を相談したい" },
-      ];
+    if (includesAny(responseText, keys.title)) {
+      return locale === "ja"
+        ? [
+            { label: "商品名を伝える", message: "商品名は神戸牛A5ランクです" },
+            { label: "相談したい", message: "商品名の付け方を相談したい" },
+          ]
+        : [
+            { label: "Share title", message: "The title is Kobe A5 wagyu." },
+            { label: "Need advice", message: "I want help naming the product." },
+          ];
     }
-    if (includesAny(responseText, ["説明", "詳細"])) {
-      return [
-        { label: "説明を伝える", message: "説明文は◯◯です" },
-        { label: "相談したい", message: "説明文を相談したい" },
-      ];
+    if (includesAny(responseText, keys.description)) {
+      return locale === "ja"
+        ? [
+            { label: "説明を伝える", message: "説明文は◯◯です" },
+            { label: "相談したい", message: "説明文を相談したい" },
+          ]
+        : [
+            { label: "Share description", message: "The description is: ..." },
+            { label: "Need advice", message: "Help me improve the description." },
+          ];
     }
-    if (includesAny(responseText, ["カテゴリ", "カテゴリー"])) {
-      return [
-        { label: "和牛", message: "カテゴリは和牛" },
-        { label: "日本酒", message: "カテゴリは日本酒" },
-      ];
+    if (includesAny(responseText, keys.category)) {
+      return locale === "ja"
+        ? [
+            { label: "和牛", message: "カテゴリは和牛" },
+            { label: "日本酒", message: "カテゴリは日本酒" },
+          ]
+        : [
+            { label: "Wagyu", message: "The category is wagyu." },
+            { label: "Sake", message: "The category is sake." },
+          ];
     }
-    return [
-      { label: "商品名を伝える", message: "商品名は神戸牛A5ランクです" },
-      { label: "金額を伝える", message: "金額は50万円です" },
-    ];
+    return locale === "ja"
+      ? [
+          { label: "商品名を伝える", message: "商品名は神戸牛A5ランクです" },
+          { label: "金額を伝える", message: "金額は50万円です" },
+        ]
+      : [
+          { label: "Share title", message: "The title is Kobe A5 wagyu." },
+          { label: "Share amount", message: "The amount is 500,000 JPYC." },
+        ];
   }
 
   if (state === "awaiting_confirm") {
-    return [
-      { label: "はい", message: "はい" },
-      { label: "修正したい", message: "修正したい点があります" },
-    ];
+    return locale === "ja"
+      ? [
+          { label: "はい", message: "はい" },
+          { label: "修正したい", message: "修正したい点があります" },
+        ]
+      : [
+          { label: "Yes", message: "Yes" },
+          { label: "Needs changes", message: "I want to revise some details." },
+        ];
   }
 
   if (state === "completed") {
-    return [
-      { label: "別の出品", message: "別の出品を作りたい" },
-      { label: "出品を見る", message: "出品一覧を見せてください" },
-    ];
+    return locale === "ja"
+      ? [
+          { label: "別の出品", message: "別の出品を作りたい" },
+          { label: "出品を見る", message: "出品一覧を見せてください" },
+        ]
+      : [
+          { label: "New listing", message: "I want to create another listing." },
+          { label: "View listings", message: "Show me the listing catalog." },
+        ];
   }
 
-  return DEFAULT_QUICK_ACTIONS;
+  return DEFAULT_QUICK_ACTIONS[locale];
+}
+
+function isLocale(value: unknown): value is Locale {
+  return value === "ja" || value === "en";
 }
 
 function getClientKey(request: NextRequest, sessionId?: string): string {
@@ -255,10 +389,10 @@ export async function POST(request: NextRequest) {
     } catch {
       return jsonError("Invalid JSON", 400);
     }
-    const { message, sessionId, userAddress, auth } = body;
+    const { message, sessionId, locale, userAddress, auth } = body;
 
-    if (typeof message !== "string" || typeof sessionId !== "string" || !message || !sessionId) {
-      return jsonError("message and sessionId are required", 400);
+    if (typeof message !== "string" || typeof sessionId !== "string" || !message || !sessionId || !isLocale(locale)) {
+      return jsonError("message, sessionId and locale are required", 400);
     }
 
     if (!isValidSessionId(sessionId)) {
@@ -371,7 +505,7 @@ export async function POST(request: NextRequest) {
 
     // Build system instruction with optional proactive context
     const effectiveUserAddress = session.userAddress || userAddress;
-    let systemInstruction = SYSTEM_PROMPT;
+    let systemInstruction = SYSTEM_PROMPTS[locale];
 
     // Proactive context injection on first message
     if (session.history.length === 0 && effectiveUserAddress) {
@@ -379,7 +513,11 @@ export async function POST(request: NextRequest) {
         const userContext = await executeTool("suggest_next_action", {
           userAddress: effectiveUserAddress,
         });
-        systemInstruction += `\n\n## 現在のユーザー状況（自動取得済み）\nアカウント: ${effectiveUserAddress}\n${JSON.stringify(userContext, null, 2)}\n\nこの情報を踏まえて、最初の応答からプロアクティブに提案してください。`;
+        if (locale === "ja") {
+          systemInstruction += `\n\n## 現在のユーザー状況（自動取得済み）\nアカウント: ${effectiveUserAddress}\n${JSON.stringify(userContext, null, 2)}\n\nこの情報を踏まえて、最初の応答からプロアクティブに提案してください。`;
+        } else {
+          systemInstruction += `\n\n## Current User Context (auto-fetched)\nAccount: ${effectiveUserAddress}\n${JSON.stringify(userContext, null, 2)}\n\nUse this context and start with proactive recommendations in your first response.`;
+        }
       } catch (e) {
         console.error("[Agent] Failed to fetch proactive context:", e);
       }
@@ -390,7 +528,9 @@ export async function POST(request: NextRequest) {
 
     // Send user message
     const userContext = effectiveUserAddress
-      ? `\n\n[ユーザーアカウント: ${effectiveUserAddress}]`
+      ? locale === "ja"
+        ? `\n\n[ユーザーアカウント: ${effectiveUserAddress}]`
+        : `\n\n[User Account: ${effectiveUserAddress}]`
       : "";
     const fullMessage = message + userContext;
 
@@ -466,6 +606,7 @@ export async function POST(request: NextRequest) {
     // Get final text response (property, not method)
     const responseText = response.text ?? "";
     const nextInputHint = deriveNextInputHint({
+      locale,
       state: session.state,
       draft: session.draft,
       txPrepare: session.txPrepare,
@@ -473,6 +614,7 @@ export async function POST(request: NextRequest) {
       responseText,
     });
     const nextQuickActions = deriveNextQuickActions({
+      locale,
       state: session.state,
       draft: session.draft,
       txPrepare: session.txPrepare,

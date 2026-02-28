@@ -4,6 +4,7 @@ import { useState, useCallback, KeyboardEvent } from "react";
 import { Box, TextField, IconButton, Paper, Chip, Stack } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
 import { motion } from "framer-motion";
+import { useI18n } from "@/lib/i18n";
 
 interface MessageInputProps {
   onSend: (message: string) => void;
@@ -12,11 +13,18 @@ interface MessageInputProps {
   quickActions?: Array<{ label: string; message: string }>;
 }
 
-const defaultQuickActions = [
-  { label: "和牛を売りたい", message: "神戸牛A5ランクを50万円で売りたいです" },
-  { label: "出品を見る", message: "現在の出品一覧を見せてください" },
-  { label: "日本酒を売りたい", message: "純米大吟醸を10万円で売りたいです" },
-];
+const defaultQuickActions = {
+  ja: [
+    { label: "和牛を売りたい", message: "神戸牛A5ランクを50万円で売りたいです" },
+    { label: "出品を見る", message: "現在の出品一覧を見せてください" },
+    { label: "日本酒を売りたい", message: "純米大吟醸を10万円で売りたいです" },
+  ],
+  en: [
+    { label: "Sell wagyu", message: "I want to sell Kobe A5 wagyu for 500,000 JPYC." },
+    { label: "View listings", message: "Show me the current listings." },
+    { label: "Sell sake", message: "I want to sell junmai daiginjo for 100,000 JPYC." },
+  ],
+};
 
 export function MessageInput({
   onSend,
@@ -24,9 +32,10 @@ export function MessageInput({
   placeholder,
   quickActions,
 }: MessageInputProps) {
+  const { locale, t } = useI18n();
   const [input, setInput] = useState("");
   const canSend = !!input.trim() && !disabled;
-  const actions = quickActions && quickActions.length > 0 ? quickActions : defaultQuickActions;
+  const actions = quickActions && quickActions.length > 0 ? quickActions : defaultQuickActions[locale];
 
   const handleSend = useCallback(() => {
     if (input.trim() && !disabled) {
@@ -121,7 +130,7 @@ export function MessageInput({
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled}
-          placeholder={placeholder || "メッセージを入力..."}
+          placeholder={placeholder || t("agentMessageInputPlaceholder")}
           variant="standard"
           InputProps={{
             disableUnderline: true,

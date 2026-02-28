@@ -10,23 +10,29 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import type { ListingDraft } from "@/lib/agent/types";
 import { MilestoneTable } from "./MilestoneTable";
+import { useI18n } from "@/lib/i18n";
 
 interface DraftPreviewProps {
   draft: ListingDraft;
 }
 
-const categoryLabels: Record<string, { ja: string; emoji: string }> = {
-  wagyu: { ja: "和牛", emoji: "🥩" },
-  sake: { ja: "日本酒", emoji: "🍶" },
-  craft: { ja: "工芸品", emoji: "🏺" },
+const categoryLabels: Record<string, { ja: string; en: string; emoji: string }> = {
+  wagyu: { ja: "和牛", en: "Wagyu", emoji: "🥩" },
+  sake: { ja: "日本酒", en: "Sake", emoji: "🍶" },
+  craft: { ja: "工芸品", en: "Craft", emoji: "🏺" },
 };
 
 export function DraftPreview({ draft }: DraftPreviewProps) {
+  const { locale, t } = useI18n();
   const [expanded, setExpanded] = useState(false);
-  const categoryInfo = categoryLabels[draft.category] || { ja: draft.category, emoji: "📦" };
+  const categoryInfo = categoryLabels[draft.category] || {
+    ja: draft.category,
+    en: draft.category,
+    emoji: "📦",
+  };
 
   // Format amount with commas
-  const formattedAmount = Number(draft.totalAmount).toLocaleString("ja-JP");
+  const formattedAmount = Number(draft.totalAmount).toLocaleString(locale === "ja" ? "ja-JP" : "en-US");
 
   return (
     <motion.div
@@ -57,7 +63,7 @@ export function DraftPreview({ draft }: DraftPreviewProps) {
                 fontWeight: 600,
               }}
             >
-              出品ドラフト
+              {t("agentDraftTitle")}
             </Typography>
             <Typography
               sx={{
@@ -70,7 +76,7 @@ export function DraftPreview({ draft }: DraftPreviewProps) {
             </Typography>
           </Box>
           <Chip
-            label={categoryInfo.ja}
+            label={locale === "ja" ? categoryInfo.ja : categoryInfo.en}
             size="small"
             sx={{
               ml: "auto",
@@ -101,7 +107,7 @@ export function DraftPreview({ draft }: DraftPreviewProps) {
                   mb: 0.5,
                 }}
               >
-                説明
+                {t("agentDescriptionLabel")}
               </Typography>
               <Typography
                 sx={{
@@ -130,7 +136,7 @@ export function DraftPreview({ draft }: DraftPreviewProps) {
                   mb: 0.5,
                 }}
               >
-                総額
+                {t("agentTotalAmountLabel")}
               </Typography>
               <Typography
                 sx={{
@@ -169,7 +175,7 @@ export function DraftPreview({ draft }: DraftPreviewProps) {
                   mb: 0.5,
                 }}
               >
-                マイルストーン
+                {t("agentMilestonesLabel")}
               </Typography>
               <Typography
                 sx={{
@@ -177,7 +183,9 @@ export function DraftPreview({ draft }: DraftPreviewProps) {
                   color: "var(--color-text)",
                 }}
               >
-                {draft.milestones.length}段階の支払い
+                {locale === "ja"
+                  ? `${draft.milestones.length}段階の支払い`
+                  : `${draft.milestones.length} milestone payments`}
               </Typography>
               <Stack direction="row" spacing={0.5} flexWrap="wrap" gap={0.5} sx={{ mt: 1 }}>
                 {draft.milestones.slice(0, 5).map((ms, idx) => (
@@ -227,7 +235,7 @@ export function DraftPreview({ draft }: DraftPreviewProps) {
                   },
                 }}
               >
-                {expanded ? "閉じる" : "詳細を見る"}
+                {expanded ? t("agentClose") : t("agentViewDetails")}
               </Button>
 
               <Collapse in={expanded}>

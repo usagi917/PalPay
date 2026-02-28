@@ -4,6 +4,7 @@ import { Box, Paper, Typography, Table, TableBody, TableCell, TableContainer, Ta
 import { motion } from "framer-motion";
 import TimelineIcon from "@mui/icons-material/Timeline";
 import type { MilestonePreview } from "@/lib/agent/types";
+import { useI18n } from "@/lib/i18n";
 
 interface MilestoneTableProps {
   milestones: MilestonePreview[];
@@ -21,6 +22,7 @@ const headerCellSx = {
 } as const;
 
 export function MilestoneTable({ milestones, totalAmount }: MilestoneTableProps) {
+  const { locale, t } = useI18n();
   const total = totalAmount ? Number(totalAmount) : 0;
 
   return (
@@ -49,10 +51,10 @@ export function MilestoneTable({ milestones, totalAmount }: MilestoneTableProps)
               color: "var(--color-text)",
             }}
           >
-            マイルストーン詳細
+            {t("agentMilestoneDetails")}
           </Typography>
           <Chip
-            label={`${milestones.length}段階`}
+            label={locale === "ja" ? `${milestones.length}段階` : `${milestones.length} steps`}
             size="small"
             sx={{
               ml: "auto",
@@ -70,10 +72,10 @@ export function MilestoneTable({ milestones, totalAmount }: MilestoneTableProps)
             <TableHead>
               <TableRow>
                 <TableCell sx={headerCellSx}>#</TableCell>
-                <TableCell sx={headerCellSx}>工程</TableCell>
-                <TableCell align="right" sx={headerCellSx}>割合</TableCell>
+                <TableCell sx={headerCellSx}>{t("agentMilestoneStage")}</TableCell>
+                <TableCell align="right" sx={headerCellSx}>{t("agentRatioLabel")}</TableCell>
                 {total > 0 && (
-                  <TableCell align="right" sx={headerCellSx}>金額</TableCell>
+                  <TableCell align="right" sx={headerCellSx}>{t("agentAmountLabel")}</TableCell>
                 )}
               </TableRow>
             </TableHead>
@@ -153,10 +155,10 @@ export function MilestoneTable({ milestones, totalAmount }: MilestoneTableProps)
                           borderBottom: "1px solid rgba(148, 163, 184, 0.1)",
                           py: 1.5,
                         }}
-                      >
-                        ¥{amount.toLocaleString("ja-JP")}
-                      </TableCell>
-                    )}
+                        >
+                          ¥{amount.toLocaleString(locale === "ja" ? "ja-JP" : "en-US")}
+                        </TableCell>
+                      )}
                   </motion.tr>
                 );
               })}
@@ -182,8 +184,8 @@ export function MilestoneTable({ milestones, totalAmount }: MilestoneTableProps)
                 fontWeight: 600,
                 color: "var(--color-text)",
               }}
-            >
-              合計
+              >
+              {t("agentTotalLabel")}
             </Typography>
             <Typography
               sx={{
@@ -191,8 +193,8 @@ export function MilestoneTable({ milestones, totalAmount }: MilestoneTableProps)
                 fontWeight: 700,
                 color: "var(--color-primary)",
               }}
-            >
-              ¥{total.toLocaleString("ja-JP")} JPYC
+              >
+              ¥{total.toLocaleString(locale === "ja" ? "ja-JP" : "en-US")} JPYC
             </Typography>
           </Box>
         )}
