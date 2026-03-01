@@ -25,6 +25,34 @@ This project combines milestone-linked payouts, evidence-backed state transition
 - XMTP-based end-to-end encrypted chat
 - My page (`/my`) with producer/buyer summaries and stats
 
+## User Architecture Diagram
+
+```mermaid
+flowchart LR
+    U["User<br/>(Buyer / Seller)"]
+    M["MetaMask"]
+    W["Web App<br/>Next.js 15 on Cloud Run"]
+    A["Agent API<br/>/api/agent/*"]
+    N["NFT API<br/>/api/nft/*"]
+    V["Vertex AI Gemini"]
+    F["ListingFactoryV6"]
+    E["MilestoneEscrowV6<br/>(per listing)"]
+    T["ERC-20 Token"]
+    X["XMTP Network"]
+
+    U -->|"trade actions / browsing"| W
+    U -->|"wallet signature"| M
+    M -->|"tx signature"| W
+    W --> A
+    A -->|"function calling"| V
+    W --> N
+    W -->|"contract read/write"| F
+    F -->|"deploy"| E
+    E -->|"milestone payout"| T
+    U -->|"E2E chat"| X
+    W -->|"XMTP integration"| X
+```
+
 ## Repository Structure
 
 ```text

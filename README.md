@@ -25,6 +25,34 @@
 - XMTPベースのE2E暗号化チャット
 - マイページ（`/my`）で出品者/購入者別の取引状況と集計を表示
 
+## ユーザーアーキテクチャ図
+
+```mermaid
+flowchart LR
+    U["ユーザー<br/>(Buyer / Seller)"]
+    M["MetaMask"]
+    W["Web App<br/>Next.js 15 on Cloud Run"]
+    A["Agent API<br/>/api/agent/*"]
+    N["NFT API<br/>/api/nft/*"]
+    V["Vertex AI Gemini"]
+    F["ListingFactoryV6"]
+    E["MilestoneEscrowV6<br/>(per listing)"]
+    T["ERC-20 Token"]
+    X["XMTP Network"]
+
+    U -->|"取引操作 / 閲覧"| W
+    U -->|"ウォレット署名"| M
+    M -->|"tx署名"| W
+    W --> A
+    A -->|"Function Calling"| V
+    W --> N
+    W -->|"contract read/write"| F
+    F -->|"deploy"| E
+    E -->|"milestone payout"| T
+    U -->|"E2Eチャット"| X
+    W -->|"XMTP連携"| X
+```
+
 ## リポジトリ構成
 
 ```text
