@@ -27,18 +27,21 @@ type SessionRecord = {
   userAddress?: Address;
   authToken?: string;
   authTokenExpiresAt?: number;
+  createdAt?: number;
+  lastAccessAt?: number;
 };
 const gSessions = globalThis as unknown as { __agentSessions?: Map<string, SessionRecord> };
 const sessions = (gSessions.__agentSessions ??= new Map<string, SessionRecord>());
 
 function generateId(): string {
-  return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return `msg_${randomUUID()}`;
 }
 
 const MAX_BODY_BYTES = Number(process.env.AGENT_MAX_BODY_BYTES || 16_000);
 const MAX_MESSAGE_CHARS = Number(process.env.AGENT_MAX_MESSAGE_CHARS || 2_000);
 const RATE_LIMIT_MAX = Number(process.env.AGENT_RATE_LIMIT_MAX || 20);
 const RATE_LIMIT_WINDOW_MS = Number(process.env.AGENT_RATE_LIMIT_WINDOW_MS || 60_000);
+const SESSION_IDLE_TTL_MS = Number(process.env.AGENT_SESSION_IDLE_TTL_MS || 60 * 60_000);
 const AUTH_DISABLED = process.env.AGENT_AUTH_DISABLED === "true";
 const AUTH_TIMESTAMP_SKEW_MS = Number(process.env.AGENT_AUTH_SKEW_MS || 5 * 60_000);
 const AUTH_TOKEN_TTL_MS = Number(process.env.AGENT_AUTH_TOKEN_TTL_MS || 30 * 60_000);
@@ -364,34 +367,75 @@ function isLocale(value: unknown): value is Locale {
   return value === "ja" || value === "en";
 }
 
-function getClientKey(request: NextRequest, sessionId?: string): string {
-  const forwardedFor = request.headers.get("x-forwarded-for");
-  const ip = forwardedFor?.split(",")[0]?.trim()
+function getClientIp(request: NextRequest): string {
+  const forwardedFor = request.headers.get("x-vercel-forwarded-for")
+    || request.headers.get("x-forwarded-for");
+  return forwardedFor?.split(",")[0]?.trim()
+    || request.headers.get("cf-connecting-ip")
     || request.headers.get("x-real-ip")
     || "unknown";
-  return `${ip}:${sessionId || "no-session"}`;
+}
+
+function getClientKey(request: NextRequest): string {
+  return getClientIp(request);
 }
 
 function jsonError(message: string, status: number, headers?: Record<string, string>) {
   return NextResponse.json({ error: message }, { status, headers });
 }
 
+function touchSession(session: SessionRecord, now = Date.now()) {
+  if (!session.createdAt) {
+    session.createdAt = now;
+  }
+  session.lastAccessAt = now;
+}
+
+function pruneSessions(now = Date.now()) {
+  for (const [sessionId, session] of sessions.entries()) {
+    const lastAccess = session.lastAccessAt ?? session.createdAt ?? 0;
+    if (lastAccess > 0 && now - lastAccess > SESSION_IDLE_TTL_MS) {
+      sessions.delete(sessionId);
+    }
+  }
+}
+
+function ensureSessionAuthorized(request: NextRequest, session: SessionRecord): NextResponse | null {
+  if (AUTH_DISABLED) {
+    return null;
+  }
+  const tokenHeader = request.headers.get("x-session-token") || "";
+  if (!session.authToken || !tokenHeader || tokenHeader !== session.authToken) {
+    return jsonError("Unauthorized", 401);
+  }
+  return null;
+}
+
 export async function POST(request: NextRequest) {
   try {
+    pruneSessions();
+
     const contentLength = request.headers.get("content-length");
     if (contentLength && Number(contentLength) > MAX_BODY_BYTES) {
       return jsonError("Request too large", 413);
     }
 
+    const rawBody = await request.text();
+    const bodySize = new TextEncoder().encode(rawBody).length;
+    if (bodySize > MAX_BODY_BYTES) {
+      return jsonError("Request too large", 413);
+    }
+
     let body: ChatRequest;
     try {
-      body = await request.json();
+      body = JSON.parse(rawBody) as ChatRequest;
     } catch {
       return jsonError("Invalid JSON", 400);
     }
     const { message, sessionId, locale, userAddress, auth } = body;
+    const normalizedMessage = typeof message === "string" ? message.trim() : "";
 
-    if (typeof message !== "string" || typeof sessionId !== "string" || !message || !sessionId || !isLocale(locale)) {
+    if (typeof sessionId !== "string" || !sessionId || !normalizedMessage || !isLocale(locale)) {
       return jsonError("message, sessionId and locale are required", 400);
     }
 
@@ -399,7 +443,7 @@ export async function POST(request: NextRequest) {
       return jsonError("Invalid sessionId", 400);
     }
 
-    if (message.length > MAX_MESSAGE_CHARS) {
+    if (normalizedMessage.length > MAX_MESSAGE_CHARS) {
       return jsonError("Message too long", 413);
     }
 
@@ -407,7 +451,7 @@ export async function POST(request: NextRequest) {
       return jsonError("Invalid userAddress", 400);
     }
 
-    const rateKey = getClientKey(request, sessionId);
+    const rateKey = getClientKey(request);
     const rate = checkRateLimit(rateKey, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS);
     if (!rate.allowed) {
       const retryAfter = Math.ceil((rate.resetAt - Date.now()) / 1000);
@@ -416,21 +460,16 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Get or create session
-    let session = sessions.get(sessionId);
-    if (!session) {
-      session = {
-        history: [],
-        state: "idle",
-      };
-      sessions.set(sessionId, session);
-    }
-
     const now = Date.now();
+    let session = sessions.get(sessionId);
     if (!AUTH_DISABLED) {
       const tokenHeader = request.headers.get("x-session-token") || "";
-      const hasValidSessionToken = !!(session.authToken && session.authTokenExpiresAt && session.authTokenExpiresAt > now);
-      const hasMatchingToken = hasValidSessionToken && tokenHeader === session.authToken;
+      const hasMatchingToken = !!(
+        session?.authToken
+        && session.authTokenExpiresAt
+        && session.authTokenExpiresAt > now
+        && tokenHeader === session.authToken
+      );
 
       // Token is the fast path; if token is missing (e.g. previous 500 before token reached client),
       // allow explicit signature auth to recover the session.
@@ -451,7 +490,7 @@ export async function POST(request: NextRequest) {
           return jsonError("Auth address mismatch", 401);
         }
 
-        if (session.userAddress && session.userAddress.toLowerCase() !== auth.address.toLowerCase()) {
+        if (session?.userAddress && session.userAddress.toLowerCase() !== auth.address.toLowerCase()) {
           return jsonError("Session address mismatch", 403);
         }
 
@@ -490,8 +529,21 @@ export async function POST(request: NextRequest) {
           return jsonError("Invalid signature", 401);
         }
 
+        if (!session) {
+          session = {
+            history: [],
+            state: "idle",
+            createdAt: now,
+            lastAccessAt: now,
+          };
+          sessions.set(sessionId, session);
+        }
         session.userAddress = auth.address as Address;
         session.authToken = randomUUID();
+      }
+
+      if (!session) {
+        return jsonError("Unauthorized", 401);
       }
 
       if (session.userAddress && userAddress && session.userAddress.toLowerCase() !== userAddress.toLowerCase()) {
@@ -502,6 +554,17 @@ export async function POST(request: NextRequest) {
         session.authTokenExpiresAt = now + AUTH_TOKEN_TTL_MS;
       }
     }
+
+    if (!session) {
+      session = {
+        history: [],
+        state: "idle",
+        createdAt: now,
+        lastAccessAt: now,
+      };
+      sessions.set(sessionId, session);
+    }
+    touchSession(session, now);
 
     // Build system instruction with optional proactive context
     const effectiveUserAddress = session.userAddress || userAddress;
@@ -532,7 +595,7 @@ export async function POST(request: NextRequest) {
         ? `\n\n[ユーザーアカウント: ${effectiveUserAddress}]`
         : `\n\n[User Account: ${effectiveUserAddress}]`
       : "";
-    const fullMessage = message + userContext;
+    const fullMessage = normalizedMessage + userContext;
 
     let response = await chat.sendMessage({ message: fullMessage });
 
@@ -661,6 +724,8 @@ export async function POST(request: NextRequest) {
 
 // GET endpoint to check session state
 export async function GET(request: NextRequest) {
+  pruneSessions();
+
   const sessionId = request.nextUrl.searchParams.get("sessionId") || "";
 
   if (!sessionId || !isValidSessionId(sessionId)) {
@@ -676,13 +741,11 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const now = Date.now();
-  if (!AUTH_DISABLED && session.authToken && session.authTokenExpiresAt && session.authTokenExpiresAt > now) {
-    const tokenHeader = request.headers.get("x-session-token") || "";
-    if (!tokenHeader || tokenHeader !== session.authToken) {
-      return jsonError("Unauthorized", 401);
-    }
+  const unauthorized = ensureSessionAuthorized(request, session);
+  if (unauthorized) {
+    return unauthorized;
   }
+  touchSession(session);
 
   return NextResponse.json({
     state: session.state,
@@ -694,6 +757,8 @@ export async function GET(request: NextRequest) {
 
 // DELETE endpoint to clear session
 export async function DELETE(request: NextRequest) {
+  pruneSessions();
+
   const sessionId = request.nextUrl.searchParams.get("sessionId") || "";
 
   if (!sessionId || !isValidSessionId(sessionId)) {
@@ -701,14 +766,13 @@ export async function DELETE(request: NextRequest) {
   }
 
   const session = sessions.get(sessionId);
-  if (!AUTH_DISABLED && session?.authToken && session.authTokenExpiresAt && session.authTokenExpiresAt > Date.now()) {
-    const tokenHeader = request.headers.get("x-session-token") || "";
-    if (!tokenHeader || tokenHeader !== session.authToken) {
-      return jsonError("Unauthorized", 401);
+  if (session) {
+    const unauthorized = ensureSessionAuthorized(request, session);
+    if (unauthorized) {
+      return unauthorized;
     }
+    sessions.delete(sessionId);
   }
-
-  sessions.delete(sessionId);
 
   return NextResponse.json({ success: true });
 }

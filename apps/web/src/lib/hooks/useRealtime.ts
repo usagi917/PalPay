@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback, useMemo } from "react";
+import { useEffect, useCallback, useMemo, useRef } from "react";
 import { type Address } from "viem";
 import { useEscrowInfo, useEscrowEvents } from "./useEscrow";
 import { useMilestones } from "./useEscrow";
@@ -15,18 +15,25 @@ export function useRealtimeEscrow(
   const { info, isLoading: infoLoading, error: infoError, refetch: refetchInfo } = useEscrowInfo(escrowAddress);
   const { milestones, isLoading: milestonesLoading, refetch: refetchMilestones } = useMilestones(escrowAddress);
   const { events, refetch: refetchEvents } = useEscrowEvents(escrowAddress);
+  const inFlightRef = useRef(false);
 
-  const refetchAll = useCallback(() => {
-    refetchInfo();
-    refetchMilestones();
-    refetchEvents();
+  const refetchAll = useCallback(async () => {
+    if (inFlightRef.current) {
+      return;
+    }
+    inFlightRef.current = true;
+    try {
+      await Promise.all([refetchInfo(), refetchMilestones(), refetchEvents()]);
+    } finally {
+      inFlightRef.current = false;
+    }
   }, [refetchInfo, refetchMilestones, refetchEvents]);
 
   useEffect(() => {
     if (!escrowAddress || !enabled) return;
 
     const timer = setInterval(() => {
-      refetchAll();
+      void refetchAll();
     }, interval);
 
     return () => clearInterval(timer);
@@ -46,18 +53,31 @@ export function useRealtimeEscrow(
 export function useRealtimeListingSummaries(options: { interval?: number; enabled?: boolean } = {}) {
   const { interval = 15000, enabled = true } = options;
   const { summaries, isLoading, error, refetch } = useListingSummaries();
+  const inFlightRef = useRef(false);
+
+  const refetchSafe = useCallback(async () => {
+    if (inFlightRef.current) {
+      return;
+    }
+    inFlightRef.current = true;
+    try {
+      await refetch();
+    } finally {
+      inFlightRef.current = false;
+    }
+  }, [refetch]);
 
   useEffect(() => {
     if (!enabled) return;
 
     const timer = setInterval(() => {
-      refetch();
+      void refetchSafe();
     }, interval);
 
     return () => clearInterval(timer);
-  }, [interval, enabled, refetch]);
+  }, [interval, enabled, refetchSafe]);
 
-  return { summaries, isLoading, error, refetch };
+  return { summaries, isLoading, error, refetch: refetchSafe };
 }
 
 export function useMyListings(address: Address | null) {

@@ -51,6 +51,7 @@ export function useAgentSession(): UseAgentSessionReturn {
   const [nextQuickActions, setNextQuickActions] = useState<Array<{ label: string; message: string }>>([]);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const requestIdRef = useRef(0);
 
   const sendMessage = useCallback(async (content: string, locale: Locale, userAddress?: string) => {
     if (!content.trim()) return;
@@ -79,6 +80,9 @@ export function useAgentSession(): UseAgentSessionReturn {
     }
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
+    const requestId = ++requestIdRef.current;
+    const isLatestRequest = () =>
+      requestIdRef.current === requestId && abortControllerRef.current === abortController;
 
     // Add user message immediately
     const userMessage: ChatMessage = {
@@ -167,7 +171,9 @@ export function useAgentSession(): UseAgentSessionReturn {
         const isAuthError = response.status === 401 || response.status === 403;
         if (isAuthError && authRequired && (token || auth)) {
           // Token expired: re-auth and retry once transparently
-          setSessionToken(null);
+          if (isLatestRequest()) {
+            setSessionToken(null);
+          }
           token = null;
           auth = await buildAuthPayload();
           response = await postChat({ auth, token });
@@ -183,6 +189,9 @@ export function useAgentSession(): UseAgentSessionReturn {
       }
 
       const data: ChatResponse = await response.json();
+      if (!isLatestRequest()) {
+        return;
+      }
 
       // Add assistant message
       setMessages((prev) => [...prev, data.message]);
@@ -206,6 +215,9 @@ export function useAgentSession(): UseAgentSessionReturn {
       if (err instanceof Error && err.name === "AbortError") {
         return;
       }
+      if (!isLatestRequest()) {
+        return;
+      }
       const errorMessage = err instanceof Error ? err.message : labels.unknownError;
       setError(errorMessage);
 
@@ -218,7 +230,10 @@ export function useAgentSession(): UseAgentSessionReturn {
       };
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
-      setIsLoading(false);
+      if (isLatestRequest()) {
+        setIsLoading(false);
+        abortControllerRef.current = null;
+      }
     }
   }, [authRequired, sessionId, sessionToken]);
 
@@ -244,7 +259,9 @@ export function useAgentSession(): UseAgentSessionReturn {
     // Cancel any pending request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
+      abortControllerRef.current = null;
     }
+    requestIdRef.current += 1;
 
     // Clear server session
     try {

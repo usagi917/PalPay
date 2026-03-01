@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Box, Typography, Chip } from "@mui/material";
 import { motion } from "framer-motion";
 import Link from "next/link";
@@ -16,6 +17,11 @@ interface ListingCardProps {
 
 export function ListingCard({ listing, tokenSymbol, tokenDecimals }: ListingCardProps) {
   const { locale } = useI18n();
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [listing.imageURI]);
 
   const categoryLabel = CATEGORY_LABELS[listing.category]?.[locale] || listing.category;
   const statusConfig = STATUS_LABELS[listing.status] || STATUS_LABELS.open;
@@ -66,7 +72,7 @@ export function ListingCard({ listing, tokenSymbol, tokenDecimals }: ListingCard
               position: "relative",
             }}
           >
-            {listing.imageURI ? (
+            {listing.imageURI && !imageFailed ? (
               <Box
                 component="img"
                 src={listing.imageURI}
@@ -77,9 +83,7 @@ export function ListingCard({ listing, tokenSymbol, tokenDecimals }: ListingCard
                   objectFit: "cover",
                   transition: "transform 500ms cubic-bezier(0.16, 1, 0.3, 1)",
                 }}
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = "none";
-                }}
+                onError={() => setImageFailed(true)}
               />
             ) : (
               <Box

@@ -9,6 +9,7 @@ import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import CancelIcon from "@mui/icons-material/Cancel";
 import AddCircleIcon from "@mui/icons-material/AddCircle";
 import type { TxPrepareResult, ListingDraft } from "@/lib/agent/types";
+import { formatJpycAmount } from "./amount";
 import { useI18n } from "@/lib/i18n";
 import type { ReactElement } from "react";
 
@@ -197,7 +198,7 @@ export function TxConfirmPanel({
                   color: "var(--color-primary)",
                 }}
               >
-                ¥{Number(draft.totalAmount).toLocaleString(locale === "ja" ? "ja-JP" : "en-US")} JPYC
+                ¥{formatJpycAmount(draft.totalAmount, locale)} JPYC
               </Typography>
             </Box>
           )}

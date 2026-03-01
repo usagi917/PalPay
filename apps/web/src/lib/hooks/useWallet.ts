@@ -30,12 +30,13 @@ export function useWallet() {
         method: "eth_requestAccounts",
       }) as Address[];
 
+      await ensureWalletChain(provider);
+
       if (accounts.length > 0) {
         setAddress(accounts[0]);
       }
-
-      await ensureWalletChain(provider);
     } catch (err) {
+      setAddress(null);
       setError(err instanceof Error ? err.message : "接続エラー");
     } finally {
       setIsConnecting(false);

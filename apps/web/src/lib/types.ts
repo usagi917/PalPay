@@ -52,6 +52,8 @@ export interface TimelineEvent {
   type: EventType;
   txHash: Hash;
   blockNumber: bigint;
+  transactionIndex?: number;
+  logIndex?: number;
   timestamp?: number;
   // Locked
   buyer?: Address;

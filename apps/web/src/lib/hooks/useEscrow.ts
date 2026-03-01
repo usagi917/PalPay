@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { type Address, type Hash } from "viem";
 import { createClient, createWallet, config, ensureWalletChain, getMetaMaskProvider } from "../config";
 import { ESCROW_ABI, ERC20_ABI } from "../abi";
@@ -11,13 +11,18 @@ export function useEscrowInfo(escrowAddress: Address | null) {
   const [info, setInfo] = useState<EscrowInfo | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
 
   const fetchInfo = useCallback(async () => {
     if (!escrowAddress) {
+      requestIdRef.current += 1;
       setInfo(null);
+      setError(null);
+      setIsLoading(false);
       return;
     }
 
+    const requestId = ++requestIdRef.current;
     setIsLoading(true);
     setError(null);
 
@@ -51,6 +56,9 @@ export function useEscrowInfo(escrowAddress: Address | null) {
       ] = core;
       const [category, title, description, imageURI, status] = meta;
 
+      if (requestIdRef.current !== requestId) {
+        return;
+      }
       setInfo({
         factory,
         tokenAddress,
@@ -67,9 +75,14 @@ export function useEscrowInfo(escrowAddress: Address | null) {
         status: status as "open" | "locked" | "active" | "completed" | "cancelled",
       });
     } catch (err) {
+      if (requestIdRef.current !== requestId) {
+        return;
+      }
       setError(err instanceof Error ? err.message : "Failed to fetch escrow info");
     } finally {
-      setIsLoading(false);
+      if (requestIdRef.current === requestId) {
+        setIsLoading(false);
+      }
     }
   }, [escrowAddress]);
 
@@ -84,13 +97,18 @@ export function useMilestones(escrowAddress: Address | null, categoryType?: numb
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
 
   const fetchMilestones = useCallback(async () => {
     if (!escrowAddress) {
+      requestIdRef.current += 1;
       setMilestones([]);
+      setError(null);
+      setIsLoading(false);
       return;
     }
 
+    const requestId = ++requestIdRef.current;
     setIsLoading(true);
     setError(null);
 
@@ -114,6 +132,9 @@ export function useMilestones(escrowAddress: Address | null, categoryType?: numb
       });
 
       const milestoneData = result as Array<{ bps: bigint | number; completed: boolean }>;
+      if (requestIdRef.current !== requestId) {
+        return;
+      }
       setMilestones(
         milestoneData.map((m, index) => ({
           code: index,
@@ -123,9 +144,14 @@ export function useMilestones(escrowAddress: Address | null, categoryType?: numb
         }))
       );
     } catch (err) {
+      if (requestIdRef.current !== requestId) {
+        return;
+      }
       setError(err instanceof Error ? err.message : "Failed to fetch milestones");
     } finally {
-      setIsLoading(false);
+      if (requestIdRef.current === requestId) {
+        setIsLoading(false);
+      }
     }
   }, [escrowAddress, categoryType]);
 
@@ -346,18 +372,24 @@ export function useEscrowEvents(escrowAddress: Address | null) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fromBlock, setFromBlock] = useState<bigint | null>(null);
+  const requestIdRef = useRef(0);
 
   // escrowAddressが変更されたときのみfromBlockをリセット
   useEffect(() => {
+    requestIdRef.current += 1;
     setFromBlock(null);
   }, [escrowAddress]);
 
   const fetchEvents = useCallback(async () => {
     if (!escrowAddress) {
+      requestIdRef.current += 1;
       setEvents([]);
+      setError(null);
+      setIsLoading(false);
       return;
     }
 
+    const requestId = ++requestIdRef.current;
     setIsLoading(true);
     setError(null);
 
@@ -477,6 +509,8 @@ export function useEscrowEvents(escrowAddress: Address | null) {
           buyer: log.args.buyer!,
           txHash: log.transactionHash!,
           blockNumber: log.blockNumber!,
+          transactionIndex: log.transactionIndex ?? undefined,
+          logIndex: log.logIndex ?? undefined,
           amount: log.args.amount,
         });
       }
@@ -487,6 +521,8 @@ export function useEscrowEvents(escrowAddress: Address | null) {
           buyer: log.args.buyer!,
           txHash: log.transactionHash!,
           blockNumber: log.blockNumber!,
+          transactionIndex: log.transactionIndex ?? undefined,
+          logIndex: log.logIndex ?? undefined,
         });
       }
 
@@ -496,6 +532,8 @@ export function useEscrowEvents(escrowAddress: Address | null) {
           buyer: log.args.buyer!,
           txHash: log.transactionHash!,
           blockNumber: log.blockNumber!,
+          transactionIndex: log.transactionIndex ?? undefined,
+          logIndex: log.logIndex ?? undefined,
           amount: log.args.refundAmount,
         });
       }
@@ -505,6 +543,8 @@ export function useEscrowEvents(escrowAddress: Address | null) {
           type: "Completed",
           txHash: log.transactionHash!,
           blockNumber: log.blockNumber!,
+          transactionIndex: log.transactionIndex ?? undefined,
+          logIndex: log.logIndex ?? undefined,
           index: log.args.index,
           amount: log.args.amount,
         });
@@ -516,18 +556,37 @@ export function useEscrowEvents(escrowAddress: Address | null) {
           buyer: log.args.buyer!,
           txHash: log.transactionHash!,
           blockNumber: log.blockNumber!,
+          transactionIndex: log.transactionIndex ?? undefined,
+          logIndex: log.logIndex ?? undefined,
           amount: log.args.amount,
         });
       }
 
-      // Sort by block number
-      allEvents.sort((a, b) => Number(a.blockNumber - b.blockNumber));
+      // Sort by chain order for stable timeline rendering.
+      allEvents.sort((a, b) => {
+        if (a.blockNumber < b.blockNumber) return -1;
+        if (a.blockNumber > b.blockNumber) return 1;
+        const txA = a.transactionIndex ?? Number.MAX_SAFE_INTEGER;
+        const txB = b.transactionIndex ?? Number.MAX_SAFE_INTEGER;
+        if (txA !== txB) return txA - txB;
+        const logA = a.logIndex ?? Number.MAX_SAFE_INTEGER;
+        const logB = b.logIndex ?? Number.MAX_SAFE_INTEGER;
+        return logA - logB;
+      });
 
+      if (requestIdRef.current !== requestId) {
+        return;
+      }
       setEvents(allEvents);
     } catch (err) {
+      if (requestIdRef.current !== requestId) {
+        return;
+      }
       setError(err instanceof Error ? err.message : "イベント取得エラー");
     } finally {
-      setIsLoading(false);
+      if (requestIdRef.current === requestId) {
+        setIsLoading(false);
+      }
     }
   }, [escrowAddress, fromBlock]);
 

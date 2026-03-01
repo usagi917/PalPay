@@ -238,7 +238,6 @@ export default function ListingDetailPage() {
                         decimals={decimals}
                         symbol={symbol}
                         userRole={userRole}
-                        wallet={wallet}
                         txStep={txStep}
                         txHash={txHash}
                         actionLoading={actionLoading}
@@ -248,8 +247,6 @@ export default function ListingDetailPage() {
                         milestones={milestones}
                         milestonesLoading={milestonesLoading}
                         nextMilestoneIndex={nextMilestoneIndex}
-                        nftOwner={nftOwner}
-                        escrowAddress={escrowAddress}
                         onLock={handleLock}
                         onSubmit={handleSubmit}
                         onApprove={approve}

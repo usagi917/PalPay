@@ -28,11 +28,10 @@ export async function GET(
 ) {
   try {
     const { tokenId } = await params;
-    const tokenIdNum = parseInt(tokenId);
-
-    if (isNaN(tokenIdNum) || tokenIdNum < 0) {
+    if (!/^\d+$/.test(tokenId)) {
       return NextResponse.json({ error: "Invalid tokenId" }, { status: 400 });
     }
+    const tokenIdValue = BigInt(tokenId);
 
     const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL;
     const factoryAddress = process.env.NEXT_PUBLIC_FACTORY_ADDRESS as Address;
@@ -51,7 +50,7 @@ export async function GET(
       address: factoryAddress,
       abi: FACTORY_ABI,
       functionName: "tokenIdToEscrow",
-      args: [BigInt(tokenIdNum)],
+      args: [tokenIdValue],
     }) as Address;
 
     if (escrowAddress === "0x0000000000000000000000000000000000000000") {

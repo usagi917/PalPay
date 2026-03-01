@@ -42,6 +42,10 @@ function pruneRateLimits(now = Date.now()) {
 
 export function issueNonce(sessionId: string, ttlMs: number): { nonce: string; expiresAt: number } {
   pruneNonces();
+  const existing = nonceStore.get(sessionId);
+  if (existing && !existing.used && existing.expiresAt > Date.now()) {
+    return { nonce: existing.nonce, expiresAt: existing.expiresAt };
+  }
   const nonce = randomUUID();
   const expiresAt = Date.now() + ttlMs;
   nonceStore.set(sessionId, { nonce, expiresAt, used: false });

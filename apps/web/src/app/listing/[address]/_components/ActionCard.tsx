@@ -20,7 +20,7 @@ import { formatAmount } from "@/lib/hooks";
 import type { TxStep } from "@/lib/hooks";
 import type { Locale } from "@/lib/i18n";
 import type { EscrowInfo, Milestone, UserRole } from "@/lib/types";
-import type { Address, Hash } from "viem";
+import type { Hash } from "viem";
 
 export interface ActionCardProps {
   info: EscrowInfo;
@@ -28,7 +28,6 @@ export interface ActionCardProps {
   decimals: number;
   symbol: string;
   userRole: UserRole;
-  wallet: { address: Address | null; isConnecting: boolean; connect: () => void };
   txStep: TxStep;
   txHash: Hash | null;
   actionLoading: boolean;
@@ -38,8 +37,6 @@ export interface ActionCardProps {
   milestones: Milestone[];
   milestonesLoading: boolean;
   nextMilestoneIndex: number;
-  nftOwner: Address | null;
-  escrowAddress: Address;
   onLock: () => void;
   onSubmit: (index: number) => void;
   onApprove: () => void;
