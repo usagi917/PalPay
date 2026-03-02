@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 > A milestone-based escrow DApp for high-value B2B transactions (wagyu, sake, and crafts).  
-> It runs on Next.js 15 + Cloud Run, with an AI assistant powered by Vertex AI Gemini.
+> It runs on Next.js 15 + Cloud Run, with an AI assistant powered by OpenAI GPT-5 Nano.
 
 ## Problem It Solves
 
@@ -34,7 +34,7 @@ flowchart LR
     W["Web App<br/>Next.js 15 on Cloud Run"]
     A["Agent API<br/>/api/agent/*"]
     N["NFT API<br/>/api/nft/*"]
-    V["Vertex AI Gemini"]
+    V["OpenAI API<br/>GPT-5 Nano"]
     F["ListingFactoryV6"]
     E["MilestoneEscrowV6<br/>(per listing)"]
     T["ERC-20 Token"]
@@ -69,7 +69,7 @@ lib/         Foundry libraries (OpenZeppelin submodule)
 - MetaMask
 - RPC URL + deployed contract addresses for your target chain
 - (Optional) Foundry (`forge`) if you build contracts locally
-- (Optional) `gcloud` CLI for `/agent` local verification or Cloud Run deployment
+- (Optional) `gcloud` CLI for Cloud Run deployment
 
 If you run `forge build`, initialize the OpenZeppelin submodule first:
 
@@ -101,10 +101,8 @@ At minimum, set these values in `apps/web/.env.local`:
 
 If you also use `/agent`, add:
 
-- `GCP_PROJECT_ID`
-- `GCP_LOCATION` (example: `us-central1`)
-- `GEMINI_MODEL` (example: `gemini-2.5-flash`)
-- Local ADC auth: `gcloud auth application-default login`
+- `OPENAI_API_KEY`
+- `OPENAI_MODEL` (example: `gpt-5-nano-2025-08-07`)
 
 Then open `http://localhost:3000`.
 
@@ -123,10 +121,22 @@ Config file: `apps/web/.env.local`
 | `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE` | No | Base URL for transaction links |
 | `NEXT_PUBLIC_XMTP_ENV` | No | `dev` or `production` (default: `dev`) |
 | `CHAIN_ID` | No | API route chain ID override |
-| `GCP_PROJECT_ID` | Required for Agent | GCP project used by Vertex AI |
-| `GCP_LOCATION` | Required for Agent | Vertex AI location |
-| `GEMINI_MODEL` | Recommended for Agent | Gemini model name (default: `gemini-2.5-flash`) |
+| `OPENAI_API_KEY` | Required for Agent | OpenAI API key |
+| `OPENAI_MODEL` | Recommended for Agent | OpenAI model name (default: `gpt-5-nano-2025-08-07`) |
+| `OPENAI_API_BASE_URL` | No | Override base URL for OpenAI-compatible APIs (default: `https://api.openai.com/v1`) |
 | `NEXT_PUBLIC_AGENT_AUTH_REQUIRED` | No | Set `false` to disable client-side signature flow (default: enabled) |
+
+### Vercel settings (with Agent enabled)
+
+- `Root Directory`: `apps/web`
+- `Environment Variables` (set for Production / Preview / Development)
+  - `OPENAI_API_KEY`
+  - `OPENAI_MODEL` (recommended: `gpt-5-nano-2025-08-07`)
+  - `NEXT_PUBLIC_RPC_URL`
+  - `NEXT_PUBLIC_CHAIN_ID`
+  - `NEXT_PUBLIC_FACTORY_ADDRESS`
+  - `NEXT_PUBLIC_TOKEN_ADDRESS`
+  - Add `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE` / `NEXT_PUBLIC_XMTP_ENV` / `NEXT_PUBLIC_AGENT_AUTH_REQUIRED` when needed
 
 ### Agent security and limits (optional)
 
@@ -194,11 +204,9 @@ Timestamp: <unix_ms>
 ```bash
 gcloud config set project <YOUR_PROJECT_ID>
 gcloud auth login
-gcloud auth application-default login
 gcloud services enable run.googleapis.com \
   cloudbuild.googleapis.com \
-  artifactregistry.googleapis.com \
-  aiplatform.googleapis.com
+  artifactregistry.googleapis.com
 ```
 
 ### 2) Deploy
@@ -210,9 +218,8 @@ export NEXT_PUBLIC_RPC_URL="https://sepolia.base.org"
 export NEXT_PUBLIC_CHAIN_ID="84532"
 export NEXT_PUBLIC_FACTORY_ADDRESS="<FACTORY_ADDRESS>"
 export NEXT_PUBLIC_TOKEN_ADDRESS="<TOKEN_ADDRESS>"
-export GCP_PROJECT_ID="<YOUR_PROJECT_ID>"
-export GCP_LOCATION="us-central1"
-export GEMINI_MODEL="gemini-2.5-flash"
+export OPENAI_API_KEY="<YOUR_OPENAI_API_KEY>"
+export OPENAI_MODEL="gpt-5-nano-2025-08-07"
 export NEXT_PUBLIC_XMTP_ENV="dev"
 
 bash scripts/deploy-cloudrun.sh

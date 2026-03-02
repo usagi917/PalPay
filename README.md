@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 > 和牛・日本酒・工芸品などの高額B2B取引を、マイルストーン連動決済で進めるエスクローDAppです。  
-> Next.js 15 を Cloud Run で運用し、AIアシスタントは Vertex AI Gemini を利用します。
+> Next.js 15 を Cloud Run で運用し、AIアシスタントは OpenAI GPT-5 Nano を利用します。
 
 ## 何を解決するか
 
@@ -34,7 +34,7 @@ flowchart LR
     W["Web App<br/>Next.js 15 on Cloud Run"]
     A["Agent API<br/>/api/agent/*"]
     N["NFT API<br/>/api/nft/*"]
-    V["Vertex AI Gemini"]
+    V["OpenAI API<br/>GPT-5 Nano"]
     F["ListingFactoryV6"]
     E["MilestoneEscrowV6<br/>(per listing)"]
     T["ERC-20 Token"]
@@ -69,7 +69,7 @@ lib/         Foundryライブラリ（OpenZeppelinサブモジュール）
 - MetaMask
 - 対象チェーンのRPC URLとデプロイ済みコントラクトアドレス
 - （任意）Foundry (`forge`)：コントラクトをビルドする場合
-- （任意）`gcloud` CLI：`/agent` のローカル検証や Cloud Run デプロイを行う場合
+- （任意）`gcloud` CLI：Cloud Run へデプロイする場合
 
 `forge build` を使う場合は OpenZeppelin サブモジュールを初期化してください。
 
@@ -101,10 +101,8 @@ pnpm dev
 
 `/agent` も使う場合は、追加で以下が必要です。
 
-- `GCP_PROJECT_ID`
-- `GCP_LOCATION`（例: `us-central1`）
-- `GEMINI_MODEL`（例: `gemini-2.5-flash`）
-- ローカルADC認証: `gcloud auth application-default login`
+- `OPENAI_API_KEY`
+- `OPENAI_MODEL`（例: `gpt-5-nano-2025-08-07`）
 
 起動後、`http://localhost:3000` を開いて確認します。
 
@@ -123,10 +121,22 @@ pnpm dev
 | `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE` | No | TxリンクのベースURL |
 | `NEXT_PUBLIC_XMTP_ENV` | No | `dev` または `production`（デフォルト: `dev`） |
 | `CHAIN_ID` | No | APIルート側で使うチェーンID上書き |
-| `GCP_PROJECT_ID` | Agent利用時必須 | Vertex AI利用先プロジェクト |
-| `GCP_LOCATION` | Agent利用時必須 | Vertex AIロケーション |
-| `GEMINI_MODEL` | Agent利用時推奨 | 利用するGeminiモデル（デフォルト: `gemini-2.5-flash`） |
+| `OPENAI_API_KEY` | Agent利用時必須 | OpenAI APIキー |
+| `OPENAI_MODEL` | Agent利用時推奨 | 利用するOpenAIモデル（デフォルト: `gpt-5-nano-2025-08-07`） |
+| `OPENAI_API_BASE_URL` | No | OpenAI互換APIのベースURL上書き（デフォルト: `https://api.openai.com/v1`） |
 | `NEXT_PUBLIC_AGENT_AUTH_REQUIRED` | No | `false` でフロントの署名フローを無効化（デフォルト: 有効） |
+
+### Vercel設定（Agent有効時）
+
+- `Root Directory`: `apps/web`
+- `Environment Variables`（Production / Preview / Developmentに設定）
+  - `OPENAI_API_KEY`
+  - `OPENAI_MODEL`（推奨: `gpt-5-nano-2025-08-07`）
+  - `NEXT_PUBLIC_RPC_URL`
+  - `NEXT_PUBLIC_CHAIN_ID`
+  - `NEXT_PUBLIC_FACTORY_ADDRESS`
+  - `NEXT_PUBLIC_TOKEN_ADDRESS`
+  - 必要なら `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE` / `NEXT_PUBLIC_XMTP_ENV` / `NEXT_PUBLIC_AGENT_AUTH_REQUIRED`
 
 ### Agentセキュリティ/制限（任意）
 
@@ -194,11 +204,9 @@ Timestamp: <unix_ms>
 ```bash
 gcloud config set project <YOUR_PROJECT_ID>
 gcloud auth login
-gcloud auth application-default login
 gcloud services enable run.googleapis.com \
   cloudbuild.googleapis.com \
-  artifactregistry.googleapis.com \
-  aiplatform.googleapis.com
+  artifactregistry.googleapis.com
 ```
 
 ### 2) デプロイ
@@ -210,9 +218,8 @@ export NEXT_PUBLIC_RPC_URL="https://sepolia.base.org"
 export NEXT_PUBLIC_CHAIN_ID="84532"
 export NEXT_PUBLIC_FACTORY_ADDRESS="<FACTORY_ADDRESS>"
 export NEXT_PUBLIC_TOKEN_ADDRESS="<TOKEN_ADDRESS>"
-export GCP_PROJECT_ID="<YOUR_PROJECT_ID>"
-export GCP_LOCATION="us-central1"
-export GEMINI_MODEL="gemini-2.5-flash"
+export OPENAI_API_KEY="<YOUR_OPENAI_API_KEY>"
+export OPENAI_MODEL="gpt-5-nano-2025-08-07"
 export NEXT_PUBLIC_XMTP_ENV="dev"
 
 bash scripts/deploy-cloudrun.sh
