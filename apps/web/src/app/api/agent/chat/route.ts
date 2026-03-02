@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { isAddress, verifyMessage, type Address } from "viem";
-import { createChat, getAgentProviderConfigError, type AgentHistoryContent } from "@/lib/agent/gemini";
+import { createChat, getAgentProviderConfigError, type AgentHistoryContent } from "@/lib/agent/openai";
 import { executeTool } from "@/lib/agent/tools";
 import { SYSTEM_PROMPTS } from "@/lib/agent/prompts";
 import { buildAgentAuthMessage } from "@/lib/agent/auth";
@@ -664,7 +664,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Send all function responses back to Gemini
+      // Send all function responses back to the model
       response = await chat.sendMessage({
         message: functionResponses.map((fr) => ({
           functionResponse: fr,

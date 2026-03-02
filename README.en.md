@@ -102,7 +102,7 @@ At minimum, set these values in `apps/web/.env.local`:
 If you also use `/agent`, add:
 
 - `OPENAI_API_KEY`
-- `OPENAI_MODEL` (example: `gpt-5-nano-2025-08-07`)
+- `OPENAI_MODEL` (example: `gpt-5-nano`)
 
 Then open `http://localhost:3000`.
 
@@ -122,7 +122,7 @@ Config file: `apps/web/.env.local`
 | `NEXT_PUBLIC_XMTP_ENV` | No | `dev` or `production` (default: `dev`) |
 | `CHAIN_ID` | No | API route chain ID override |
 | `OPENAI_API_KEY` | Required for Agent | OpenAI API key |
-| `OPENAI_MODEL` | Recommended for Agent | OpenAI model name (default: `gpt-5-nano-2025-08-07`) |
+| `OPENAI_MODEL` | Recommended for Agent | OpenAI model name (default: `gpt-5-nano`) |
 | `OPENAI_API_BASE_URL` | No | Override base URL for OpenAI-compatible APIs (default: `https://api.openai.com/v1`) |
 | `NEXT_PUBLIC_AGENT_AUTH_REQUIRED` | No | Set `false` to disable client-side signature flow (default: enabled) |
 
@@ -131,7 +131,7 @@ Config file: `apps/web/.env.local`
 - `Root Directory`: `apps/web`
 - `Environment Variables` (set for Production / Preview / Development)
   - `OPENAI_API_KEY`
-  - `OPENAI_MODEL` (recommended: `gpt-5-nano-2025-08-07`)
+  - `OPENAI_MODEL` (recommended: `gpt-5-nano`)
   - `NEXT_PUBLIC_RPC_URL`
   - `NEXT_PUBLIC_CHAIN_ID`
   - `NEXT_PUBLIC_FACTORY_ADDRESS`
@@ -219,7 +219,7 @@ export NEXT_PUBLIC_CHAIN_ID="84532"
 export NEXT_PUBLIC_FACTORY_ADDRESS="<FACTORY_ADDRESS>"
 export NEXT_PUBLIC_TOKEN_ADDRESS="<TOKEN_ADDRESS>"
 export OPENAI_API_KEY="<YOUR_OPENAI_API_KEY>"
-export OPENAI_MODEL="gpt-5-nano-2025-08-07"
+export OPENAI_MODEL="gpt-5-nano"
 export NEXT_PUBLIC_XMTP_ENV="dev"
 
 bash scripts/deploy-cloudrun.sh

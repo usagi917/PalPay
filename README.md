@@ -102,7 +102,7 @@ pnpm dev
 `/agent` も使う場合は、追加で以下が必要です。
 
 - `OPENAI_API_KEY`
-- `OPENAI_MODEL`（例: `gpt-5-nano-2025-08-07`）
+- `OPENAI_MODEL`（例: `gpt-5-nano`）
 
 起動後、`http://localhost:3000` を開いて確認します。
 
@@ -122,7 +122,7 @@ pnpm dev
 | `NEXT_PUBLIC_XMTP_ENV` | No | `dev` または `production`（デフォルト: `dev`） |
 | `CHAIN_ID` | No | APIルート側で使うチェーンID上書き |
 | `OPENAI_API_KEY` | Agent利用時必須 | OpenAI APIキー |
-| `OPENAI_MODEL` | Agent利用時推奨 | 利用するOpenAIモデル（デフォルト: `gpt-5-nano-2025-08-07`） |
+| `OPENAI_MODEL` | Agent利用時推奨 | 利用するOpenAIモデル（デフォルト: `gpt-5-nano`） |
 | `OPENAI_API_BASE_URL` | No | OpenAI互換APIのベースURL上書き（デフォルト: `https://api.openai.com/v1`） |
 | `NEXT_PUBLIC_AGENT_AUTH_REQUIRED` | No | `false` でフロントの署名フローを無効化（デフォルト: 有効） |
 
@@ -131,7 +131,7 @@ pnpm dev
 - `Root Directory`: `apps/web`
 - `Environment Variables`（Production / Preview / Developmentに設定）
   - `OPENAI_API_KEY`
-  - `OPENAI_MODEL`（推奨: `gpt-5-nano-2025-08-07`）
+  - `OPENAI_MODEL`（推奨: `gpt-5-nano`）
   - `NEXT_PUBLIC_RPC_URL`
   - `NEXT_PUBLIC_CHAIN_ID`
   - `NEXT_PUBLIC_FACTORY_ADDRESS`
@@ -219,7 +219,7 @@ export NEXT_PUBLIC_CHAIN_ID="84532"
 export NEXT_PUBLIC_FACTORY_ADDRESS="<FACTORY_ADDRESS>"
 export NEXT_PUBLIC_TOKEN_ADDRESS="<TOKEN_ADDRESS>"
 export OPENAI_API_KEY="<YOUR_OPENAI_API_KEY>"
-export OPENAI_MODEL="gpt-5-nano-2025-08-07"
+export OPENAI_MODEL="gpt-5-nano"
 export NEXT_PUBLIC_XMTP_ENV="dev"
 
 bash scripts/deploy-cloudrun.sh
