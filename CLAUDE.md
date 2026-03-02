@@ -1,193 +1,57 @@
-# CLAUDE.md
+## ワークフロー設計
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+### 1. Planモードを基本とする
+- 3ステップ以上 or アーキテクチャに関わるタスクは必ずPlanモードで開始する
+- 途中でうまくいかなくなったら、無理に進めずすぐに立ち止まって再計画する
+- 構築だけでなく、検証ステップにもPlanモードを使う
+- 曖昧さを減らすため、実装前に詳細な仕様を書く
 
-## 開発の進め方
+### 2. サブエージェント戦略
+- メインのコンテキストウィンドウをクリーンに保つためにサブエージェントを積極的に活用する
+- リサーチ・調査・並列分析はサブエージェントに任せる
+- 複雑な問題には、サブエージェントを使ってより多くの計算リソースを投入する
+- 集中して実行するために、サブエージェント1つにつき1タスクを割り当てる
 
-開発を進める際は `plans/whimsical-pondering-swing.md` を参照すること。第4回 Agentic AI Hackathon with Google Cloud 応募に向けた改善計画・日別スケジュールが記載されている。
+### 3. 自己改善ループ
+- ユーザーから修正を受けたら必ず `tasks/lessons.md` にそのパターンを記録する
+- 同じミスを繰り返さないように、自分へのルールを書く
+- ミス率が下がるまで、ルールを徹底的に改善し続ける
+- セッション開始時に、そのプロジェクトに関連するlessonsをレビューする
 
-**応募カテゴリ**: 2. 業務システム
-**期限**: 2026年2月15日
-**ブロッカー**:
-1. ~~`@google/generative-ai` → `@google/genai` (Vertex AI) へのSDK移行~~ **完了**
-2. ~~Cloud Runデプロイ（Dockerfile + standalone出力）~~ **実装済み（デプロイ待ち）**
-3. 提出物準備（Zenn記事・デモ動画・アーキテクチャ図）
+### 4. 完了前に必ず検証する
+- 動作を証明できるまで、タスクを完了とマークしない
+- 必要に応じてmainブランチと自分の変更の差分を確認する
+- 「スタッフエンジニアはこれを承認するか？」と自問する
+- テストを実行し、ログを確認し、正しく動作することを示す
 
-## プロジェクト概要
+### 5. エレガントさを追求する（バランスよく）
+- 重要な変更をする前に「もっとエレガントな方法はないか？」と一度立ち止まる
+- ハック的な修正に感じたら「今知っていることをすべて踏まえて、エレガントな解決策を実装する」
+- シンプルで明白な修正にはこのプロセスをスキップする（過剰設計しない）
+- 提示する前に自分の作業に自問自答する
 
-Proof of Trust - 和牛・日本酒・工芸品を出品できる分散型マーケットプレイスdApp。マイルストーン完了ごとにJPYCが生産者へ自動送金される。管理者不在のトラストレス設計。
+### 6. 自律的なバグ修正
+- バグレポートを受けたら、手取り足取り教えてもらわずにそのまま修正する
+- ログ・エラー・失敗しているテストを見て、自分で解決する
+- ユーザーのコンテキスト切り替えをゼロにする
+- 言われなくても、失敗しているCIテストを修正しに行く
 
-**コンセプト**: 1出品 = 1 Escrowコントラクト = 1 NFT。生産者がマイルストーン完了を自己申告し、即座に支払いが発生。
+---
 
-**主要機能**:
-- マイルストーン開始前の購入者承認フロー (`approve()`)
-- LOCKED状態でのキャンセル・全額返金 (`cancel()`)
-- Producer/Buyer間のXMTPチャット（メールアドレス不要）
-- 最終マイルストーンは購入者確認が必要 (`confirmDelivery()`)
-- Dynamic NFT（オンチェーンメタデータ/SVG画像API）
-- AIエージェント（Vertex AI Gemini 2.5 Flash + Function Calling）
+## タスク管理
 
-## ビルド・実行コマンド
+1. **まず計画を立てる**：チェック可能な項目として `tasks/todo.md` に計画を書く
+2. **計画を確認する**：実装を開始する前に確認する
+3. **進捗を記録する**：完了した項目を随時マークしていく
+4. **変更を説明する**：各ステップで高レベルのサマリーを提供する
+5. **結果をドキュメント化する**：`tasks/todo.md` にレビューセクションを追加する
+6. **学びを記録する**：修正を受けた後に `tasks/lessons.md` を更新する
 
-### スマートコントラクト (Foundry)
+---
 
-```bash
-# ビルド
-forge build
+## コア原則
 
-# テスト
-forge test
+- **シンプル第一**：すべての変更をできる限りシンプルにする。影響するコードを最小限にする。
+- **手を抜かない**：根本原因を見つける。一時的な修正は避ける。シニアエンジニアの水準を保つ。
+- **影響を最小化する**：変更は必要な箇所のみにとどめる。バグを新たに引き込まない。
 
-# デプロイ（例）
-forge script script/Deploy.s.sol --rpc-url $RPC_URL --broadcast
-```
-
-Remix IDEでの手動デプロイも可能。
-
-### dApp
-
-```bash
-cd apps/web
-pnpm install
-pnpm dev          # ローカル開発 (http://localhost:3000)
-pnpm dev:turbo    # Turbopackモード
-pnpm build        # 本番ビルド
-pnpm lint         # ESLintチェック
-```
-
-## アーキテクチャ
-
-```
-hackathon/
-├── contracts/                  # Solidityスマートコントラクト
-│   ├── ListingFactoryV6.sol    # ERC721 Factory + MilestoneEscrowV6（現行）
-│   ├── ListingFactoryV5.sol    # 旧バージョン
-│   └── MockERC20.sol           # テスト用トークン
-├── apps/web/                   # Next.js 15 dApp (App Router)
-│   └── src/
-│       ├── app/                # ルートとAPI
-│       │   ├── api/nft/        # Dynamic NFTメタデータ/画像API
-│       │   ├── listing/[address]/ # 出品詳細ページ
-│       │   ├── my/             # マイページ
-│       │   └── agent/          # AIエージェント画面
-│       ├── components/         # UIコンポーネント
-│       ├── hooks/              # useXmtpChat, useAgentSession
-│       └── lib/
-│           ├── hooks.ts        # 全コントラクトhooks（viem）
-│           ├── abi.ts          # コントラクトABI
-│           ├── config.ts       # チェーン/RPC設定
-│           ├── xmtp.ts         # XMTPクライアント
-│           ├── i18n.ts         # 国際化（日/英）
-│           └── agent/          # AIエージェント
-│               ├── gemini.ts   # @google/genai SDK初期化・チャットセッション
-│               ├── tools.ts    # Function Callingツール定義・実行
-│               └── prompts.ts  # システムプロンプト
-├── lib/                        # OpenZeppelin contracts（submodule）
-└── foundry.toml                # Foundry設定
-```
-
-### コントラクト状態遷移
-
-```
-OPEN → lock() → LOCKED → approve() → ACTIVE → submit() × N → confirmDelivery() → COMPLETED
-                   ↓
-               cancel() → CANCELLED（全額返金）
-```
-
-### 主要コントラクト関数
-
-| 関数 | 呼び出し者 | 必要な状態 | 説明 |
-|------|-----------|-----------|------|
-| `lock()` | 誰でも | OPEN | 購入者がJPYC支払い、NFT受領 |
-| `approve()` | Buyer | LOCKED | マイルストーン開始 |
-| `cancel()` | Buyer | LOCKED | 全額返金 |
-| `submit(index)` | Producer | ACTIVE | マイルストーン完了（最終以外） |
-| `confirmDelivery()` | Buyer | ACTIVE | 最終マイルストーン確認 |
-
-### フロントエンドHooks (src/lib/hooks.ts)
-
-全hooksはviemベースで単一ファイルにエクスポート:
-
-```typescript
-// Factory操作
-useCreateListing(), useListings(), useListingSummaries()
-
-// Escrow操作
-useEscrowInfo(address), useMilestones(address)
-useEscrowActions(address) → { lock, approve, cancel, submit, confirmDelivery, txStep }
-useEscrowEvents(address)
-
-// トークン操作
-useTokenBalance(address), useTokenAllowance(owner, spender)
-usePurchaseValidation(user, escrow, amount)
-
-// リアルタイムポーリング
-useRealtimeEscrow(address), useRealtimeListingSummaries()
-useMyListings(address)
-```
-
-## AIエージェントツール
-
-`@google/genai` SDK（Vertex AIバックエンド）でFunction Callingを使用。ツール定義は `parametersJsonSchema` (JSON Schema形式) を使用。
-
-| ツール | 説明 | 種別 |
-|--------|------|------|
-| `get_listings` | 全出品一覧を取得 | read-only |
-| `get_listing_detail` | 出品詳細・マイルストーン情報を取得 | read-only |
-| `prepare_listing_draft` | 出品ドラフトを生成（UIに表示） | draft |
-| `get_milestones_for_category` | カテゴリ別テンプレートを取得 | read-only |
-| `prepare_transaction` | トランザクション準備（署名前確認UI） | action |
-| `analyze_market` | カテゴリ別の市場分析・価格提案 | read-only |
-| `assess_risk` | 購入リスク評価（出品者実績分析） | read-only |
-| `suggest_next_action` | ユーザーへのプロアクティブ提案 | read-only |
-
-## 環境変数
-
-```bash
-# 必須
-NEXT_PUBLIC_RPC_URL=             # RPCエンドポイント（Sepolia/Base Sepolia/Polygon Amoy）
-NEXT_PUBLIC_CHAIN_ID=11155111    # チェーンID
-NEXT_PUBLIC_FACTORY_ADDRESS=     # ListingFactoryV6アドレス
-NEXT_PUBLIC_TOKEN_ADDRESS=       # ERC20トークンアドレス
-
-# Google Cloud（Vertex AI）
-GCP_PROJECT_ID=                  # GCPプロジェクトID
-GCP_LOCATION=      # Vertex AIリージョン
-GEMINI_MODEL=gemini-2.5-flash
-
-# オプション
-NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE=  # 例: https://sepolia.etherscan.io/tx/
-NEXT_PUBLIC_XMTP_ENV=dev             # XMTP環境（dev または production）
-```
-
-**認証**: Cloud Run上ではADC（Application Default Credentials）が自動適用。ローカル開発は `gcloud auth application-default login` を実行。
-
-## マイルストーンテンプレート (bps, 10000=100%)
-
-**wagyu** (11ステップ): 素牛導入(300) → ... → 納品完了(4000★)
-**sake** (5ステップ): 仕込み(1000) → ... → 出荷(4000★)
-**craft** (4ステップ): 制作開始(1000) → ... → 仕上げ(4500★)
-
-★ = `confirmDelivery()`による購入者確認が必要
-
-## デプロイ手順
-
-### スマートコントラクト
-1. MockERC20をデプロイ（または既存ERC20を使用）
-2. ListingFactoryV6を `(tokenAddress, baseURI)` でデプロイ
-
-### dApp（Cloud Run）
-1. `apps/web/next.config.ts` に `output: "standalone"` を設定
-2. `apps/web/Dockerfile` でマルチステージビルド（pnpm対応）
-3. GCPサービスアカウントに `roles/aiplatform.user` を付与
-4. デプロイ:
-```bash
-cd apps/web
-gcloud builds submit --tag gcr.io/$PROJECT_ID/wagyu-escrow
-gcloud run deploy wagyu-escrow \
-  --image gcr.io/$PROJECT_ID/wagyu-escrow \
-  --platform managed --region us-central1 \
-  --allow-unauthenticated --memory 512Mi
-```
-
-**注意**: `NEXT_PUBLIC_*` 環境変数はビルド時に埋め込まれる。Cloud Buildの `--substitutions` か `.env.production` で対応。

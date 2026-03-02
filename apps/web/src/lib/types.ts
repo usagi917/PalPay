@@ -52,6 +52,8 @@ export interface TimelineEvent {
   type: EventType;
   txHash: Hash;
   blockNumber: bigint;
+  transactionIndex?: number;
+  logIndex?: number;
   timestamp?: number;
   // Locked
   buyer?: Address;
@@ -62,32 +64,3 @@ export interface TimelineEvent {
 
 // v2: User role (no admin)
 export type UserRole = "buyer" | "producer" | "none";
-
-// Legacy types for backward compatibility
-export enum MilestoneState {
-  PENDING = 0,
-  COMPLETED = 1,
-}
-
-export interface LegacyMilestone {
-  code: string;
-  bps: bigint;
-  state: MilestoneState;
-  evidenceHash: Hash;
-  evidenceText: string;
-  completedAt: bigint;
-  releasedAmount: bigint;
-}
-
-export interface ContractSummary {
-  token: Address;
-  buyer: Address;
-  producer: Address;
-  admin: Address;
-  totalAmount: bigint;
-  lockedAmount: bigint;
-  releasedAmount: bigint;
-  refundedAmount: bigint;
-  cancelled: boolean;
-  milestonesCount: bigint;
-}

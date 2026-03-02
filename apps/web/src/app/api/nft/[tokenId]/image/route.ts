@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createPublicClient, http, type Address } from "viem";
-import { polygonAmoy } from "viem/chains";
+import { avalancheFuji } from "viem/chains";
 import { FACTORY_ABI, ESCROW_ABI, ERC20_ABI } from "@/lib/abi";
 import { SUPPORTED_CHAINS, CATEGORY_LABELS } from "@/lib/config";
 import { getMilestoneName } from "@/lib/constants";
@@ -13,10 +13,10 @@ interface Milestone {
 
 const resolveChain = () => {
   const chainId = Number(
-    process.env.NEXT_PUBLIC_CHAIN_ID || process.env.CHAIN_ID || polygonAmoy.id
+    process.env.NEXT_PUBLIC_CHAIN_ID || process.env.CHAIN_ID || avalancheFuji.id
   );
   const chainKey = chainId as keyof typeof SUPPORTED_CHAINS;
-  return SUPPORTED_CHAINS[chainKey] ?? polygonAmoy;
+  return SUPPORTED_CHAINS[chainKey] ?? avalancheFuji;
 };
 
 const HTTP_STATUS = {
@@ -189,11 +189,10 @@ export async function GET(
 ) {
   try {
     const { tokenId } = await params;
-    const tokenIdNum = parseInt(tokenId);
-
-    if (isNaN(tokenIdNum) || tokenIdNum < 0) {
+    if (!/^\d+$/.test(tokenId)) {
       return new NextResponse("Invalid tokenId", { status: HTTP_STATUS.BAD_REQUEST });
     }
+    const tokenIdValue = BigInt(tokenId);
 
     const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL;
     const factoryAddress = process.env.NEXT_PUBLIC_FACTORY_ADDRESS as Address;
@@ -212,7 +211,7 @@ export async function GET(
       address: factoryAddress,
       abi: FACTORY_ABI,
       functionName: "tokenIdToEscrow",
-      args: [BigInt(tokenIdNum)],
+      args: [tokenIdValue],
     }) as Address;
 
     if (escrowAddress === "0x0000000000000000000000000000000000000000") {

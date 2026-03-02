@@ -10,6 +10,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import type { ListingDraft } from "@/lib/agent/types";
 import { MilestoneTable } from "./MilestoneTable";
+import { formatJpycAmount } from "./amount";
 import { useI18n } from "@/lib/i18n";
 
 interface DraftPreviewProps {
@@ -31,8 +32,7 @@ export function DraftPreview({ draft }: DraftPreviewProps) {
     emoji: "📦",
   };
 
-  // Format amount with commas
-  const formattedAmount = Number(draft.totalAmount).toLocaleString(locale === "ja" ? "ja-JP" : "en-US");
+  const formattedAmount = formatJpycAmount(draft.totalAmount, locale);
 
   return (
     <motion.div

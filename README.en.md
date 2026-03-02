@@ -2,48 +2,80 @@
 
 [![日本語](https://img.shields.io/badge/lang-日本語-green.svg)](README.md)
 [![Node.js >=20](https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js)](apps/web/Dockerfile)
+[![Solidity 0.8.24](https://img.shields.io/badge/Solidity-0.8.24-363636?logo=solidity)](foundry.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 > A milestone-based escrow DApp for high-value B2B transactions (wagyu, sake, and crafts).  
-> The Next.js app runs on Cloud Run, and the AI assistant uses Vertex AI Gemini.
+> It runs on Next.js 15 + Cloud Run, with an AI assistant powered by Vertex AI Gemini.
 
-## Google Cloud Requirement Coverage
+## Problem It Solves
 
-| Requirement | Implementation | Evidence |
-| --- | --- | --- |
-| A: Runtime product usage | Next.js running on Cloud Run | `apps/web/Dockerfile`, `apps/web/scripts/deploy-cloudrun.sh` |
-| B: AI product usage | Vertex AI (`@google/genai`, `vertexai: true`) | `apps/web/src/lib/agent/gemini.ts`, `apps/web/src/app/api/agent/chat/route.ts` |
+Long production cycles create high prepayment risk and severe cash-flow gaps.  
+This project combines milestone-linked payouts, evidence-backed state transitions, and party-to-party chat in one DApp.
 
 ## Key Features
 
-- Deploys one `MilestoneEscrowV6` contract per listing and mints an ERC721 NFT
-- Supports the state flow `open -> locked -> active -> completed / cancelled`
-- Handles ERC20 lock on `lock()`, milestone-based releases, and final settlement via `confirmDelivery()`
+- Deploys one `MilestoneEscrowV6` contract per listing and mints an ERC-721 NFT
+- Implements state flow: `open -> locked -> active -> completed / cancelled`
+- Handles ERC-20 deposit on `lock()`, stepwise payout on `submit()`, and final payout on `confirmDelivery()`
 - Dynamic NFT APIs
-  - `GET /api/nft/:tokenId`
-  - `GET /api/nft/:tokenId/image`
-- XMTP-based encrypted P2P chat (`NEXT_PUBLIC_XMTP_ENV=dev/production`)
+  - `GET /api/nft/:tokenId` (metadata)
+  - `GET /api/nft/:tokenId/image` (dynamic SVG)
 - Agent page (`/agent`) for listing support, market analysis, risk assessment, and next-action suggestions
+- XMTP-based end-to-end encrypted chat
+- My page (`/my`) with producer/buyer summaries and stats
+
+## User Architecture Diagram
+
+```mermaid
+flowchart LR
+    U["User<br/>(Buyer / Seller)"]
+    M["MetaMask"]
+    W["Web App<br/>Next.js 15 on Cloud Run"]
+    A["Agent API<br/>/api/agent/*"]
+    N["NFT API<br/>/api/nft/*"]
+    V["Vertex AI Gemini"]
+    F["ListingFactoryV6"]
+    E["MilestoneEscrowV6<br/>(per listing)"]
+    T["ERC-20 Token"]
+    X["XMTP Network"]
+
+    U -->|"trade actions / browsing"| W
+    U -->|"wallet signature"| M
+    M -->|"tx signature"| W
+    W --> A
+    A -->|"function calling"| V
+    W --> N
+    W -->|"contract read/write"| F
+    F -->|"deploy"| E
+    E -->|"milestone payout"| T
+    U -->|"E2E chat"| X
+    W -->|"XMTP integration"| X
+```
 
 ## Repository Structure
 
 ```text
-apps/web/    Next.js 15 frontend + API routes
-contracts/   Solidity contracts (ListingFactoryV5/V6, MockERC20)
-docs/        Submission docs, diagrams, and demo assets
+apps/web/    Next.js 15 frontend + API routes + Cloud Run scripts
+contracts/   Solidity contracts (ListingFactoryV6, MilestoneEscrowV6, MockERC20)
+docs/        Architecture, demo script, and demo assets
+lib/         Foundry libraries (OpenZeppelin submodule)
 ```
 
 ## Prerequisites
 
-- Node.js 20+ (`apps/web/Dockerfile`)
+- Node.js 20+
 - `pnpm`
 - MetaMask
-- RPC URL and deployed contract addresses for your target chain
-  - `NEXT_PUBLIC_FACTORY_ADDRESS`
-  - `NEXT_PUBLIC_TOKEN_ADDRESS`
-- If you use `/agent`
-  - A GCP project with `run`, `cloudbuild`, `artifactregistry`, and `aiplatform` APIs enabled
-  - `gcloud` CLI
+- RPC URL + deployed contract addresses for your target chain
+- (Optional) Foundry (`forge`) if you build contracts locally
+- (Optional) `gcloud` CLI for `/agent` local verification or Cloud Run deployment
+
+If you run `forge build`, initialize the OpenZeppelin submodule first:
+
+```bash
+git submodule update --init --recursive
+```
 
 ## Installation
 
@@ -60,7 +92,7 @@ cp .env.example .env.local
 pnpm dev
 ```
 
-At minimum, set the following values in `apps/web/.env.local`:
+At minimum, set these values in `apps/web/.env.local`:
 
 - `NEXT_PUBLIC_RPC_URL`
 - `NEXT_PUBLIC_CHAIN_ID`
@@ -70,8 +102,8 @@ At minimum, set the following values in `apps/web/.env.local`:
 If you also use `/agent`, add:
 
 - `GCP_PROJECT_ID`
-- `GCP_LOCATION` (for example: `us-central1`)
-- `GEMINI_MODEL` (for example: `gemini-2.5-flash`)
+- `GCP_LOCATION` (example: `us-central1`)
+- `GEMINI_MODEL` (example: `gemini-2.5-flash`)
 - Local ADC auth: `gcloud auth application-default login`
 
 Then open `http://localhost:3000`.
@@ -80,27 +112,80 @@ Then open `http://localhost:3000`.
 
 Config file: `apps/web/.env.local`
 
+### DApp / Agent runtime
+
 | Variable | Required | Description |
 | --- | --- | --- |
-| `NEXT_PUBLIC_RPC_URL` | Yes | RPC URL for the target network |
-| `NEXT_PUBLIC_CHAIN_ID` | Yes | Chain ID (example: Base Sepolia = `84532`) |
+| `NEXT_PUBLIC_RPC_URL` | Yes | RPC URL for the target chain |
+| `NEXT_PUBLIC_CHAIN_ID` | Yes | Chain ID |
 | `NEXT_PUBLIC_FACTORY_ADDRESS` | Yes | `ListingFactoryV6` address |
-| `NEXT_PUBLIC_TOKEN_ADDRESS` | Yes | ERC20 token address for settlement |
-| `NEXT_PUBLIC_XMTP_ENV` | No | `dev` or `production` |
+| `NEXT_PUBLIC_TOKEN_ADDRESS` | Yes | Settlement ERC-20 token address |
 | `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE` | No | Base URL for transaction links |
-| `CHAIN_ID` | No | Chain ID override for API routes |
+| `NEXT_PUBLIC_XMTP_ENV` | No | `dev` or `production` (default: `dev`) |
+| `CHAIN_ID` | No | API route chain ID override |
 | `GCP_PROJECT_ID` | Required for Agent | GCP project used by Vertex AI |
 | `GCP_LOCATION` | Required for Agent | Vertex AI location |
-| `GEMINI_MODEL` | Required for Agent | Gemini model name |
+| `GEMINI_MODEL` | Recommended for Agent | Gemini model name (default: `gemini-2.5-flash`) |
+| `NEXT_PUBLIC_AGENT_AUTH_REQUIRED` | No | Set `false` to disable client-side signature flow (default: enabled) |
+
+### Agent security and limits (optional)
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `AGENT_AUTH_DISABLED` | `false` | Set `true` to disable server-side signature validation |
+| `AGENT_NONCE_TTL_MS` | `300000` | Nonce TTL |
+| `AGENT_AUTH_SKEW_MS` | `300000` | Allowed auth timestamp skew |
+| `AGENT_AUTH_TOKEN_TTL_MS` | `1800000` | Session token TTL |
+| `AGENT_MAX_BODY_BYTES` | `16000` | Request body limit for `/api/agent/chat` |
+| `AGENT_MAX_MESSAGE_CHARS` | `2000` | Per-message character limit |
+| `AGENT_RATE_LIMIT_MAX` | `20` | Rate-limit allowance |
+| `AGENT_RATE_LIMIT_WINDOW_MS` | `60000` | Rate-limit window |
+
+## Smart Contracts
+
+- `ListingFactoryV6` creates one `MilestoneEscrowV6` per listing
+- NFT is minted to escrow first, then transferred to buyer on `lock()`
+
+State transitions:
+
+```text
+OPEN --lock()--> LOCKED --approve()--> ACTIVE --submit(...)--> ... --confirmDelivery()--> COMPLETED
+LOCKED --cancel()--> CANCELLED (full refund)
+```
+
+Category milestone distributions (BPS, total = 10000):
+
+| categoryType | Category | Steps | BPS array |
+| --- | --- | --- | --- |
+| `0` | wagyu | 11 | `300,500,500,500,500,500,500,500,700,1500,4000` |
+| `1` | sake | 5 | `1000,1500,1500,2000,4000` |
+| `2` | craft | 4 | `1000,2000,2500,4500` |
 
 ## API Endpoints
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/agent/nonce?sessionId=...` | Issue a nonce for request signing |
-| `POST` | `/api/agent/chat` | Agent chat endpoint (including tool execution) |
-| `GET` | `/api/nft/:tokenId` | NFT metadata JSON |
-| `GET` | `/api/nft/:tokenId/image` | NFT SVG image |
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/agent/nonce?sessionId=...` | None | Issue signing nonce |
+| `POST` | `/api/agent/chat` | Signature required on first call (unless `AGENT_AUTH_DISABLED=true`) | Agent chat + tool execution |
+| `GET` | `/api/agent/chat?sessionId=...` | Session token | Inspect Agent session state |
+| `DELETE` | `/api/agent/chat?sessionId=...` | Session token | Clear Agent session |
+| `GET` | `/api/nft/:tokenId` | None | NFT metadata JSON |
+| `GET` | `/api/nft/:tokenId/image` | None | Dynamic NFT SVG |
+
+### Agent auth flow (when signature is enabled)
+
+1. Fetch nonce from `GET /api/agent/nonce?sessionId=...`
+2. `personal_sign` the message below
+
+```text
+Proof of Trust Agent Authentication
+Session: <sessionId>
+Nonce: <nonce>
+Timestamp: <unix_ms>
+```
+
+3. Send `auth` payload in `POST /api/agent/chat`
+4. Reuse `sessionToken` via `X-Session-Token` header
 
 ## Cloud Run Deployment
 
@@ -135,9 +220,13 @@ bash scripts/deploy-cloudrun.sh
 
 `deploy-cloudrun.sh` will:
 
-- create/check the Artifact Registry repository
-- build the image via `cloudbuild.yaml`
+- create/check Artifact Registry repository
+- build image via `cloudbuild.yaml`
 - deploy to Cloud Run
+
+You can override defaults with:
+
+- `PROJECT_ID`, `REGION`, `SERVICE_NAME`, `REPOSITORY`, `IMAGE_NAME`, `IMAGE_TAG`
 
 ### 3) Post-deploy verification
 
@@ -145,23 +234,36 @@ bash scripts/deploy-cloudrun.sh
 bash scripts/verify-cloudrun.sh "https://<your-service>.run.app"
 ```
 
-Set `TEST_TOKEN_ID` if you also want to check `/api/nft/:tokenId`.
+Set `TEST_TOKEN_ID` if you also want to verify `/api/nft/:tokenId`.
 
 ## Development
 
 ```bash
-cd apps/web
-pnpm dev
-pnpm build
-pnpm lint
+pnpm --dir apps/web dev
+pnpm --dir apps/web dev:turbo
+pnpm --dir apps/web build
+pnpm --dir apps/web start
+pnpm --dir apps/web lint
 ```
 
-Optional contract build:
+Contracts (optional):
 
 ```bash
 forge build
 ```
 
+Demo asset generation (optional):
+
+```bash
+python3 apps/web/scripts/build_demo_video.py
+```
+
+## Related Docs
+
+- `docs/architecture.mmd`
+- `docs/demo-script.md`
+- `docs/demo-video/README.md`
+- `docs/zenn-article-draft.md`
 
 ## License
 

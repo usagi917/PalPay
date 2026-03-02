@@ -59,8 +59,6 @@ export function TxProgress({ step, txHash, error, onClose }: TxProgressProps) {
   const [detailOpen, setDetailOpen] = useState(false);
   const lastPhaseRef = useRef(-1);
 
-  if (step === "idle") return null;
-
   const isProcessing = ["checking", "approving", "approve-confirming", "signing", "confirming"].includes(step);
   const isSuccess = step === "success";
   const isError = step === "error";
@@ -74,12 +72,13 @@ export function TxProgress({ step, txHash, error, onClose }: TxProgressProps) {
   const displayPhase = isError ? lastPhaseRef.current : currentPhase;
 
   // Auto-expand txHash details on error
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     if (isError && txHash) {
       setDetailOpen(true);
     }
   }, [isError, txHash]);
+
+  if (step === "idle") return null;
 
   return (
     <AnimatePresence>

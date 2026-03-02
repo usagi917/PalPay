@@ -1,7 +1,7 @@
-import { createPublicClient, http, type Address, formatUnits, type Chain } from "viem";
-import { polygonAmoy, baseSepolia, base, sepolia } from "viem/chains";
+import { type Address, formatUnits } from "viem";
 import { FACTORY_ABI, ESCROW_ABI } from "@/lib/abi";
 import { MILESTONE_NAMES } from "@/lib/constants";
+import { createClient } from "@/lib/config";
 import {
   CATEGORY_TYPE_MAP,
   type ListingDraft,
@@ -32,30 +32,9 @@ function normalizeCategory(category?: string): CategoryType {
   return CATEGORY_ALIASES[normalized] ?? "other";
 }
 
-// Get chain from environment
-function getChain(): Chain {
-  const chainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "80002");
-  const chains: Record<number, Chain> = {
-    11155111: sepolia,
-    84532: baseSepolia,
-    8453: base,
-    80002: polygonAmoy,
-  };
-  return chains[chainId] || polygonAmoy;
-}
-
-// Create public client for reading blockchain
-function getClient() {
-  const chain = getChain();
-  return createPublicClient({
-    chain,
-    transport: http(process.env.NEXT_PUBLIC_RPC_URL || undefined),
-  });
-}
-
 // Read escrow contract data and map to ListingSummaryForAgent
 async function readEscrowSummary(
-  client: ReturnType<typeof getClient>,
+  client: ReturnType<typeof createClient>,
   escrowAddress: Address,
 ): Promise<ListingSummaryForAgent> {
   const [core, meta, progress] = await Promise.all([
@@ -114,7 +93,7 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Pro
 
 // Fetch all listing addresses from factory (capped)
 async function fetchAllListingAddresses(): Promise<Address[]> {
-  const client = getClient();
+  const client = createClient();
   const factoryAddress = process.env.NEXT_PUBLIC_FACTORY_ADDRESS as Address;
   if (!factoryAddress) throw new Error("Factory address not configured");
 
@@ -129,7 +108,7 @@ async function fetchAllListingAddresses(): Promise<Address[]> {
 
 // Fetch all listing summaries (with parallel reads)
 async function fetchAllListingSummaries(): Promise<ListingSummaryForAgent[]> {
-  const client = getClient();
+  const client = createClient();
   const addresses = await fetchAllListingAddresses();
 
   const results = await Promise.allSettled(
@@ -147,7 +126,7 @@ export async function getListings(params: {
   status?: string;
   limit?: number;
 }): Promise<ListingSummaryForAgent[]> {
-  const client = getClient();
+  const client = createClient();
   const factoryAddress = process.env.NEXT_PUBLIC_FACTORY_ADDRESS as Address;
 
   if (!factoryAddress) {
@@ -189,7 +168,7 @@ export async function getListingDetail(params: {
   escrowAddress: string;
   tokenId?: string;
 }): Promise<ListingSummaryForAgent | null> {
-  const client = getClient();
+  const client = createClient();
   try {
     return await readEscrowSummary(client, params.escrowAddress as Address);
   } catch (e) {

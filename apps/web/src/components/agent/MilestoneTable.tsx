@@ -4,6 +4,7 @@ import { Box, Paper, Typography, Table, TableBody, TableCell, TableContainer, Ta
 import { motion } from "framer-motion";
 import TimelineIcon from "@mui/icons-material/Timeline";
 import type { MilestonePreview } from "@/lib/agent/types";
+import { formatJpycAmount, parseWholeJpycAmount } from "./amount";
 import { useI18n } from "@/lib/i18n";
 
 interface MilestoneTableProps {
@@ -23,7 +24,7 @@ const headerCellSx = {
 
 export function MilestoneTable({ milestones, totalAmount }: MilestoneTableProps) {
   const { locale, t } = useI18n();
-  const total = totalAmount ? Number(totalAmount) : 0;
+  const total = parseWholeJpycAmount(totalAmount);
 
   return (
     <motion.div
@@ -74,7 +75,7 @@ export function MilestoneTable({ milestones, totalAmount }: MilestoneTableProps)
                 <TableCell sx={headerCellSx}>#</TableCell>
                 <TableCell sx={headerCellSx}>{t("agentMilestoneStage")}</TableCell>
                 <TableCell align="right" sx={headerCellSx}>{t("agentRatioLabel")}</TableCell>
-                {total > 0 && (
+                {total > 0n && (
                   <TableCell align="right" sx={headerCellSx}>{t("agentAmountLabel")}</TableCell>
                 )}
               </TableRow>
@@ -82,7 +83,7 @@ export function MilestoneTable({ milestones, totalAmount }: MilestoneTableProps)
             <TableBody>
               {milestones.map((ms, idx) => {
                 const percent = ms.bps / 100;
-                const amount = total > 0 ? Math.floor(total * percent / 100) : 0;
+                const amount = total > 0n ? (total * BigInt(ms.bps)) / 10_000n : 0n;
 
                 return (
                   <motion.tr
@@ -146,7 +147,7 @@ export function MilestoneTable({ milestones, totalAmount }: MilestoneTableProps)
                         </Typography>
                       </Box>
                     </TableCell>
-                    {total > 0 && (
+                    {total > 0n && (
                       <TableCell
                         align="right"
                         sx={{
@@ -156,7 +157,7 @@ export function MilestoneTable({ milestones, totalAmount }: MilestoneTableProps)
                           py: 1.5,
                         }}
                         >
-                          ¥{amount.toLocaleString(locale === "ja" ? "ja-JP" : "en-US")}
+                          ¥{formatJpycAmount(amount, locale)}
                         </TableCell>
                       )}
                   </motion.tr>
@@ -167,7 +168,7 @@ export function MilestoneTable({ milestones, totalAmount }: MilestoneTableProps)
         </TableContainer>
 
         {/* Total row */}
-        {total > 0 && (
+        {total > 0n && (
           <Box
             sx={{
               display: "flex",
@@ -194,7 +195,7 @@ export function MilestoneTable({ milestones, totalAmount }: MilestoneTableProps)
                 color: "var(--color-primary)",
               }}
               >
-              ¥{total.toLocaleString(locale === "ja" ? "ja-JP" : "en-US")} JPYC
+              ¥{formatJpycAmount(total, locale)} JPYC
             </Typography>
           </Box>
         )}

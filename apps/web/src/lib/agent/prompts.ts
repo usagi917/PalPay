@@ -211,8 +211,3 @@ When you click confirm, MetaMask will open.
 Please review the details before signing.
 `,
 };
-
-// Backward-compatible aliases
-export const SYSTEM_PROMPT = SYSTEM_PROMPTS.ja;
-export const DRAFT_CONFIRMATION_PROMPT = DRAFT_CONFIRMATION_PROMPTS.ja;
-export const TX_CONFIRMATION_PROMPT = TX_CONFIRMATION_PROMPTS.ja;
