@@ -62,6 +62,7 @@ export function useAgentSession(): UseAgentSessionReturn {
           metamaskNotFound: "MetaMaskが見つかりません",
           nonceFailed: "Nonce取得に失敗しました",
           authFailed: "認証に失敗しました。ログイン状態を確認してください。",
+          serviceUnavailable: "Agentサーバー設定が不足しています。管理者にお問い合わせください。",
           errorPrefix: "エラーが発生しました: ",
           unknownError: "不明なエラーが発生しました",
         }
@@ -70,6 +71,7 @@ export function useAgentSession(): UseAgentSessionReturn {
           metamaskNotFound: "MetaMask was not found.",
           nonceFailed: "Failed to fetch nonce",
           authFailed: "Authentication failed. Please check your login status.",
+          serviceUnavailable: "Agent service is not configured correctly. Please contact the administrator.",
           errorPrefix: "An error occurred: ",
           unknownError: "Unknown error",
         };
@@ -184,8 +186,15 @@ export function useAgentSession(): UseAgentSessionReturn {
         const errorData = await response.json().catch(() => ({}));
         const fallback = response.status === 401 || response.status === 403
           ? labels.authFailed
-          : `HTTP ${response.status}`;
-        throw new Error(errorData.error || fallback);
+          : response.status === 503
+            ? labels.serviceUnavailable
+            : `HTTP ${response.status}`;
+        const errorMessage = typeof errorData.error === "string"
+          ? errorData.error
+          : typeof errorData.details === "string"
+            ? errorData.details
+            : fallback;
+        throw new Error(errorMessage);
       }
 
       const data: ChatResponse = await response.json();

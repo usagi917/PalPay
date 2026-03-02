@@ -1,21 +1,152 @@
-import { GoogleGenAI, type FunctionDeclaration } from "@google/genai";
+import { randomUUID } from "crypto";
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5-nano-2025-08-07";
+const OPENAI_API_BASE_URL = process.env.OPENAI_API_BASE_URL || "https://api.openai.com/v1";
 
-// Lazy-init to avoid build-time auth errors (Next.js collects page data at build)
-let _ai: GoogleGenAI | null = null;
-function getAI(): GoogleGenAI {
-  if (!_ai) {
-    _ai = new GoogleGenAI({
-      vertexai: true,
-      project: process.env.GCP_PROJECT_ID || "",
-      location: process.env.GCP_LOCATION || "global",
-    });
-  }
-  return _ai;
+type JsonObject = Record<string, unknown>;
+
+export type AgentHistoryContent = {
+  role: "user" | "model" | "assistant" | "system";
+  parts: Array<{ text?: string }>;
+};
+
+type FunctionDeclaration = {
+  name: string;
+  description: string;
+  parametersJsonSchema: JsonObject;
+};
+
+type ToolMessage = {
+  functionResponse: {
+    id: string;
+    name: string;
+    response: JsonObject;
+  };
+};
+
+type OpenAIToolCall = {
+  id: string;
+  type: "function";
+  function: {
+    name: string;
+    arguments: string;
+  };
+};
+
+type OpenAIMessage =
+  | { role: "system" | "user" | "assistant"; content: string; tool_calls?: OpenAIToolCall[] }
+  | { role: "tool"; content: string; tool_call_id: string };
+
+type OpenAIChatCompletionResponse = {
+  choices?: Array<{
+    message?: {
+      content?: string | Array<{ type?: string; text?: string }>;
+      tool_calls?: Array<{
+        id?: string;
+        type?: string;
+        function?: {
+          name?: string;
+          arguments?: string;
+        };
+      }>;
+    };
+  }>;
+};
+
+type OpenAIMessageContent = string | Array<{ type?: string; text?: string }> | undefined;
+
+function toOpenAIRole(role: AgentHistoryContent["role"]): "system" | "user" | "assistant" {
+  if (role === "model") return "assistant";
+  if (role === "assistant") return "assistant";
+  if (role === "system") return "system";
+  return "user";
 }
 
-// Tool declarations using JSON Schema format (parametersJsonSchema)
+function flattenParts(parts: Array<{ text?: string }>): string {
+  return parts
+    .map((part) => (typeof part.text === "string" ? part.text : ""))
+    .join("");
+}
+
+function parseTextContent(content: OpenAIMessageContent): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((item) => (item?.type === "text" && typeof item.text === "string" ? item.text : ""))
+    .join("");
+}
+
+function parseToolArguments(argumentsText: string): JsonObject {
+  try {
+    const parsed = JSON.parse(argumentsText) as unknown;
+    return typeof parsed === "object" && parsed !== null ? (parsed as JsonObject) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function getAgentProviderConfigError(): string | null {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey || !apiKey.trim()) {
+    return "OPENAI_API_KEY is not set";
+  }
+  return null;
+}
+
+async function callOpenAI(messages: OpenAIMessage[], tools: Array<{ type: "function"; function: { name: string; description: string; parameters: JsonObject } }>): Promise<{
+  text: string;
+  toolCalls: OpenAIToolCall[];
+}> {
+  const configError = getAgentProviderConfigError();
+  if (configError) {
+    throw new Error(configError);
+  }
+  const apiKey = process.env.OPENAI_API_KEY!;
+
+  const response = await fetch(`${OPENAI_API_BASE_URL}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      messages,
+      tools,
+      tool_choice: "auto",
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenAI API error (${response.status}): ${errorText}`);
+  }
+
+  const data = (await response.json()) as OpenAIChatCompletionResponse;
+  const message = data.choices?.[0]?.message;
+  if (!message) {
+    throw new Error("OpenAI API returned no choices");
+  }
+
+  const text = parseTextContent(message.content);
+  const toolCalls: OpenAIToolCall[] = (message.tool_calls ?? [])
+    .filter((toolCall) => toolCall.type === "function" && toolCall.function?.name)
+    .map((toolCall) => {
+      const id = toolCall.id || `call_${randomUUID()}`;
+      return {
+        id,
+        type: "function",
+        function: {
+          name: toolCall.function?.name || "",
+          arguments: typeof toolCall.function?.arguments === "string" ? toolCall.function.arguments : "{}",
+        },
+      };
+    });
+
+  return { text, toolCalls };
+}
+
+// Tool declarations using JSON Schema format
 const toolDeclarations: FunctionDeclaration[] = [
   {
     name: "get_listings",
@@ -179,17 +310,70 @@ const toolDeclarations: FunctionDeclaration[] = [
   },
 ];
 
-// Create a chat session with Gemini
-export function createChat(systemInstruction: string, history?: Array<{ role: string; parts: Array<{ text?: string }> }>) {
-  const ai = getAI();
-  return ai.chats.create({
-    model: GEMINI_MODEL,
-    config: {
-      systemInstruction,
-      tools: [{ functionDeclarations: toolDeclarations }],
+const openAITools = toolDeclarations.map((tool) => ({
+  type: "function" as const,
+  function: {
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.parametersJsonSchema,
+  },
+}));
+
+// Create a chat session wrapper compatible with the previous Gemini interface.
+export function createChat(systemInstruction: string, history?: AgentHistoryContent[]) {
+  const messages: OpenAIMessage[] = [{ role: "system", content: systemInstruction }];
+
+  for (const item of history ?? []) {
+    const content = flattenParts(item.parts);
+    if (!content) continue;
+    messages.push({
+      role: toOpenAIRole(item.role),
+      content,
+    });
+  }
+
+  return {
+    async sendMessage(payload: { message: string | ToolMessage[] }): Promise<{
+      text?: string;
+      functionCalls?: Array<{ id?: string; name?: string; args?: JsonObject }>;
+    }> {
+      if (typeof payload.message === "string") {
+        messages.push({ role: "user", content: payload.message });
+      } else {
+        for (const item of payload.message) {
+          const toolCallId = item.functionResponse.id || `call_${randomUUID()}`;
+          messages.push({
+            role: "tool",
+            tool_call_id: toolCallId,
+            content: JSON.stringify(item.functionResponse.response ?? {}),
+          });
+        }
+      }
+
+      const { text, toolCalls } = await callOpenAI(messages, openAITools);
+
+      if (toolCalls.length > 0) {
+        messages.push({
+          role: "assistant",
+          content: text,
+          tool_calls: toolCalls,
+        });
+
+        return {
+          text,
+          functionCalls: toolCalls.map((toolCall) => ({
+            id: toolCall.id,
+            name: toolCall.function.name,
+            args: parseToolArguments(toolCall.function.arguments),
+          })),
+        };
+      }
+
+      messages.push({ role: "assistant", content: text });
+      return { text };
     },
-    history: history as Parameters<typeof ai.chats.create>[0]["history"],
-  });
+  };
 }
 
-export { GEMINI_MODEL };
+export const GEMINI_MODEL = OPENAI_MODEL;
+export { OPENAI_MODEL };
