@@ -21,8 +21,9 @@ export function parseWholeJpycAmount(amount?: string): bigint {
     return 0n;
   }
   const trimmed = amount.trim();
-  if (!/^\d+$/.test(trimmed)) {
+  const match = /^(\d+)(?:\.\d+)?$/.exec(trimmed);
+  if (!match) {
     return 0n;
   }
-  return BigInt(trimmed);
+  return BigInt(match[1]);
 }
