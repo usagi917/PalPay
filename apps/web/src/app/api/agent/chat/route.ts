@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { isAddress, verifyMessage, type Address } from "viem";
-import { createChat } from "@/lib/agent/gemini";
+import { createChat, getAgentProviderConfigError, type AgentHistoryContent } from "@/lib/agent/gemini";
 import { executeTool } from "@/lib/agent/tools";
 import { SYSTEM_PROMPTS } from "@/lib/agent/prompts";
 import { buildAgentAuthMessage } from "@/lib/agent/auth";
@@ -16,11 +16,10 @@ import type {
   ListingDraft,
   TxPrepareResult,
 } from "@/lib/agent/types";
-import type { Content } from "@google/genai";
 
 // In-memory session store (globalThis to survive HMR/webpack chunk splits)
 type SessionRecord = {
-  history: Content[];
+  history: AgentHistoryContent[];
   state: AgentState;
   draft?: ListingDraft;
   txPrepare?: TxPrepareResult;
@@ -566,6 +565,16 @@ export async function POST(request: NextRequest) {
     }
     touchSession(session, now);
 
+    const providerConfigError = getAgentProviderConfigError();
+    if (providerConfigError) {
+      return jsonError(
+        locale === "ja"
+          ? `Agent設定エラー: ${providerConfigError}. apps/web/.env.local に OPENAI_API_KEY を設定してください。`
+          : `Agent configuration error: ${providerConfigError}. Set OPENAI_API_KEY in apps/web/.env.local.`,
+        503
+      );
+    }
+
     // Build system instruction with optional proactive context
     const effectiveUserAddress = session.userAddress || userAddress;
     let systemInstruction = SYSTEM_PROMPTS[locale];
@@ -586,8 +595,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create chat session with @google/genai SDK
-    const chat = createChat(systemInstruction, session.history as Array<{ role: string; parts: Array<{ text?: string }> }>);
+    // Create chat session via agent provider wrapper
+    const chat = createChat(systemInstruction, session.history);
 
     // Send user message
     const userContext = effectiveUserAddress
