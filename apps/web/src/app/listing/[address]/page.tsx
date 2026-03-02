@@ -30,7 +30,7 @@ import {
   canAccessChat,
 } from "@/lib/hooks";
 import { I18nContext, translations, type Locale, type TranslationKey } from "@/lib/i18n";
-import type { Address } from "viem";
+import { isAddress, type Address } from "viem";
 
 import { ListingInfoCard } from "./_components/ListingInfoCard";
 import { ActionCard } from "./_components/ActionCard";
@@ -40,7 +40,13 @@ import { CancelDialog } from "./_components/CancelDialog";
 
 export default function ListingDetailPage() {
   const params = useParams();
-  const escrowAddress = params.address as Address;
+  const rawAddress = params.address;
+  const escrowAddress = useMemo<Address | null>(() => {
+    if (typeof rawAddress !== "string") {
+      return null;
+    }
+    return isAddress(rawAddress) ? (rawAddress as Address) : null;
+  }, [rawAddress]);
   const router = useRouter();
 
   const [locale, setLocale] = useState<Locale>("ja");
