@@ -1,3 +1,7 @@
+import { formatUnits, parseUnits } from "viem";
+
+const JPYC_DECIMALS = 18;
+
 export function formatJpycAmount(amount: string | bigint, locale: "ja" | "en"): string {
   const localeCode = locale === "ja" ? "ja-JP" : "en-US";
   if (typeof amount === "bigint") {
@@ -16,14 +20,17 @@ export function formatJpycAmount(amount: string | bigint, locale: "ja" | "en"): 
   return fractionPart ? `${sign}${integerPart}.${fractionPart}` : `${sign}${integerPart}`;
 }
 
-export function parseWholeJpycAmount(amount?: string): bigint {
+export function parseJpycAmountToWei(amount?: string): bigint {
   if (!amount) {
     return 0n;
   }
-  const trimmed = amount.trim();
-  const match = /^(\d+)(?:\.\d+)?$/.exec(trimmed);
-  if (!match) {
+  try {
+    return parseUnits(amount.trim(), JPYC_DECIMALS);
+  } catch {
     return 0n;
   }
-  return BigInt(match[1]);
+}
+
+export function formatJpycWeiAmount(amountWei: bigint, locale: "ja" | "en"): string {
+  return formatJpycAmount(formatUnits(amountWei, JPYC_DECIMALS), locale);
 }
