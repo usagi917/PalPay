@@ -8,7 +8,7 @@ import {
   type SendMessageResult,
 } from "./toolDeclarations";
 
-const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5-nano";
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-nano";
 const OPENAI_API_BASE_URL = process.env.OPENAI_API_BASE_URL || "https://api.openai.com/v1";
 
 type OpenAIToolCall = {

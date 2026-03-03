@@ -1,7 +1,17 @@
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { isAddress, verifyMessage, type Address } from "viem";
-import { createChat, getAgentProviderConfigError, type AgentHistoryContent } from "@/lib/agent/provider";
+import {
+  createChat,
+  getAgentProviderConfigError,
+  AGENT_PROVIDER,
+  streamResponse,
+  continueWithToolOutputs,
+  historyToInput,
+  type AgentHistoryContent,
+  type ResponseInput,
+  type ResponseStreamEvent,
+} from "@/lib/agent/provider";
 import { executeTool } from "@/lib/agent/tools";
 import { SYSTEM_PROMPTS } from "@/lib/agent/prompts";
 import { buildAgentAuthMessage } from "@/lib/agent/auth";
@@ -12,6 +22,7 @@ import type {
   ChatResponse,
   ChatMessage,
   AgentState,
+  AgentStreamEvent,
   ToolCall,
   ListingDraft,
   TxPrepareResult,
@@ -28,6 +39,7 @@ type SessionRecord = {
   authTokenExpiresAt?: number;
   createdAt?: number;
   lastAccessAt?: number;
+  lastResponseId?: string;
 };
 const gSessions = globalThis as unknown as { __agentSessions?: Map<string, SessionRecord> };
 const sessions = (gSessions.__agentSessions ??= new Map<string, SessionRecord>());
@@ -410,6 +422,254 @@ function ensureSessionAuthorized(request: NextRequest, session: SessionRecord): 
   return null;
 }
 
+// ---------- SSE helpers ----------
+
+function sseEncode(event: AgentStreamEvent): string {
+  return `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+}
+
+// ---------- Streaming handler (openai-responses) ----------
+
+async function handleStreamingPost(params: {
+  session: SessionRecord;
+  sessionId: string;
+  fullMessage: string;
+  locale: Locale;
+  systemInstruction: string;
+  effectiveUserAddress?: string;
+}): Promise<Response> {
+  const { session, fullMessage, locale, systemInstruction } = params;
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const enqueue = (event: AgentStreamEvent) => {
+        try {
+          controller.enqueue(encoder.encode(sseEncode(event)));
+        } catch {
+          // Controller may be closed if client disconnected
+        }
+      };
+
+      try {
+        // Build input from history + new user message
+        const input: ResponseInput[] = historyToInput(session.history);
+        input.push({ type: "message", role: "user", content: fullMessage });
+
+        const toolCalls: ToolCall[] = [];
+        let fullText = "";
+        let currentResponseId: string | undefined = session.lastResponseId;
+
+        // Streaming loop: keep going until we get a final text response
+        let pendingFunctionCalls: Array<{
+          call_id: string;
+          name: string;
+          args: Record<string, unknown>;
+        }> = [];
+        const processStream = async (
+          streamGen: AsyncGenerator<ResponseStreamEvent>,
+        ) => {
+          pendingFunctionCalls = [];
+          for await (const event of streamGen) {
+            switch (event.type) {
+              case "response.output_text.delta":
+                fullText += event.delta;
+                enqueue({ type: "text_delta", delta: event.delta });
+                break;
+
+              case "response.function_call_arguments.done": {
+                let parsedArgs: Record<string, unknown> = {};
+                try {
+                  parsedArgs = JSON.parse(event.arguments) as Record<string, unknown>;
+                } catch { /* empty */ }
+                pendingFunctionCalls.push({
+                  call_id: event.call_id,
+                  name: event.name,
+                  args: parsedArgs,
+                });
+                enqueue({
+                  type: "tool_call_start",
+                  callId: event.call_id,
+                  name: event.name,
+                  args: parsedArgs,
+                });
+                break;
+              }
+
+              case "response.completed":
+                currentResponseId = event.response.id;
+                break;
+            }
+          }
+        };
+
+        // First stream
+        const firstStreamGen = streamResponse({
+          instructions: systemInstruction,
+          input,
+          previousResponseId: currentResponseId,
+        });
+        await processStream(firstStreamGen);
+
+        // Tool execution loop
+        while (pendingFunctionCalls.length > 0) {
+          const toolOutputs: Array<{ call_id: string; output: string }> = [];
+
+          for (const fc of pendingFunctionCalls) {
+            const effectiveArgs = { ...fc.args };
+            if (fc.name === "prepare_transaction") {
+              const action = typeof fc.args.action === "string" ? fc.args.action : "";
+              if (action === "createListing" && session.draft) {
+                const incomingDraft = fc.args.draft;
+                if (incomingDraft && typeof incomingDraft === "object") {
+                  effectiveArgs.draft = {
+                    ...session.draft,
+                    ...(incomingDraft as Record<string, unknown>),
+                  };
+                } else {
+                  effectiveArgs.draft = session.draft;
+                }
+              }
+            }
+
+            console.log(`[Agent/Stream] Tool call: ${fc.name}`, effectiveArgs);
+
+            try {
+              const toolResult = await executeTool(fc.name, effectiveArgs);
+
+              toolCalls.push({
+                name: fc.name,
+                args: effectiveArgs,
+                result: toolResult,
+              });
+
+              // Update session state
+              if (fc.name === "prepare_listing_draft") {
+                session.draft = toolResult as ListingDraft;
+                session.state = "draft_ready";
+                enqueue({ type: "draft_update", draft: session.draft });
+                enqueue({ type: "state_change", state: session.state });
+              } else if (fc.name === "prepare_transaction") {
+                session.txPrepare = toolResult as TxPrepareResult;
+                session.state = "tx_prepared";
+                enqueue({ type: "tx_prepare", txPrepare: session.txPrepare });
+                enqueue({ type: "state_change", state: session.state });
+              } else if (fc.name === "get_listings" || fc.name === "get_listing_detail") {
+                session.state = "gathering_info";
+                enqueue({ type: "state_change", state: session.state });
+              }
+
+              enqueue({
+                type: "tool_call_result",
+                callId: fc.call_id,
+                name: fc.name,
+                result: toolResult,
+              });
+
+              toolOutputs.push({
+                call_id: fc.call_id,
+                output: JSON.stringify({ result: toolResult }),
+              });
+            } catch (error) {
+              console.error(`[Agent/Stream] Tool error:`, error);
+
+              toolCalls.push({
+                name: fc.name,
+                args: effectiveArgs,
+                result: { error: String(error) },
+              });
+
+              enqueue({
+                type: "tool_call_result",
+                callId: fc.call_id,
+                name: fc.name,
+                result: { error: String(error) },
+              });
+
+              toolOutputs.push({
+                call_id: fc.call_id,
+                output: JSON.stringify({ error: String(error) }),
+              });
+            }
+          }
+
+          // Continue with tool outputs
+          const nextStream = continueWithToolOutputs({
+            instructions: systemInstruction,
+            previousResponseId: currentResponseId!,
+            toolOutputs,
+          });
+          await processStream(nextStream);
+        }
+
+        // Save response ID for conversation chaining
+        if (currentResponseId) {
+          session.lastResponseId = currentResponseId;
+        }
+
+        // Update history
+        session.history.push(
+          { role: "user", parts: [{ text: fullMessage }] },
+          { role: "model", parts: [{ text: fullText }] },
+        );
+
+        // Derive hints
+        const nextInputHint = deriveNextInputHint({
+          locale,
+          state: session.state,
+          draft: session.draft,
+          txPrepare: session.txPrepare,
+          toolCalls,
+          responseText: fullText,
+        });
+        const nextQuickActions = deriveNextQuickActions({
+          locale,
+          state: session.state,
+          draft: session.draft,
+          txPrepare: session.txPrepare,
+          toolCalls,
+          responseText: fullText,
+        });
+
+        // Build final message
+        const assistantMessage: ChatMessage = {
+          id: generateId(),
+          role: "assistant",
+          content: fullText,
+          timestamp: Date.now(),
+          toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+          draft: session.draft,
+          txPrepare: session.txPrepare,
+        };
+
+        enqueue({
+          type: "done",
+          message: assistantMessage,
+          state: session.state,
+          draft: session.draft,
+          txPrepare: session.txPrepare,
+          sessionToken: session.authToken,
+          nextInputHint,
+          nextQuickActions,
+        });
+      } catch (error) {
+        console.error("[Agent/Stream] Error:", error);
+        enqueue({ type: "error", error: String(error) });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
+}
+
 export async function POST(request: NextRequest) {
   try {
     pruneSessions();
@@ -432,6 +692,7 @@ export async function POST(request: NextRequest) {
       return jsonError("Invalid JSON", 400);
     }
     const { message, sessionId, locale, userAddress, auth } = body;
+    const wantsStream = (body as unknown as Record<string, unknown>).stream === true;
     const normalizedMessage = typeof message === "string" ? message.trim() : "";
 
     if (typeof sessionId !== "string" || !sessionId || !normalizedMessage || !isLocale(locale)) {
@@ -595,10 +856,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create chat session via agent provider wrapper
-    const chat = createChat(systemInstruction, session.history);
-
-    // Send user message
+    // Build user message with account context
     const userContext = effectiveUserAddress
       ? locale === "ja"
         ? `\n\n[ユーザーアカウント: ${effectiveUserAddress}]`
@@ -606,6 +864,20 @@ export async function POST(request: NextRequest) {
       : "";
     const fullMessage = normalizedMessage + userContext;
 
+    // --- Streaming path (openai-responses provider) ---
+    if (wantsStream && AGENT_PROVIDER === "openai-responses") {
+      return handleStreamingPost({
+        session,
+        sessionId,
+        fullMessage,
+        locale,
+        systemInstruction,
+        effectiveUserAddress: effectiveUserAddress as string | undefined,
+      });
+    }
+
+    // --- Non-streaming (legacy) path ---
+    const chat = createChat(systemInstruction, session.history);
     let response = await chat.sendMessage({ message: fullMessage });
 
     // Collect tool calls

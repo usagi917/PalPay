@@ -29,6 +29,9 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
     draft,
     txPrepare,
     isLoading,
+    isStreaming,
+    streamingText,
+    streamingToolCalls,
     nextInputHint,
     nextQuickActions,
     sendMessage,
@@ -216,6 +219,9 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
           <MessageList
             messages={messages}
             isLoading={isLoading}
+            isStreaming={isStreaming}
+            streamingText={streamingText}
+            streamingToolCalls={streamingToolCalls}
             walletConnected={walletConnected}
             onConfirmTx={handleTxConfirm}
             onCancelTx={clearTxPrepare}
@@ -224,7 +230,7 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
           />
           <MessageInput
             onSend={handleSend}
-            disabled={isLoading || (authRequired && !walletConnected)}
+            disabled={isLoading || isStreaming || (authRequired && !walletConnected)}
             placeholder={
               !walletConnected
                 ? t("agentPleaseLogin")
@@ -247,7 +253,13 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
           }}
         >
           {/* Thinking panel */}
-          <ThinkingPanel state={state} isLoading={isLoading} toolCalls={allToolCalls} />
+          <ThinkingPanel
+            state={state}
+            isLoading={isLoading}
+            isStreaming={isStreaming}
+            toolCalls={allToolCalls}
+            streamingToolCalls={streamingToolCalls}
+          />
 
           {/* Empty state */}
           {!draft && !txPrepare && state === "idle" && (

@@ -3,16 +3,19 @@
 import { useState, useCallback, useRef } from "react";
 import { getMetaMaskProvider } from "@/lib/config";
 import { buildAgentAuthMessage } from "@/lib/agent/auth";
+import { parseSSE } from "@/lib/agent/sseParser";
 import type { Locale } from "@/lib/locale";
 import { formatTxError } from "@/lib/tx";
 import type {
   ChatMessage,
   AgentState,
+  AgentStreamEvent,
   ListingDraft,
   TxPrepareResult,
   ChatResponse,
   ChatRequest,
   MessageRole,
+  StreamingToolCall,
 } from "@/lib/agent/types";
 
 function generateSessionId(): string {
@@ -30,6 +33,9 @@ export interface UseAgentSessionReturn {
   draft: ListingDraft | undefined;
   txPrepare: TxPrepareResult | undefined;
   isLoading: boolean;
+  isStreaming: boolean;
+  streamingText: string;
+  streamingToolCalls: StreamingToolCall[];
   error: string | null;
   nextInputHint: string | null;
   nextQuickActions: Array<{ label: string; message: string }>;
@@ -47,12 +53,41 @@ export function useAgentSession(): UseAgentSessionReturn {
   const [draft, setDraft] = useState<ListingDraft | undefined>();
   const [txPrepare, setTxPrepare] = useState<TxPrepareResult | undefined>();
   const [isLoading, setIsLoading] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingText, setStreamingText] = useState("");
+  const [streamingToolCalls, setStreamingToolCalls] = useState<StreamingToolCall[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [nextInputHint, setNextInputHint] = useState<string | null>(null);
   const [nextQuickActions, setNextQuickActions] = useState<Array<{ label: string; message: string }>>([]);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const requestIdRef = useRef(0);
+
+  // Refs for batched streaming text updates
+  const streamingTextRef = useRef("");
+  const rafIdRef = useRef<number | null>(null);
+  const lastFlushRef = useRef(0);
+
+  const flushStreamingText = useCallback(() => {
+    rafIdRef.current = null;
+    setStreamingText(streamingTextRef.current);
+    lastFlushRef.current = Date.now();
+  }, []);
+
+  const appendStreamingDelta = useCallback((delta: string) => {
+    streamingTextRef.current += delta;
+    // Batch updates: flush at most every 50ms via requestAnimationFrame
+    const now = Date.now();
+    if (now - lastFlushRef.current >= 50) {
+      // Flush immediately
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+      flushStreamingText();
+    } else if (rafIdRef.current === null) {
+      rafIdRef.current = requestAnimationFrame(flushStreamingText);
+    }
+  }, [flushStreamingText]);
 
   const sendMessage = useCallback(async (content: string, locale: Locale, userAddress?: string) => {
     if (!content.trim()) return;
@@ -101,6 +136,12 @@ export function useAgentSession(): UseAgentSessionReturn {
     setIsLoading(true);
     setError(null);
 
+    // Reset streaming state
+    streamingTextRef.current = "";
+    setStreamingText("");
+    setStreamingToolCalls([]);
+    setIsStreaming(false);
+
     try {
       const buildAuthPayload = async (): Promise<ChatRequest["auth"]> => {
         if (!userAddress) {
@@ -142,7 +183,7 @@ export function useAgentSession(): UseAgentSessionReturn {
         };
       };
 
-      const postChat = async (params: { auth?: ChatRequest["auth"]; token?: string | null }) => {
+      const postChat = async (params: { auth?: ChatRequest["auth"]; token?: string | null; stream?: boolean }) => {
         const headers: Record<string, string> = {
           "Content-Type": "application/json",
         };
@@ -158,6 +199,7 @@ export function useAgentSession(): UseAgentSessionReturn {
             locale,
             userAddress,
             auth: params.auth,
+            stream: params.stream,
           }),
           signal: abortController.signal,
         });
@@ -170,18 +212,17 @@ export function useAgentSession(): UseAgentSessionReturn {
         auth = await buildAuthPayload();
       }
 
-      let response = await postChat({ auth, token });
+      let response = await postChat({ auth, token, stream: true });
 
       if (!response.ok) {
         const isAuthError = response.status === 401 || response.status === 403;
         if (isAuthError && authRequired && (token || auth)) {
-          // Token expired: re-auth and retry once transparently
           if (isLatestRequest()) {
             setSessionToken(null);
           }
           token = null;
           auth = await buildAuthPayload();
-          response = await postChat({ auth, token });
+          response = await postChat({ auth, token, stream: true });
         }
       }
 
@@ -200,29 +241,106 @@ export function useAgentSession(): UseAgentSessionReturn {
         throw new Error(errorMessage);
       }
 
-      const data: ChatResponse = await response.json();
-      if (!isLatestRequest()) {
-        return;
+      // Check if response is SSE stream or JSON
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType.includes("text/event-stream") && response.body) {
+        // --- Streaming path ---
+        setIsStreaming(true);
+
+        for await (const sseEvent of parseSSE(response.body)) {
+          if (!isLatestRequest()) return;
+
+          let parsed: AgentStreamEvent;
+          try {
+            parsed = JSON.parse(sseEvent.data) as AgentStreamEvent;
+          } catch {
+            continue;
+          }
+
+          switch (parsed.type) {
+            case "text_delta":
+              appendStreamingDelta(parsed.delta);
+              break;
+
+            case "tool_call_start":
+              setStreamingToolCalls((prev) => [
+                ...prev,
+                {
+                  callId: parsed.callId,
+                  name: parsed.name,
+                  args: parsed.args,
+                  status: "running",
+                },
+              ]);
+              break;
+
+            case "tool_call_result":
+              setStreamingToolCalls((prev) =>
+                prev.map((tc) =>
+                  tc.callId === parsed.callId
+                    ? {
+                        ...tc,
+                        result: parsed.result,
+                        status: (typeof parsed.result === "object" && parsed.result !== null && "error" in parsed.result)
+                          ? "error" as const
+                          : "completed" as const,
+                      }
+                    : tc,
+                ),
+              );
+              break;
+
+            case "state_change":
+              setState(parsed.state);
+              break;
+
+            case "draft_update":
+              setDraft(parsed.draft);
+              break;
+
+            case "tx_prepare":
+              setTxPrepare(parsed.txPrepare);
+              break;
+
+            case "done": {
+              // Flush any remaining text
+              if (rafIdRef.current !== null) {
+                cancelAnimationFrame(rafIdRef.current);
+                rafIdRef.current = null;
+              }
+              // Finalize: add the completed message
+              setMessages((prev) => [...prev, parsed.message]);
+              setState(parsed.state);
+              if (parsed.draft) setDraft(parsed.draft);
+              if (parsed.txPrepare) setTxPrepare(parsed.txPrepare);
+              if (parsed.sessionToken) setSessionToken(parsed.sessionToken);
+              setNextInputHint(parsed.nextInputHint ?? null);
+              setNextQuickActions(Array.isArray(parsed.nextQuickActions) ? parsed.nextQuickActions : []);
+              // Clear streaming state
+              setIsStreaming(false);
+              setStreamingText("");
+              streamingTextRef.current = "";
+              setStreamingToolCalls([]);
+              break;
+            }
+
+            case "error":
+              throw new Error(parsed.error);
+          }
+        }
+      } else {
+        // --- Non-streaming (legacy JSON) path ---
+        const data: ChatResponse = await response.json();
+        if (!isLatestRequest()) return;
+
+        setMessages((prev) => [...prev, data.message]);
+        setState(data.state);
+        if (data.draft) setDraft(data.draft);
+        if (data.txPrepare) setTxPrepare(data.txPrepare);
+        if (data.sessionToken) setSessionToken(data.sessionToken);
+        setNextInputHint(data.nextInputHint ?? null);
+        setNextQuickActions(Array.isArray(data.nextQuickActions) ? data.nextQuickActions : []);
       }
-
-      // Add assistant message
-      setMessages((prev) => [...prev, data.message]);
-      setState(data.state);
-
-      if (data.draft) {
-        setDraft(data.draft);
-      }
-
-      if (data.txPrepare) {
-        setTxPrepare(data.txPrepare);
-      }
-
-      if (data.sessionToken) {
-        setSessionToken(data.sessionToken);
-      }
-
-      setNextInputHint(data.nextInputHint ?? null);
-      setNextQuickActions(Array.isArray(data.nextQuickActions) ? data.nextQuickActions : []);
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
         return;
@@ -233,7 +351,6 @@ export function useAgentSession(): UseAgentSessionReturn {
       const errorMessage = formatTxError(err, labels.unknownError, labels.walletRequestCancelled);
       setError(errorMessage);
 
-      // Add error message
       const errorMsg: ChatMessage = {
         id: generateMessageId(),
         role: "system",
@@ -244,10 +361,18 @@ export function useAgentSession(): UseAgentSessionReturn {
     } finally {
       if (isLatestRequest()) {
         setIsLoading(false);
+        setIsStreaming(false);
+        setStreamingText("");
+        streamingTextRef.current = "";
+        setStreamingToolCalls([]);
         abortControllerRef.current = null;
+        if (rafIdRef.current !== null) {
+          cancelAnimationFrame(rafIdRef.current);
+          rafIdRef.current = null;
+        }
       }
     }
-  }, [authRequired, sessionId, sessionToken]);
+  }, [authRequired, sessionId, sessionToken, appendStreamingDelta]);
 
   const appendMessage = useCallback(
     (content: string, role: MessageRole = "assistant", nextState?: AgentState) => {
@@ -297,6 +422,10 @@ export function useAgentSession(): UseAgentSessionReturn {
     setSessionToken(null);
     setError(null);
     setIsLoading(false);
+    setIsStreaming(false);
+    setStreamingText("");
+    streamingTextRef.current = "";
+    setStreamingToolCalls([]);
     setNextInputHint(null);
     setNextQuickActions([]);
   }, [sessionId, sessionToken]);
@@ -313,6 +442,9 @@ export function useAgentSession(): UseAgentSessionReturn {
     draft,
     txPrepare,
     isLoading,
+    isStreaming,
+    streamingText,
+    streamingToolCalls,
     error,
     nextInputHint,
     nextQuickActions,

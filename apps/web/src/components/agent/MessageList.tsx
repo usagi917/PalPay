@@ -7,7 +7,9 @@ import SmartToyIcon from "@mui/icons-material/SmartToy";
 import PersonIcon from "@mui/icons-material/Person";
 import ErrorIcon from "@mui/icons-material/Error";
 import BuildIcon from "@mui/icons-material/Build";
-import type { ChatMessage, ListingDraft, TxPrepareResult } from "@/lib/agent/types";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import CircularProgress from "@mui/material/CircularProgress";
+import type { ChatMessage, ListingDraft, TxPrepareResult, StreamingToolCall } from "@/lib/agent/types";
 import { TxConfirmPanel } from "./TxConfirmPanel";
 import { DraftPreview } from "./DraftPreview";
 import { useI18n } from "@/lib/i18n";
@@ -15,6 +17,9 @@ import { useI18n } from "@/lib/i18n";
 interface MessageListProps {
   messages: ChatMessage[];
   isLoading?: boolean;
+  isStreaming?: boolean;
+  streamingText?: string;
+  streamingToolCalls?: StreamingToolCall[];
   walletConnected: boolean;
   onConfirmTx: () => Promise<void>;
   onCancelTx: () => void;
@@ -48,6 +53,72 @@ function ToolCallBadge({ name }: { name: string }) {
         },
       }}
     />
+  );
+}
+
+function StreamingToolCallBadge({ tc }: { tc: StreamingToolCall }) {
+  const { t } = useI18n();
+  const toolLabels: Record<string, { label: string; icon: string }> = {
+    get_listings: { label: t("agentToolGetListings"), icon: "📋" },
+    get_listing_detail: { label: t("agentToolGetListingDetail"), icon: "🔍" },
+    prepare_listing_draft: { label: t("agentToolPrepareListingDraft"), icon: "✏️" },
+    get_milestones_for_category: { label: t("agentToolGetMilestones"), icon: "📊" },
+    prepare_transaction: { label: t("agentToolPrepareTransaction"), icon: "🔐" },
+  };
+  const toolInfo = toolLabels[tc.name] || { label: tc.name, icon: "🔧" };
+
+  const statusIcon =
+    tc.status === "running" ? (
+      <CircularProgress size={12} sx={{ color: "var(--color-primary)" }} />
+    ) : tc.status === "error" ? (
+      <span style={{ fontSize: 12 }}>❌</span>
+    ) : (
+      <CheckCircleIcon sx={{ fontSize: 14, color: "#22c55e" }} />
+    );
+
+  const chipBg =
+    tc.status === "running"
+      ? "rgba(212, 165, 116, 0.1)"
+      : tc.status === "error"
+        ? "rgba(239, 68, 68, 0.1)"
+        : "rgba(34, 197, 94, 0.1)";
+
+  const chipColor =
+    tc.status === "running"
+      ? "var(--color-primary)"
+      : tc.status === "error"
+        ? "#ef4444"
+        : "#22c55e";
+
+  const chipBorder =
+    tc.status === "running"
+      ? "1px solid rgba(212, 165, 116, 0.3)"
+      : tc.status === "error"
+        ? "1px solid rgba(239, 68, 68, 0.3)"
+        : "1px solid rgba(34, 197, 94, 0.3)";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.8 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.2 }}
+    >
+      <Chip
+        icon={statusIcon}
+        label={`${toolInfo.icon} ${toolInfo.label}`}
+        size="small"
+        sx={{
+          fontSize: "0.7rem",
+          height: 24,
+          background: chipBg,
+          color: chipColor,
+          border: chipBorder,
+          "& .MuiChip-icon": {
+            color: "inherit",
+          },
+        }}
+      />
+    </motion.div>
   );
 }
 
@@ -160,6 +231,99 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   );
 }
 
+function StreamingMessage({
+  text,
+  toolCalls,
+}: {
+  text: string;
+  toolCalls: StreamingToolCall[];
+}) {
+  const style = roleStyles.assistant;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2 }}
+    >
+      <Box
+        sx={{
+          display: "flex",
+          gap: 1.5,
+          mb: 2,
+        }}
+      >
+        {/* Avatar */}
+        <Box
+          sx={{
+            width: 36,
+            height: 36,
+            borderRadius: "50%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "linear-gradient(135deg, #64748b 0%, #475569 100%)",
+            color: "#fff",
+            flexShrink: 0,
+          }}
+        >
+          <SmartToyIcon sx={{ fontSize: 20 }} />
+        </Box>
+
+        {/* Message content */}
+        <Paper
+          elevation={0}
+          sx={{
+            maxWidth: "75%",
+            p: 2,
+            background: style.bg,
+            border: `1px solid ${style.border}`,
+            borderRadius: "16px 16px 16px 4px",
+            minWidth: 60,
+          }}
+        >
+          {/* Streaming tool calls */}
+          {toolCalls.length > 0 && (
+            <Stack direction="row" spacing={0.5} flexWrap="wrap" gap={0.5} sx={{ mb: text ? 1.5 : 0 }}>
+              <AnimatePresence>
+                {toolCalls.map((tc) => (
+                  <StreamingToolCallBadge key={tc.callId} tc={tc} />
+                ))}
+              </AnimatePresence>
+            </Stack>
+          )}
+
+          {/* Streaming text with blinking cursor */}
+          {(text || toolCalls.length === 0) && (
+            <Typography
+              sx={{
+                fontSize: "0.9rem",
+                lineHeight: 1.7,
+                color: "var(--color-text)",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {text}
+              <motion.span
+                animate={{ opacity: [1, 0] }}
+                transition={{ duration: 0.8, repeat: Infinity, ease: "easeInOut" }}
+                style={{
+                  display: "inline-block",
+                  width: "2px",
+                  height: "1em",
+                  background: "var(--color-primary)",
+                  marginLeft: "1px",
+                  verticalAlign: "text-bottom",
+                }}
+              />
+            </Typography>
+          )}
+        </Paper>
+      </Box>
+    </motion.div>
+  );
+}
+
 function LoadingIndicator() {
   return (
     <motion.div
@@ -224,6 +388,9 @@ function LoadingIndicator() {
 export function MessageList({
   messages,
   isLoading,
+  isStreaming,
+  streamingText,
+  streamingToolCalls,
   walletConnected,
   onConfirmTx,
   onCancelTx,
@@ -254,7 +421,7 @@ export function MessageList({
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isLoading, fallbackDraft]);
+  }, [messages, isLoading, isStreaming, streamingText, fallbackDraft]);
 
   return (
     <Box
@@ -297,7 +464,15 @@ export function MessageList({
           </Box>
         ))}
       </AnimatePresence>
-      {isLoading && <LoadingIndicator />}
+      {/* Show streaming message instead of loading dots when streaming */}
+      {isStreaming ? (
+        <StreamingMessage
+          text={streamingText || ""}
+          toolCalls={streamingToolCalls || []}
+        />
+      ) : (
+        isLoading && <LoadingIndicator />
+      )}
       {shouldRenderDraftFallback && (
         <Box sx={{ ml: "48px", maxWidth: "75%", mb: 2 }}>
           <DraftPreview draft={fallbackDraft!} />
