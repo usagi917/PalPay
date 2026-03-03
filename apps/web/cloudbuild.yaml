@@ -23,7 +23,7 @@ steps:
       - --build-arg
       - GCP_LOCATION=${_GCP_LOCATION}
       - --build-arg
-      - GEMINI_MODEL=${_GEMINI_MODEL}
+      - OPENAI_MODEL=${_OPENAI_MODEL}
       - .
 
 images:
@@ -40,7 +40,7 @@ substitutions:
   _CHAIN_ID: ""
   _GCP_PROJECT_ID: "$PROJECT_ID"
   _GCP_LOCATION: "us-central1"
-  _GEMINI_MODEL: "gemini-2.5-flash"
+  _OPENAI_MODEL: "gpt-5-nano"
 
 options:
   logging: CLOUD_LOGGING_ONLY

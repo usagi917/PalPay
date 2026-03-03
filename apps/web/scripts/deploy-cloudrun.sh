@@ -56,7 +56,7 @@ require_env NEXT_PUBLIC_FACTORY_ADDRESS
 require_env NEXT_PUBLIC_TOKEN_ADDRESS
 
 GCP_LOCATION="${GCP_LOCATION:-us-central1}"
-GEMINI_MODEL="${GEMINI_MODEL:-gemini-2.5-flash}"
+OPENAI_MODEL="${OPENAI_MODEL:-gpt-5-nano}"
 NEXT_PUBLIC_XMTP_ENV="${NEXT_PUBLIC_XMTP_ENV:-dev}"
 CHAIN_ID="${CHAIN_ID:-${NEXT_PUBLIC_CHAIN_ID}}"
 
@@ -88,7 +88,7 @@ append_substitution "_NEXT_PUBLIC_XMTP_ENV" "${NEXT_PUBLIC_XMTP_ENV}"
 append_substitution "_CHAIN_ID" "${CHAIN_ID}"
 append_substitution "_GCP_PROJECT_ID" "${PROJECT_ID}"
 append_substitution "_GCP_LOCATION" "${GCP_LOCATION}"
-append_substitution "_GEMINI_MODEL" "${GEMINI_MODEL}"
+append_substitution "_OPENAI_MODEL" "${OPENAI_MODEL}"
 if [[ -n "${NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE:-}" ]]; then
   append_substitution "_NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE" "${NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE}"
 fi
@@ -110,8 +110,16 @@ ENV_VARS=(
   "CHAIN_ID=${CHAIN_ID}"
   "GCP_PROJECT_ID=${PROJECT_ID}"
   "GCP_LOCATION=${GCP_LOCATION}"
-  "GEMINI_MODEL=${GEMINI_MODEL}"
+  "OPENAI_MODEL=${OPENAI_MODEL}"
 )
+if [[ -n "${OPENAI_API_KEY:-}" ]]; then
+  ENV_VARS+=("OPENAI_API_KEY=${OPENAI_API_KEY}")
+else
+  echo "Warning: OPENAI_API_KEY is not set. /agent endpoint will return a configuration error."
+fi
+if [[ -n "${OPENAI_API_BASE_URL:-}" ]]; then
+  ENV_VARS+=("OPENAI_API_BASE_URL=${OPENAI_API_BASE_URL}")
+fi
 if [[ -n "${NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE:-}" ]]; then
   ENV_VARS+=("NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE=${NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE}")
 fi
