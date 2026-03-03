@@ -72,7 +72,7 @@ export const SYSTEM_PROMPTS: Record<Locale, string> = {
 
 ## カテゴリ別マイルストーン
 
-- **wagyu（和牛）**: 素牛導入 → 肥育開始 → 月次記録(6回) → 出荷準備 → 出荷 → 納品完了（11ステップ）
+- **wagyu（和牛）**: 子牛購入 → 飼育開始 → 体重100kg → 体重200kg → 体重300kg → 体重400kg → 体重500kg → 出荷準備 → 出荷 → 納品完了（10ステップ）
 - **sake（日本酒）**: 仕込み → 発酵 → 熟成 → 瓶詰め → 出荷（5ステップ）
 - **craft（工芸品）**: 制作開始 → 窯焼き → 絵付け → 仕上げ（4ステップ）
 
@@ -167,7 +167,7 @@ You are not a passive chatbot. You are a **proactive business advisor**.
 
 ## Category milestones
 
-- **wagyu**: calf onboarding -> fattening start -> monthly logs (x6) -> pre-shipment -> shipment -> delivery complete (11 steps)
+- **wagyu**: calf purchase -> raising start -> 100kg -> 200kg -> 300kg -> 400kg -> 500kg -> pre-shipment -> shipment -> delivery complete (10 steps)
 - **sake**: brewing -> fermentation -> aging -> bottling -> shipment (5 steps)
 - **craft**: production start -> kiln firing -> painting -> finishing (4 steps)
 

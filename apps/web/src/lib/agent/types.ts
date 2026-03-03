@@ -103,6 +103,32 @@ export interface ChatResponse {
   nextQuickActions?: Array<{ label: string; message: string }>;
 }
 
+// Streaming tool call (with live status)
+export interface StreamingToolCall extends ToolCall {
+  callId: string;
+  status: "running" | "completed" | "error";
+}
+
+// Server → Client SSE event types
+export type AgentStreamEvent =
+  | { type: "text_delta"; delta: string }
+  | { type: "tool_call_start"; callId: string; name: string; args: Record<string, unknown> }
+  | { type: "tool_call_result"; callId: string; name: string; result: unknown }
+  | { type: "state_change"; state: AgentState }
+  | { type: "draft_update"; draft: ListingDraft }
+  | { type: "tx_prepare"; txPrepare: TxPrepareResult }
+  | {
+      type: "done";
+      message: ChatMessage;
+      state: AgentState;
+      draft?: ListingDraft;
+      txPrepare?: TxPrepareResult;
+      sessionToken?: string;
+      nextInputHint?: string;
+      nextQuickActions?: Array<{ label: string; message: string }>;
+    }
+  | { type: "error"; error: string };
+
 // Listing summary from blockchain
 export interface ListingSummaryForAgent {
   escrowAddress: Address;

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -19,6 +19,8 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  */
 contract MilestoneEscrowV6 is ReentrancyGuard {
     using SafeERC20 for IERC20;
+
+    uint16 private constant BPS_DENOMINATOR = 10_000;
 
     enum Status { OPEN, LOCKED, ACTIVE, COMPLETED, CANCELLED }
 
@@ -52,9 +54,14 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
 
     error Unauthorized();
     error InvalidState();
+    error InvalidFactory();
     error InvalidCategory();
     error InvalidAmount();
     error InvalidToken();
+    error InvalidProducer();
+    error InvalidMilestoneConfig();
+    error InvalidMilestoneIndex();
+    error UnexpectedNFT();
     error SelfPurchase();
     error PreviousMilestonesIncomplete();
 
@@ -70,7 +77,9 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
         string memory img
     ) {
         if (cat > 2) revert InvalidCategory();
-        if (f == address(0) || t == address(0)) revert InvalidToken();
+        if (f == address(0)) revert InvalidFactory();
+        if (t == address(0)) revert InvalidToken();
+        if (p == address(0)) revert InvalidProducer();
         if (amt == 0) revert InvalidAmount();
 
         factory = f;
@@ -85,16 +94,31 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
         status = Status.OPEN;
 
         // V6: Adjusted bps - small first, large last (requires buyer confirmation)
-        // wagyu (11 steps): 300,500,500,500,500,500,500,500,700,1500,4000 = 10000
-        uint16[11] memory w = [uint16(300), 500, 500, 500, 500, 500, 500, 500, 700, 1500, 4000];
+        // wagyu (10 steps): 200,300,400,500,600,650,700,750,900,5000 = 10000
+        uint16[10] memory w = [uint16(200), 300, 400, 500, 600, 650, 700, 750, 900, 5000];
         // sake (5 steps): 1000,1500,1500,2000,4000 = 10000
         uint16[5] memory s = [uint16(1000), 1500, 1500, 2000, 4000];
         // craft (4 steps): 1000,2000,2500,4500 = 10000
         uint16[4] memory c = [uint16(1000), 2000, 2500, 4500];
 
-        if (cat == 0) for (uint i; i < 11; i++) milestones.push(Milestone(w[i], false));
-        else if (cat == 1) for (uint i; i < 5; i++) milestones.push(Milestone(s[i], false));
-        else for (uint i; i < 4; i++) milestones.push(Milestone(c[i], false));
+        uint256 totalBps;
+        if (cat == 0) {
+            for (uint256 i; i < 10; i++) {
+                milestones.push(Milestone(w[i], false));
+                totalBps += w[i];
+            }
+        } else if (cat == 1) {
+            for (uint256 i; i < 5; i++) {
+                milestones.push(Milestone(s[i], false));
+                totalBps += s[i];
+            }
+        } else {
+            for (uint256 i; i < 4; i++) {
+                milestones.push(Milestone(c[i], false));
+                totalBps += c[i];
+            }
+        }
+        if (totalBps != BPS_DENOMINATOR) revert InvalidMilestoneConfig();
     }
 
     /**
@@ -104,6 +128,7 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
     function lock() external nonReentrant {
         if (status != Status.OPEN) revert InvalidState();
         if (msg.sender == producer) revert SelfPurchase();
+        if (IERC721(factory).ownerOf(tokenId) != address(this)) revert InvalidState();
 
         buyer = msg.sender;
         status = Status.LOCKED;
@@ -133,14 +158,13 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
     function cancel() external nonReentrant {
         if (msg.sender != buyer) revert Unauthorized();
         if (status != Status.LOCKED) revert InvalidState();
+        if (IERC721(factory).ownerOf(tokenId) != buyer) revert InvalidState();
 
         status = Status.CANCELLED;
 
-        // Full refund to buyer
-        IERC20(tokenAddress).safeTransfer(buyer, totalAmount);
-
-        // Return NFT to escrow (from buyer)
+        // Return NFT to escrow (from buyer), then refund
         IERC721(factory).safeTransferFrom(buyer, address(this), tokenId);
+        IERC20(tokenAddress).safeTransfer(buyer, totalAmount);
 
         emit Cancelled(buyer, totalAmount);
     }
@@ -154,7 +178,7 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
         if (status != Status.ACTIVE) revert InvalidState();
 
         // Cannot submit last milestone - use confirmDelivery instead
-        if (i >= milestones.length - 1) revert InvalidState();
+        if (i >= milestones.length - 1) revert InvalidMilestoneIndex();
         if (milestones[i].completed) revert InvalidState();
 
         // Must be sequential
@@ -164,7 +188,7 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
         milestones[i].completed = true;
         evidenceHashes[i] = _evidenceHash;
 
-        uint256 amt = (totalAmount * milestones[i].bps) / 10000;
+        uint256 amt = (totalAmount * milestones[i].bps) / BPS_DENOMINATOR;
         releasedAmount += amt;
 
         IERC20(tokenAddress).safeTransfer(producer, amt);
@@ -259,11 +283,53 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
     }
 
     function getEvidenceHash(uint256 i) external view returns (bytes32) {
+        if (i >= milestones.length) revert InvalidMilestoneIndex();
         return evidenceHashes[i];
     }
 
-    function onERC721Received(address, address, uint256, bytes calldata) external pure returns (bytes4) {
+    function nextMilestoneIndex() external view returns (uint256) {
+        return _nextIncompleteIndex();
+    }
+
+    function remainingAmount() external view returns (uint256) {
+        return totalAmount - releasedAmount;
+    }
+
+    function onERC721Received(address, address, uint256, bytes calldata) external view returns (bytes4) {
+        if (msg.sender != factory) revert UnexpectedNFT();
         return this.onERC721Received.selector;
+    }
+}
+
+/**
+ * @title EscrowDeployerV6
+ * @notice Isolates escrow creation bytecode from ListingFactory runtime
+ */
+contract EscrowDeployerV6 {
+    address public immutable factory;
+
+    error Unauthorized();
+
+    constructor() {
+        factory = msg.sender;
+    }
+
+    function deployEscrow(
+        address tokenAddress,
+        address producer,
+        uint256 tokenId,
+        uint8 categoryType,
+        string calldata title,
+        string calldata description,
+        uint256 totalAmount,
+        string calldata imageURI
+    ) external returns (address escrow) {
+        if (msg.sender != factory) revert Unauthorized();
+        escrow = address(
+            new MilestoneEscrowV6(
+                factory, tokenAddress, producer, tokenId, categoryType, title, description, totalAmount, imageURI
+            )
+        );
     }
 }
 
@@ -273,6 +339,7 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
  */
 contract ListingFactoryV6 is ERC721 {
     address public immutable tokenAddress;
+    address public immutable escrowDeployer;
     address[] public listings;
     mapping(uint256 => address) public tokenIdToEscrow;
     uint256 private _nextTokenId;
@@ -289,11 +356,13 @@ contract ListingFactoryV6 is ERC721 {
     error InvalidCategory();
     error InvalidToken();
     error InvalidAmount();
+    error TransferRestricted();
 
     constructor(address t, string memory uri) ERC721("MilestoneNFT", "MSNFT") {
         if (t == address(0)) revert InvalidToken();
         tokenAddress = t;
         baseURI = uri;
+        escrowDeployer = address(new EscrowDeployerV6());
     }
 
     function createListing(
@@ -307,9 +376,8 @@ contract ListingFactoryV6 is ERC721 {
         if (amt == 0) revert InvalidAmount();
 
         tid = _nextTokenId++;
-        escrow = address(
-            new MilestoneEscrowV6(address(this), tokenAddress, msg.sender, tid, cat, _title, desc, amt, img)
-        );
+        escrow =
+            EscrowDeployerV6(escrowDeployer).deployEscrow(tokenAddress, msg.sender, tid, cat, _title, desc, amt, img);
         listings.push(escrow);
         tokenIdToEscrow[tid] = escrow;
         _safeMint(escrow, tid);
@@ -328,6 +396,34 @@ contract ListingFactoryV6 is ERC721 {
     function tokenURI(uint256 tid) public view override returns (string memory) {
         _requireOwned(tid);
         return string.concat(baseURI, "/api/nft/", _toString(tid));
+    }
+
+    /**
+     * @dev Restrict secondary transfers to escrow-driven moves only.
+     * Allowed flows:
+     *  - mint: 0x0 -> escrow
+     *  - lock: escrow -> buyer
+     *  - cancel: buyer -> escrow
+     */
+    function _update(address to, uint256 tokenId, address auth) internal override returns (address) {
+        address from = _ownerOf(tokenId);
+        if (from != address(0) && to != address(0)) {
+            address escrow = tokenIdToEscrow[tokenId];
+            if (auth != escrow) revert TransferRestricted();
+        }
+        return super._update(to, tokenId, auth);
+    }
+
+    /**
+     * @dev Allow each escrow contract to move only its corresponding NFT.
+     * This enables cancel() to return the NFT without a separate buyer approval transaction.
+     */
+    function _isAuthorized(address owner, address spender, uint256 tokenId) internal view override returns (bool) {
+        address escrow = tokenIdToEscrow[tokenId];
+        if (owner != address(0) && escrow != address(0) && spender == escrow) {
+            return true;
+        }
+        return super._isAuthorized(owner, spender, tokenId);
     }
 
     function _toString(uint256 v) internal pure returns (string memory) {
