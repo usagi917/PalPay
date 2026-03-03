@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { isAddress, verifyMessage, type Address } from "viem";
-import { createChat, getAgentProviderConfigError, type AgentHistoryContent } from "@/lib/agent/openai";
+import { createChat, getAgentProviderConfigError, type AgentHistoryContent } from "@/lib/agent/provider";
 import { executeTool } from "@/lib/agent/tools";
 import { SYSTEM_PROMPTS } from "@/lib/agent/prompts";
 import { buildAgentAuthMessage } from "@/lib/agent/auth";
@@ -569,8 +569,8 @@ export async function POST(request: NextRequest) {
     if (providerConfigError) {
       return jsonError(
         locale === "ja"
-          ? `Agent設定エラー: ${providerConfigError}. apps/web/.env.local に OPENAI_API_KEY を設定してください。`
-          : `Agent configuration error: ${providerConfigError}. Set OPENAI_API_KEY in apps/web/.env.local.`,
+          ? `Agent設定エラー: ${providerConfigError}. apps/web/.env.local を確認してください。`
+          : `Agent configuration error: ${providerConfigError}. Check apps/web/.env.local.`,
         503
       );
     }
@@ -620,14 +620,30 @@ export async function POST(request: NextRequest) {
         const toolName = fc.name!;
         const toolArgs = (fc.args || {}) as Record<string, unknown>;
 
-        console.log(`[Agent] Tool call: ${toolName}`, toolArgs);
+        const effectiveToolArgs = { ...toolArgs };
+        if (toolName === "prepare_transaction") {
+          const action = typeof toolArgs.action === "string" ? toolArgs.action : "";
+          if (action === "createListing" && session.draft) {
+            const incomingDraft = toolArgs.draft;
+            if (incomingDraft && typeof incomingDraft === "object") {
+              effectiveToolArgs.draft = {
+                ...session.draft,
+                ...(incomingDraft as Record<string, unknown>),
+              };
+            } else {
+              effectiveToolArgs.draft = session.draft;
+            }
+          }
+        }
+
+        console.log(`[Agent] Tool call: ${toolName}`, effectiveToolArgs);
 
         try {
-          const toolResult = await executeTool(toolName, toolArgs);
+          const toolResult = await executeTool(toolName, effectiveToolArgs);
 
           toolCalls.push({
             name: toolName,
-            args: toolArgs,
+            args: effectiveToolArgs,
             result: toolResult,
           });
 
@@ -652,7 +668,7 @@ export async function POST(request: NextRequest) {
 
           toolCalls.push({
             name: toolName,
-            args: toolArgs,
+            args: effectiveToolArgs,
             result: { error: String(error) },
           });
 

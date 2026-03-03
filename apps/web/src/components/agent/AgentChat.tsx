@@ -7,6 +7,7 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
 import { useAgentSession } from "@/hooks/useAgentSession";
 import { useI18n } from "@/lib/i18n";
+import { CATEGORY_TYPE_MAP } from "@/lib/agent/types";
 import { MessageList } from "./MessageList";
 import { MessageInput } from "./MessageInput";
 import { ThinkingPanel } from "./ThinkingPanel";
@@ -76,6 +77,36 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
       let executionParams: Record<string, unknown> | undefined = txPrepare.params
         ? { ...txPrepare.params }
         : undefined;
+
+      // Some model responses call prepare_transaction(createListing) without full draft params.
+      // Fill missing fields from the latest draft kept in session state.
+      if (txPrepare.action === "createListing" && draft) {
+        executionParams ??= {};
+
+        if (executionParams.categoryType === undefined) {
+          executionParams.categoryType = CATEGORY_TYPE_MAP[draft.category];
+        }
+
+        if (typeof executionParams.title !== "string" || !executionParams.title.trim()) {
+          executionParams.title = draft.title;
+        }
+
+        if (typeof executionParams.description !== "string") {
+          executionParams.description = draft.description;
+        }
+
+        if (typeof executionParams.totalAmount === "number") {
+          executionParams.totalAmount = String(executionParams.totalAmount);
+        }
+        if (typeof executionParams.totalAmount !== "string" || !executionParams.totalAmount.trim()) {
+          executionParams.totalAmount = draft.totalAmount;
+        }
+
+        if (typeof executionParams.imageURI !== "string") {
+          executionParams.imageURI = draft.imageURI || "";
+        }
+      }
+
       if (txPrepare.escrowAddress && !executionParams?.escrowAddress) {
         (executionParams ??= {}).escrowAddress = txPrepare.escrowAddress;
       }
@@ -88,7 +119,7 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
       appendMessage(`${t("agentErrorPrefix")} ${errorMessage}`, "system");
       throw err;
     }
-  }, [txPrepare, onExecuteTx, clearTxPrepare, appendMessage, getSuccessMessage, t]);
+  }, [txPrepare, draft, onExecuteTx, clearTxPrepare, appendMessage, getSuccessMessage, t]);
 
   return (
     <Box

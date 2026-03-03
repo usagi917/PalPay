@@ -5,6 +5,7 @@ import { type Address, type Hash } from "viem";
 import { createClient, createWallet, config, ensureWalletChain, getMetaMaskProvider } from "../config";
 import { ESCROW_ABI, ERC20_ABI } from "../abi";
 import { getMilestoneName } from "../constants";
+import { formatTxError, writeContractWithGasFallback } from "../tx";
 import type { EscrowInfo, Milestone, TimelineEvent } from "../types";
 
 export function useEscrowInfo(escrowAddress: Address | null) {
@@ -173,6 +174,15 @@ export type TxStep =
   | "success"
   | "error";
 
+const TX_FALLBACK_GAS = {
+  tokenApprove: 200_000n,
+  lock: 1_200_000n,
+  submit: 500_000n,
+  approve: 350_000n,
+  cancel: 700_000n,
+  confirmDelivery: 500_000n,
+} as const;
+
 export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () => void) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -231,13 +241,17 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
 
         if (needsApproval) {
           setTxStep("approving");
-          const hash1 = await wallet.writeContract({
-            address: config.tokenAddress,
-            abi: ERC20_ABI,
-            functionName: "approve",
-            args: [escrowAddress, totalAmount],
-            account,
-          });
+          const hash1 = await writeContractWithGasFallback(
+            wallet,
+            {
+              address: config.tokenAddress,
+              abi: ERC20_ABI,
+              functionName: "approve",
+              args: [escrowAddress, totalAmount],
+              account,
+            },
+            TX_FALLBACK_GAS.tokenApprove,
+          );
 
           setTxStep("approve-confirming");
           const approveReceipt = await client.waitForTransactionReceipt({ hash: hash1 });
@@ -248,13 +262,17 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
 
         // Then lock
         setTxStep("signing");
-        const hash2 = await wallet.writeContract({
-          address: escrowAddress,
-          abi: ESCROW_ABI,
-          functionName: "lock",
-          args: [],
-          account,
-        });
+        const hash2 = await writeContractWithGasFallback(
+          wallet,
+          {
+            address: escrowAddress,
+            abi: ESCROW_ABI,
+            functionName: "lock",
+            args: [],
+            account,
+          },
+          TX_FALLBACK_GAS.lock,
+        );
 
         setTxStep("confirming");
         setTxHash(hash2);
@@ -266,7 +284,13 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
         onSuccess?.();
       } catch (err) {
         setTxStep("error");
-        setError(err instanceof Error ? err.message : "お支払いに失敗しました");
+        setError(
+          formatTxError(
+            err,
+            "お支払いに失敗しました",
+            "お支払い処理をキャンセルしました。MetaMaskで承認すると再実行できます。",
+          ),
+        );
       } finally {
         setIsLoading(false);
       }
@@ -298,13 +322,17 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
           ? (evidenceHash.startsWith("0x") ? evidenceHash : `0x${evidenceHash}`)
           : "0x0000000000000000000000000000000000000000000000000000000000000000";
 
-        const hash = await wallet.writeContract({
-          address: escrowAddress,
-          abi: ESCROW_ABI,
-          functionName: "submit",
-          args: [BigInt(index), evidenceBytes32 as `0x${string}`],
-          account,
-        });
+        const hash = await writeContractWithGasFallback(
+          wallet,
+          {
+            address: escrowAddress,
+            abi: ESCROW_ABI,
+            functionName: "submit",
+            args: [BigInt(index), evidenceBytes32 as `0x${string}`],
+            account,
+          },
+          TX_FALLBACK_GAS.submit,
+        );
 
         setTxStep("confirming");
         setTxHash(hash);
@@ -316,7 +344,13 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
         onSuccess?.();
       } catch (err) {
         setTxStep("error");
-        setError(err instanceof Error ? err.message : "完了報告に失敗しました");
+        setError(
+          formatTxError(
+            err,
+            "完了報告に失敗しました",
+            "処理をキャンセルしました。MetaMaskで承認すると再実行できます。",
+          ),
+        );
       } finally {
         setIsLoading(false);
       }
@@ -336,16 +370,23 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
         const client = createClient();
         if (!wallet) throw new Error("ログインが必要です");
         const [account] = await wallet.getAddresses();
-        const hash = await wallet.writeContract({
+        const fallbackGas = TX_FALLBACK_GAS[functionName];
+        const hash = await writeContractWithGasFallback(wallet, {
           address: escrowAddress, abi: ESCROW_ABI, functionName, args: args as never, account,
-        });
+        }, fallbackGas);
         setTxStep("confirming"); setTxHash(hash);
         const receipt = await client.waitForTransactionReceipt({ hash });
         if (receipt.status !== "success") throw new Error(errorMsg);
         setTxStep("success"); onSuccess?.();
       } catch (err) {
         setTxStep("error");
-        setError(err instanceof Error ? err.message : errorMsg);
+        setError(
+          formatTxError(
+            err,
+            errorMsg,
+            "処理をキャンセルしました。MetaMaskで承認すると再実行できます。",
+          ),
+        );
       } finally { setIsLoading(false); }
     }, [escrowAddress, onSuccess]
   );
