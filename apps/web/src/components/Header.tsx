@@ -104,7 +104,7 @@ export function Header({ onLocaleChange }: HeaderProps) {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: 0.1 }}
           >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 } }}>
               {/* Agent Chat Link */}
               <Link href="/agent" style={{ textDecoration: 'none' }}>
                 <Button
@@ -120,6 +120,10 @@ export function Header({ onLocaleChange }: HeaderProps) {
                     borderRadius: 2,
                     border: '1px solid var(--color-border-accent)',
                     background: 'rgba(212, 165, 116, 0.08)',
+                    minWidth: 'auto',
+                    '& .MuiButton-startIcon': {
+                      mr: { xs: 0, sm: 1 },
+                    },
                     '&:hover': {
                       color: 'var(--color-primary)',
                       background: 'rgba(212, 165, 116, 0.15)',
@@ -127,7 +131,9 @@ export function Header({ onLocaleChange }: HeaderProps) {
                     },
                   }}
                 >
-                  {locale === 'ja' ? 'AIアシスタント' : 'AI Assistant'}
+                  <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+                    {locale === 'ja' ? 'AIアシスタント' : 'AI Assistant'}
+                  </Box>
                 </Button>
               </Link>
 
@@ -145,6 +151,10 @@ export function Header({ onLocaleChange }: HeaderProps) {
                     py: 0.75,
                     borderRadius: 2,
                     border: '1px solid transparent',
+                    minWidth: 'auto',
+                    '& .MuiButton-startIcon': {
+                      mr: { xs: 0, sm: 1 },
+                    },
                     '&:hover': {
                       color: 'var(--color-primary)',
                       background: 'rgba(212, 165, 116, 0.08)',
@@ -152,7 +162,9 @@ export function Header({ onLocaleChange }: HeaderProps) {
                     },
                   }}
                 >
-                  {locale === 'ja' ? 'マイページ' : 'My Page'}
+                  <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+                    {locale === 'ja' ? 'マイページ' : 'My Page'}
+                  </Box>
                 </Button>
               </Link>
 
