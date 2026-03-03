@@ -24,6 +24,10 @@ steps:
       - GCP_LOCATION=${_GCP_LOCATION}
       - --build-arg
       - OPENAI_MODEL=${_OPENAI_MODEL}
+      - --build-arg
+      - AGENT_PROVIDER=${_AGENT_PROVIDER}
+      - --build-arg
+      - GEMINI_MODEL=${_GEMINI_MODEL}
       - .
 
 images:
@@ -41,6 +45,8 @@ substitutions:
   _GCP_PROJECT_ID: "$PROJECT_ID"
   _GCP_LOCATION: "us-central1"
   _OPENAI_MODEL: "gpt-5-nano"
+  _AGENT_PROVIDER: "openai"
+  _GEMINI_MODEL: "gemini-2.5-flash"
 
 options:
   logging: CLOUD_LOGGING_ONLY

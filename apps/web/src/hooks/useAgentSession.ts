@@ -4,6 +4,7 @@ import { useState, useCallback, useRef } from "react";
 import { getMetaMaskProvider } from "@/lib/config";
 import { buildAgentAuthMessage } from "@/lib/agent/auth";
 import type { Locale } from "@/lib/locale";
+import { formatTxError } from "@/lib/tx";
 import type {
   ChatMessage,
   AgentState,
@@ -64,6 +65,7 @@ export function useAgentSession(): UseAgentSessionReturn {
           authFailed: "認証に失敗しました。ログイン状態を確認してください。",
           serviceUnavailable: "Agentサーバー設定が不足しています。管理者にお問い合わせください。",
           errorPrefix: "エラーが発生しました: ",
+          walletRequestCancelled: "ウォレットで署名がキャンセルされました。承認すると続行できます。",
           unknownError: "不明なエラーが発生しました",
         }
       : {
@@ -73,6 +75,7 @@ export function useAgentSession(): UseAgentSessionReturn {
           authFailed: "Authentication failed. Please check your login status.",
           serviceUnavailable: "Agent service is not configured correctly. Please contact the administrator.",
           errorPrefix: "An error occurred: ",
+          walletRequestCancelled: "The wallet request was cancelled. Approve it in MetaMask to continue.",
           unknownError: "Unknown error",
         };
 
@@ -227,7 +230,7 @@ export function useAgentSession(): UseAgentSessionReturn {
       if (!isLatestRequest()) {
         return;
       }
-      const errorMessage = err instanceof Error ? err.message : labels.unknownError;
+      const errorMessage = formatTxError(err, labels.unknownError, labels.walletRequestCancelled);
       setError(errorMessage);
 
       // Add error message

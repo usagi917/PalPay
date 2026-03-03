@@ -4,12 +4,53 @@ import { useState, useCallback, useEffect } from "react";
 import { Box, Container, Button, Chip } from "@mui/material";
 import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import LogoutIcon from "@mui/icons-material/Logout";
-import { parseUnits, type Address } from "viem";
+import { formatUnits, parseUnits, type Address } from "viem";
 import { Header } from "@/components/Header";
 import { AgentChat } from "@/components/agent";
 import { I18nContext, type Locale, type TranslationKey, translations } from "@/lib/i18n";
 import { createClient, createWallet, config, ensureWalletChain, getMetaMaskProvider } from "@/lib/config";
 import { FACTORY_ABI, ERC20_ABI, ESCROW_ABI } from "@/lib/abi";
+import { formatTxError, writeContractWithGasFallback } from "@/lib/tx";
+
+const AGENT_TX_FALLBACK_GAS = {
+  createListing: 8_000_000n,
+  tokenApprove: 200_000n,
+  lock: 1_200_000n,
+  approve: 350_000n,
+  cancel: 700_000n,
+  confirmDelivery: 500_000n,
+} as const;
+
+const UNIT_MULTIPLIERS = {
+  億: 100_000_000n,
+  万: 10_000n,
+  千: 1_000n,
+} as const;
+
+function normalizeFullWidthNumber(input: string): string {
+  return input.replace(/[０-９．，]/g, (char) => {
+    if (char === "．") return ".";
+    if (char === "，") return ",";
+    return String.fromCharCode(char.charCodeAt(0) - 0xfee0);
+  });
+}
+
+function normalizeJpycAmountInput(input: string): string {
+  const value = normalizeFullWidthNumber(input)
+    .trim()
+    .toLowerCase()
+    .replace(/[\s,_，,]/g, "")
+    .replace(/jpyc|jpy|円|￥|¥/g, "");
+
+  for (const [suffix, multiplier] of Object.entries(UNIT_MULTIPLIERS)) {
+    if (!value.endsWith(suffix)) continue;
+    const base = value.slice(0, -suffix.length);
+    const wei = parseUnits(base, 18) * multiplier;
+    return formatUnits(wei, 18);
+  }
+
+  return value;
+}
 
 // Simple wallet connect button for agent page
 function WalletButton({
@@ -132,152 +173,210 @@ function AgentPageContent() {
   // Execute transaction based on action type
   const handleExecuteTx = useCallback(
     async (action: string, params?: Record<string, unknown>) => {
-      const provider = getMetaMaskProvider();
-      if (!provider || !userAddress) {
-        throw new Error(t("agentLoginRequired"));
-      }
-      await ensureWalletChain(provider);
-      const wallet = createWallet(provider);
-      const client = createClient();
-      if (!wallet) {
-        throw new Error(t("agentLoginRequired"));
-      }
-
-      const [account] = await wallet.getAddresses();
-
-      function requireEscrowAddress(): Address {
-        if (!params?.escrowAddress) {
-          throw new Error(t("agentMissingEscrowAddress"));
+      try {
+        const provider = getMetaMaskProvider();
+        if (!provider || !userAddress) {
+          throw new Error(t("agentLoginRequired"));
         }
-        return params.escrowAddress as Address;
-      }
-
-      switch (action) {
-        case "createListing": {
-          if (!params) throw new Error(t("agentMissingParams"));
-          if (typeof params.categoryType !== "number") {
-            throw new Error(t("agentMissingCategory"));
-          }
-          if (typeof params.totalAmount !== "string" || !params.totalAmount.trim()) {
-            throw new Error(t("agentMissingAmount"));
-          }
-
-          const amountWei = parseUnits(params.totalAmount as string, 18);
-          const hash = await wallet.writeContract({
-            address: config.factoryAddress,
-            abi: FACTORY_ABI,
-            functionName: "createListing",
-            args: [
-              params.categoryType as number,
-              params.title as string,
-              params.description as string,
-              amountWei,
-              (params.imageURI as string) || "",
-            ],
-            account,
-          });
-          const receipt = await client.waitForTransactionReceipt({ hash });
-          if (receipt.status !== "success") {
-            throw new Error(t("agentCreateListingFailed"));
-          }
-          console.log("Create listing tx:", hash);
-          return;
+        await ensureWalletChain(provider);
+        const wallet = createWallet(provider);
+        const client = createClient();
+        if (!wallet) {
+          throw new Error(t("agentLoginRequired"));
         }
 
-        case "lock": {
-          const escrowAddress = requireEscrowAddress();
-          let amountWei: bigint;
+        const [account] = await wallet.getAddresses();
 
-          if (typeof params?.amount === "string" && params.amount.trim()) {
-            amountWei = parseUnits(params.amount, 18);
-          } else {
-            const core = await client.readContract({
-              address: escrowAddress,
-              abi: ESCROW_ABI,
-              functionName: "getCore",
-            }) as [Address, Address, Address, Address, bigint, bigint, bigint, number];
-            amountWei = core[5];
+        function requireEscrowAddress(): Address {
+          if (!params?.escrowAddress) {
+            throw new Error(t("agentMissingEscrowAddress"));
           }
-
-          const approveHash = await wallet.writeContract({
-            address: config.tokenAddress,
-            abi: ERC20_ABI,
-            functionName: "approve",
-            args: [escrowAddress, amountWei],
-            account,
-          });
-          const approveReceipt = await client.waitForTransactionReceipt({ hash: approveHash });
-          if (approveReceipt.status !== "success") {
-            throw new Error(t("agentApprovePaymentFailed"));
-          }
-          console.log("Approve tx:", approveHash);
-
-          const lockHash = await wallet.writeContract({
-            address: escrowAddress,
-            abi: ESCROW_ABI,
-            functionName: "lock",
-            args: [],
-            account,
-          });
-          const lockReceipt = await client.waitForTransactionReceipt({ hash: lockHash });
-          if (lockReceipt.status !== "success") {
-            throw new Error(t("agentLockFailed"));
-          }
-          console.log("Lock tx:", lockHash);
-          return;
+          return params.escrowAddress as Address;
         }
 
-        case "approve": {
-          const hash = await wallet.writeContract({
-            address: requireEscrowAddress(),
-            abi: ESCROW_ABI,
-            functionName: "approve",
-            args: [],
-            account,
-          });
-          const receipt = await client.waitForTransactionReceipt({ hash });
-          if (receipt.status !== "success") {
-            throw new Error(t("agentApproveFailed"));
-          }
-          console.log("Approve tx:", hash);
-          return;
-        }
+        switch (action) {
+          case "createListing": {
+            if (!params) throw new Error(t("agentMissingParams"));
 
-        case "cancel": {
-          const hash = await wallet.writeContract({
-            address: requireEscrowAddress(),
-            abi: ESCROW_ABI,
-            functionName: "cancel",
-            args: [],
-            account,
-          });
-          const receipt = await client.waitForTransactionReceipt({ hash });
-          if (receipt.status !== "success") {
-            throw new Error(t("agentCancelFailed"));
-          }
-          console.log("Cancel tx:", hash);
-          return;
-        }
+            const rawCategoryType = params.categoryType;
+            const categoryType = typeof rawCategoryType === "number"
+              ? rawCategoryType
+              : typeof rawCategoryType === "string"
+                ? Number(rawCategoryType)
+                : Number.NaN;
 
-        case "confirmDelivery": {
-          const evidenceHash = (params?.evidenceHash as `0x${string}`) || "0x0000000000000000000000000000000000000000000000000000000000000000";
-          const hash = await wallet.writeContract({
-            address: requireEscrowAddress(),
-            abi: ESCROW_ABI,
-            functionName: "confirmDelivery",
-            args: [evidenceHash],
-            account,
-          });
-          const receipt = await client.waitForTransactionReceipt({ hash });
-          if (receipt.status !== "success") {
-            throw new Error(t("agentConfirmDeliveryFailed"));
-          }
-          console.log("Confirm delivery tx:", hash);
-          return;
-        }
+            if (!Number.isInteger(categoryType)) {
+              throw new Error(t("agentMissingCategory"));
+            }
 
-        default:
-          throw new Error(`${t("agentUnknownAction")}: ${action}`);
+            const rawAmount = params.totalAmount;
+            const amountInput = typeof rawAmount === "number"
+              ? String(rawAmount)
+              : typeof rawAmount === "string"
+                ? rawAmount
+                : "";
+
+            if (!amountInput.trim()) {
+              throw new Error(t("agentMissingAmount"));
+            }
+
+            const title = typeof params.title === "string" ? params.title : "";
+            if (!title.trim()) {
+              throw new Error(t("agentMissingParams"));
+            }
+
+            const description = typeof params.description === "string" ? params.description : "";
+            const imageURI = typeof params.imageURI === "string" ? params.imageURI : "";
+
+            let amountWei: bigint;
+            try {
+              amountWei = parseUnits(normalizeJpycAmountInput(amountInput), 18);
+            } catch {
+              throw new Error(t("agentInvalidAmountFormat"));
+            }
+
+            const hash = await writeContractWithGasFallback(
+              wallet,
+              {
+                address: config.factoryAddress,
+                abi: FACTORY_ABI,
+                functionName: "createListing",
+                args: [
+                  categoryType,
+                  title,
+                  description,
+                  amountWei,
+                  imageURI,
+                ],
+                account,
+              },
+              AGENT_TX_FALLBACK_GAS.createListing,
+            );
+            const receipt = await client.waitForTransactionReceipt({ hash });
+            if (receipt.status !== "success") {
+              throw new Error(t("agentCreateListingFailed"));
+            }
+            console.log("Create listing tx:", hash);
+            return;
+          }
+
+          case "lock": {
+            const escrowAddress = requireEscrowAddress();
+            let amountWei: bigint;
+
+            if (typeof params?.amount === "string" && params.amount.trim()) {
+              amountWei = parseUnits(params.amount, 18);
+            } else {
+              const core = await client.readContract({
+                address: escrowAddress,
+                abi: ESCROW_ABI,
+                functionName: "getCore",
+              }) as [Address, Address, Address, Address, bigint, bigint, bigint, number];
+              amountWei = core[5];
+            }
+
+            const approveHash = await writeContractWithGasFallback(
+              wallet,
+              {
+                address: config.tokenAddress,
+                abi: ERC20_ABI,
+                functionName: "approve",
+                args: [escrowAddress, amountWei],
+                account,
+              },
+              AGENT_TX_FALLBACK_GAS.tokenApprove,
+            );
+            const approveReceipt = await client.waitForTransactionReceipt({ hash: approveHash });
+            if (approveReceipt.status !== "success") {
+              throw new Error(t("agentApprovePaymentFailed"));
+            }
+            console.log("Approve tx:", approveHash);
+
+            const lockHash = await writeContractWithGasFallback(
+              wallet,
+              {
+                address: escrowAddress,
+                abi: ESCROW_ABI,
+                functionName: "lock",
+                args: [],
+                account,
+              },
+              AGENT_TX_FALLBACK_GAS.lock,
+            );
+            const lockReceipt = await client.waitForTransactionReceipt({ hash: lockHash });
+            if (lockReceipt.status !== "success") {
+              throw new Error(t("agentLockFailed"));
+            }
+            console.log("Lock tx:", lockHash);
+            return;
+          }
+
+          case "approve": {
+            const hash = await writeContractWithGasFallback(
+              wallet,
+              {
+                address: requireEscrowAddress(),
+                abi: ESCROW_ABI,
+                functionName: "approve",
+                args: [],
+                account,
+              },
+              AGENT_TX_FALLBACK_GAS.approve,
+            );
+            const receipt = await client.waitForTransactionReceipt({ hash });
+            if (receipt.status !== "success") {
+              throw new Error(t("agentApproveFailed"));
+            }
+            console.log("Approve tx:", hash);
+            return;
+          }
+
+          case "cancel": {
+            const hash = await writeContractWithGasFallback(
+              wallet,
+              {
+                address: requireEscrowAddress(),
+                abi: ESCROW_ABI,
+                functionName: "cancel",
+                args: [],
+                account,
+              },
+              AGENT_TX_FALLBACK_GAS.cancel,
+            );
+            const receipt = await client.waitForTransactionReceipt({ hash });
+            if (receipt.status !== "success") {
+              throw new Error(t("agentCancelFailed"));
+            }
+            console.log("Cancel tx:", hash);
+            return;
+          }
+
+          case "confirmDelivery": {
+            const evidenceHash = (params?.evidenceHash as `0x${string}`) || "0x0000000000000000000000000000000000000000000000000000000000000000";
+            const hash = await writeContractWithGasFallback(
+              wallet,
+              {
+                address: requireEscrowAddress(),
+                abi: ESCROW_ABI,
+                functionName: "confirmDelivery",
+                args: [evidenceHash],
+                account,
+              },
+              AGENT_TX_FALLBACK_GAS.confirmDelivery,
+            );
+            const receipt = await client.waitForTransactionReceipt({ hash });
+            if (receipt.status !== "success") {
+              throw new Error(t("agentConfirmDeliveryFailed"));
+            }
+            console.log("Confirm delivery tx:", hash);
+            return;
+          }
+
+          default:
+            throw new Error(`${t("agentUnknownAction")}: ${action}`);
+        }
+      } catch (err) {
+        throw new Error(formatTxError(err, t("agentProcessFailed"), t("agentWalletRequestCancelled")));
       }
     },
     [t, userAddress]

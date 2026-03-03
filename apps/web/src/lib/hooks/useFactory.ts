@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { type Address, type Hash } from "viem";
 import { createClient, createWallet, config, ensureWalletChain, getMetaMaskProvider } from "../config";
 import { FACTORY_ABI, ESCROW_ABI } from "../abi";
+import { formatTxError } from "../tx";
 import type { ListingSummary } from "../types";
 
 export function useListings() {
@@ -185,7 +186,13 @@ export function useCreateListing(onSuccess?: () => void) {
         setTxHash(hash);
         onSuccess?.();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "出品に失敗しました");
+        setError(
+          formatTxError(
+            err,
+            "出品に失敗しました",
+            "出品処理をキャンセルしました。MetaMaskで承認すると実行されます。",
+          ),
+        );
       } finally {
         setIsLoading(false);
       }
