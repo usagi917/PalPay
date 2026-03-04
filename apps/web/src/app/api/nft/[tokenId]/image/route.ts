@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createPublicClient, http, type Address } from "viem";
+import { createPublicClient, http, isAddress, type Address } from "viem";
 import { avalancheFuji } from "viem/chains";
 import { FACTORY_ABI, ESCROW_ABI, ERC20_ABI } from "@/lib/abi";
 import { SUPPORTED_CHAINS, CATEGORY_LABELS } from "@/lib/config";
@@ -195,7 +195,11 @@ export async function GET(
     const tokenIdValue = BigInt(tokenId);
 
     const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL;
-    const factoryAddress = process.env.NEXT_PUBLIC_FACTORY_ADDRESS as Address;
+    const factoryAddressParam = request.nextUrl.searchParams.get("factoryAddress");
+    if (factoryAddressParam && !isAddress(factoryAddressParam)) {
+      return new NextResponse("Invalid factoryAddress", { status: HTTP_STATUS.BAD_REQUEST });
+    }
+    const factoryAddress = (factoryAddressParam || process.env.NEXT_PUBLIC_FACTORY_ADDRESS || "") as Address;
 
     if (!rpcUrl || !factoryAddress) {
       return new NextResponse("Missing configuration", { status: HTTP_STATUS.INTERNAL_SERVER_ERROR });

@@ -6,16 +6,20 @@ import { useI18n } from "@/lib/i18n";
 
 interface HeroNFTProps {
   tokenId?: number;
+  factoryAddress?: string;
 }
 
-export function HeroNFT({ tokenId = 1 }: HeroNFTProps) {
+export function HeroNFT({ tokenId = 1, factoryAddress }: HeroNFTProps) {
   const { t } = useI18n();
   const [refreshKey, setRefreshKey] = useState(0);
+  const query = factoryAddress
+    ? `?factoryAddress=${encodeURIComponent(factoryAddress)}&t=${refreshKey}`
+    : `?t=${refreshKey}`;
 
   return (
     <div className="hero-nft-frame">
       <Image
-        src={`/api/nft/${tokenId}/image?t=${refreshKey}`}
+        src={`/api/nft/${tokenId}/image${query}`}
         alt="Dynamic NFT"
         width={420}
         height={720}

@@ -9,13 +9,14 @@ import { FACTORY_ABI } from "../abi";
  * Get current NFT owner from Factory contract
  * Used to determine chat access after NFT transfer
  */
-export function useNftOwner(tokenId: bigint | null) {
+export function useNftOwner(tokenId: bigint | null, factoryAddress?: Address | null) {
   const [owner, setOwner] = useState<Address | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetch = useCallback(async () => {
-    if (tokenId === null) {
+    const targetFactory = factoryAddress || config.factoryAddress;
+    if (tokenId === null || !targetFactory) {
       setOwner(null);
       return;
     }
@@ -26,7 +27,7 @@ export function useNftOwner(tokenId: bigint | null) {
     try {
       const client = createClient();
       const result = await client.readContract({
-        address: config.factoryAddress,
+        address: targetFactory,
         abi: FACTORY_ABI,
         functionName: "ownerOf",
         args: [tokenId],
@@ -40,7 +41,7 @@ export function useNftOwner(tokenId: bigint | null) {
     } finally {
       setIsLoading(false);
     }
-  }, [tokenId]);
+  }, [factoryAddress, tokenId]);
 
   useEffect(() => {
     fetch();
