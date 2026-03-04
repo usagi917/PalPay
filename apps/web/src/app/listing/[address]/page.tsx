@@ -66,7 +66,7 @@ export default function ListingDetailPage() {
   const { milestones, isLoading: milestonesLoading, refetch: refetchMilestones } = useMilestones(escrowAddress);
   const { events, refetch: refetchEvents } = useEscrowEvents(escrowAddress);
   const { symbol, decimals } = useTokenInfo();
-  const { owner: nftOwner } = useNftOwner(info?.tokenId ?? null);
+  const { owner: nftOwner } = useNftOwner(info?.tokenId ?? null, info?.factory ?? null);
 
   // Purchase validation (balance/allowance check)
   const purchaseValidation = usePurchaseValidation(

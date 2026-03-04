@@ -61,7 +61,7 @@ export function ListingInfoCard({
           </Typography>
           <Box sx={{ display: "flex", justifyContent: "center" }}>
             <div className="hero-nft-shell">
-              <HeroNFT tokenId={Number(info.tokenId)} />
+              <HeroNFT tokenId={Number(info.tokenId)} factoryAddress={info.factory} />
             </div>
           </Box>
         </CardContent>
