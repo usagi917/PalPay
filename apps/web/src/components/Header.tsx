@@ -106,6 +106,7 @@ export function Header({ onLocaleChange }: HeaderProps) {
           >
             <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 } }}>
               {/* Agent Chat Link */}
+              {process.env.NEXT_PUBLIC_ENABLE_AGENT !== 'false' && (
               <Link href="/agent" style={{ textDecoration: 'none' }}>
                 <Button
                   size="small"
@@ -136,6 +137,7 @@ export function Header({ onLocaleChange }: HeaderProps) {
                   </Box>
                 </Button>
               </Link>
+              )}
 
               {/* My Page Link */}
               <Link href="/my" style={{ textDecoration: 'none' }}>
