@@ -57,7 +57,7 @@ SCENES: tuple[Scene, ...] = (
         65,
         "/agent",
         "「神戸牛A5を50万円で出品」入力",
-        "Vertex AI Gemini が market分析と出品ドラフトを生成",
+        "OpenAI が market分析と出品ドラフトを生成",
         (51, 88, 40),
     ),
     Scene(
@@ -105,7 +105,7 @@ SCENES: tuple[Scene, ...] = (
         170,
         "構成図",
         "docs/architecture.mmd を表示",
-        "Cloud Run + Vertex AI + EVM の構成で要件A/Bを満たす",
+        "Next.js + OpenAI + EVM の構成で要件A/Bを満たす",
         (76, 84, 28),
     ),
     Scene(
@@ -119,8 +119,8 @@ SCENES: tuple[Scene, ...] = (
 )
 
 ARCH_LINES = (
-    "User -> Cloud Run -> Vertex AI",
-    "Cloud Run -> ListingFactory / Escrow / NFT API",
+    "User -> Web App (Next.js) -> OpenAI",
+    "Web App -> ListingFactory / Escrow / NFT API",
     "User -> XMTP (E2E encrypted chat)",
 )
 

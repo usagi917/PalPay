@@ -21,7 +21,6 @@ interface AgentChatProps {
 }
 
 export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentChatProps) {
-  const authRequired = process.env.NEXT_PUBLIC_AGENT_AUTH_REQUIRED !== "false";
   const { locale, t } = useI18n();
   const {
     messages,
@@ -230,7 +229,7 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
           />
           <MessageInput
             onSend={handleSend}
-            disabled={isLoading || isStreaming || (authRequired && !walletConnected)}
+            disabled={isLoading || isStreaming || !walletConnected}
             placeholder={
               !walletConnected
                 ? t("agentPleaseLogin")

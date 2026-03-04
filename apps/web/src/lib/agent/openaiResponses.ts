@@ -285,7 +285,7 @@ export async function* streamResponse(opts: {
     input: opts.input,
     tools: responsesTools,
     stream: true,
-    store: true,
+    store: false,
   };
 
   if (opts.previousResponseId) {

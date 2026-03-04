@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 > A milestone-based escrow DApp for high-value B2B transactions (wagyu, sake, and crafts).  
-> It runs on Next.js 15 + Cloud Run, with an AI assistant powered by OpenAI GPT-5 Nano.
+> It runs on Next.js 15, with an AI assistant powered by OpenAI GPT-5 Nano.
 
 ## Problem It Solves
 
@@ -31,7 +31,7 @@ This project combines milestone-linked payouts, evidence-backed state transition
 flowchart LR
     U["User<br/>(Buyer / Seller)"]
     M["MetaMask"]
-    W["Web App<br/>Next.js 15 on Cloud Run"]
+    W["Web App<br/>Next.js 15"]
     A["Agent API<br/>/api/agent/*"]
     N["NFT API<br/>/api/nft/*"]
     V["OpenAI API<br/>GPT-5 Nano"]
@@ -56,7 +56,7 @@ flowchart LR
 ## Repository Structure
 
 ```text
-apps/web/    Next.js 15 frontend + API routes + Cloud Run scripts
+apps/web/    Next.js 15 frontend + API routes
 contracts/   Solidity contracts (ListingFactoryV6, MilestoneEscrowV6, MockERC20)
 docs/        Architecture, demo script, and demo assets
 lib/         Foundry libraries (OpenZeppelin submodule)
@@ -69,7 +69,6 @@ lib/         Foundry libraries (OpenZeppelin submodule)
 - MetaMask
 - RPC URL + deployed contract addresses for your target chain
 - (Optional) Foundry (`forge`) if you build contracts locally
-- (Optional) `gcloud` CLI for Cloud Run deployment
 
 If you run `forge build`, initialize the OpenZeppelin submodule first:
 
@@ -124,7 +123,6 @@ Config file: `apps/web/.env.local`
 | `OPENAI_API_KEY` | Required for Agent | OpenAI API key |
 | `OPENAI_MODEL` | Recommended for Agent | OpenAI model name (default: `gpt-5-nano`) |
 | `OPENAI_API_BASE_URL` | No | Override base URL for OpenAI-compatible APIs (default: `https://api.openai.com/v1`) |
-| `NEXT_PUBLIC_AGENT_AUTH_REQUIRED` | No | Set `false` to disable client-side signature flow (default: enabled) |
 
 ### Vercel settings (with Agent enabled)
 
@@ -136,13 +134,12 @@ Config file: `apps/web/.env.local`
   - `NEXT_PUBLIC_CHAIN_ID`
   - `NEXT_PUBLIC_FACTORY_ADDRESS`
   - `NEXT_PUBLIC_TOKEN_ADDRESS`
-  - Add `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE` / `NEXT_PUBLIC_XMTP_ENV` / `NEXT_PUBLIC_AGENT_AUTH_REQUIRED` when needed
+  - Add `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE` / `NEXT_PUBLIC_XMTP_ENV` when needed
 
 ### Agent security and limits (optional)
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `AGENT_AUTH_DISABLED` | `false` | Set `true` to disable server-side signature validation |
 | `AGENT_NONCE_TTL_MS` | `300000` | Nonce TTL |
 | `AGENT_AUTH_SKEW_MS` | `300000` | Allowed auth timestamp skew |
 | `AGENT_AUTH_TOKEN_TTL_MS` | `1800000` | Session token TTL |
@@ -176,13 +173,13 @@ Category milestone distributions (BPS, total = 10000):
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | `GET` | `/api/agent/nonce?sessionId=...` | None | Issue signing nonce |
-| `POST` | `/api/agent/chat` | Signature required on first call (unless `AGENT_AUTH_DISABLED=true`) | Agent chat + tool execution |
+| `POST` | `/api/agent/chat` | Signature required on first call | Agent chat + tool execution |
 | `GET` | `/api/agent/chat?sessionId=...` | Session token | Inspect Agent session state |
 | `DELETE` | `/api/agent/chat?sessionId=...` | Session token | Clear Agent session |
 | `GET` | `/api/nft/:tokenId` | None | NFT metadata JSON |
 | `GET` | `/api/nft/:tokenId/image` | None | Dynamic NFT SVG |
 
-### Agent auth flow (when signature is enabled)
+### Agent auth flow
 
 1. Fetch nonce from `GET /api/agent/nonce?sessionId=...`
 2. `personal_sign` the message below
@@ -196,52 +193,6 @@ Timestamp: <unix_ms>
 
 3. Send `auth` payload in `POST /api/agent/chat`
 4. Reuse `sessionToken` via `X-Session-Token` header
-
-## Cloud Run Deployment
-
-### 1) Setup
-
-```bash
-gcloud config set project <YOUR_PROJECT_ID>
-gcloud auth login
-gcloud services enable run.googleapis.com \
-  cloudbuild.googleapis.com \
-  artifactregistry.googleapis.com
-```
-
-### 2) Deploy
-
-```bash
-cd apps/web
-
-export NEXT_PUBLIC_RPC_URL="https://sepolia.base.org"
-export NEXT_PUBLIC_CHAIN_ID="84532"
-export NEXT_PUBLIC_FACTORY_ADDRESS="<FACTORY_ADDRESS>"
-export NEXT_PUBLIC_TOKEN_ADDRESS="<TOKEN_ADDRESS>"
-export OPENAI_API_KEY="<YOUR_OPENAI_API_KEY>"
-export OPENAI_MODEL="gpt-5-nano"
-export NEXT_PUBLIC_XMTP_ENV="dev"
-
-bash scripts/deploy-cloudrun.sh
-```
-
-`deploy-cloudrun.sh` will:
-
-- create/check Artifact Registry repository
-- build image via `cloudbuild.yaml`
-- deploy to Cloud Run
-
-You can override defaults with:
-
-- `PROJECT_ID`, `REGION`, `SERVICE_NAME`, `REPOSITORY`, `IMAGE_NAME`, `IMAGE_TAG`
-
-### 3) Post-deploy verification
-
-```bash
-bash scripts/verify-cloudrun.sh "https://<your-service>.run.app"
-```
-
-Set `TEST_TOKEN_ID` if you also want to verify `/api/nft/:tokenId`.
 
 ## Development
 

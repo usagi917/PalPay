@@ -46,7 +46,6 @@ export interface UseAgentSessionReturn {
 }
 
 export function useAgentSession(): UseAgentSessionReturn {
-  const authRequired = process.env.NEXT_PUBLIC_AGENT_AUTH_REQUIRED !== "false";
   const [sessionId] = useState<string>(() => generateSessionId());
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [state, setState] = useState<AgentState>("idle");
@@ -208,7 +207,7 @@ export function useAgentSession(): UseAgentSessionReturn {
       let auth: ChatRequest["auth"] | undefined;
       let token = sessionToken;
 
-      if (authRequired && !token) {
+      if (!token) {
         auth = await buildAuthPayload();
       }
 
@@ -216,7 +215,7 @@ export function useAgentSession(): UseAgentSessionReturn {
 
       if (!response.ok) {
         const isAuthError = response.status === 401 || response.status === 403;
-        if (isAuthError && authRequired && (token || auth)) {
+        if (isAuthError && (token || auth)) {
           if (isLatestRequest()) {
             setSessionToken(null);
           }
@@ -372,7 +371,7 @@ export function useAgentSession(): UseAgentSessionReturn {
         }
       }
     }
-  }, [authRequired, sessionId, sessionToken, appendStreamingDelta]);
+  }, [sessionId, sessionToken, appendStreamingDelta]);
 
   const appendMessage = useCallback(
     (content: string, role: MessageRole = "assistant", nextState?: AgentState) => {
