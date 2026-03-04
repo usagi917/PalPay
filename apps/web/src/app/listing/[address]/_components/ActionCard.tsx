@@ -65,6 +65,9 @@ export function ActionCard({
   onCancel,
   onConfirmDelivery,
 }: ActionCardProps) {
+  // Guard: if nextMilestoneIndex is out of bounds, treat active state sections as inactive
+  const milestoneInBounds = nextMilestoneIndex >= 0 && nextMilestoneIndex < milestones.length;
+
   return (
     <Card
       sx={{
@@ -276,7 +279,7 @@ export function ActionCard({
         )}
 
         {/* Submit Button (for producer, when active) - excludes final milestone */}
-        {info.status === "active" && userRole === "producer" && nextMilestoneIndex >= 0 && nextMilestoneIndex < milestones.length - 1 && txStep !== "success" && !milestonesLoading && (
+        {info.status === "active" && userRole === "producer" && milestoneInBounds && nextMilestoneIndex < milestones.length - 1 && txStep !== "success" && !milestonesLoading && (
           <Button
             variant="contained"
             fullWidth
@@ -306,7 +309,7 @@ export function ActionCard({
         )}
 
         {/* Producer waiting for buyer to confirm final delivery */}
-        {info.status === "active" && userRole === "producer" && nextMilestoneIndex === milestones.length - 1 && txStep !== "success" && !milestonesLoading && (
+        {info.status === "active" && userRole === "producer" && milestoneInBounds && nextMilestoneIndex === milestones.length - 1 && txStep !== "success" && !milestonesLoading && (
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <Alert severity="info" sx={{ borderRadius: 2 }}>
               {locale === "ja"
@@ -320,14 +323,14 @@ export function ActionCard({
         )}
 
         {/* Buyer tracking progress - not final milestone */}
-        {info.status === "active" && userRole === "buyer" && nextMilestoneIndex < milestones.length - 1 && txStep !== "success" && (
+        {info.status === "active" && userRole === "buyer" && milestoneInBounds && nextMilestoneIndex < milestones.length - 1 && txStep !== "success" && (
           <Typography sx={{ color: "var(--color-text-muted)", textAlign: "center" }}>
             {locale === "ja" ? "進捗を追跡中..." : "Tracking progress..."}
           </Typography>
         )}
 
         {/* Confirm Delivery Button (for buyer, when active, final milestone) */}
-        {info.status === "active" && userRole === "buyer" && nextMilestoneIndex === milestones.length - 1 && txStep !== "success" && (
+        {info.status === "active" && userRole === "buyer" && milestoneInBounds && nextMilestoneIndex === milestones.length - 1 && txStep !== "success" && (
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <Alert severity="success" sx={{ borderRadius: 2 }}>
               {locale === "ja"
@@ -338,7 +341,7 @@ export function ActionCard({
               variant="contained"
               fullWidth
               startIcon={actionLoading ? <CircularProgress size={20} /> : <LocalShippingIcon />}
-              onClick={() => onConfirmDelivery()}
+              onClick={onConfirmDelivery}
               disabled={actionLoading}
               sx={{
                 background: "linear-gradient(135deg, var(--color-primary) 0%, var(--copper-rich) 100%)",

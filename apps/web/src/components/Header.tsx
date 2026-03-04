@@ -106,7 +106,7 @@ export function Header({ onLocaleChange }: HeaderProps) {
           >
             <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 } }}>
               {/* Agent Chat Link */}
-              {process.env.NEXT_PUBLIC_ENABLE_AGENT !== 'false' && (
+              {process.env.NEXT_PUBLIC_ENABLE_AGENT === 'true' && (
               <Link href="/agent" style={{ textDecoration: 'none' }}>
                 <Button
                   size="small"
