@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Box, Container, Button, Chip } from "@mui/material";
 import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import LogoutIcon from "@mui/icons-material/Logout";
@@ -450,5 +451,17 @@ function AgentPageContent() {
 }
 
 export default function AgentPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    if (process.env.NEXT_PUBLIC_ENABLE_AGENT === 'false') {
+      router.replace('/');
+    }
+  }, [router]);
+
+  if (process.env.NEXT_PUBLIC_ENABLE_AGENT === 'false') {
+    return null;
+  }
+
   return <AgentPageContent />;
 }
