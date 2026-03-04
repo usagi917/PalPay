@@ -252,8 +252,8 @@ async function* parseSSEStream(
 
               // All other event types (response.created, response.in_progress, etc.) are ignored
             }
-          } catch {
-            // Skip unparseable data lines
+          } catch (e) {
+            console.warn("[OpenAI/SSE] Failed to parse SSE data line:", e);
           }
           currentData = "";
         }

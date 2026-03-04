@@ -98,7 +98,6 @@ export interface ChatResponse {
   state: AgentState;
   draft?: ListingDraft;
   txPrepare?: TxPrepareResult;
-  sessionToken?: string;
   nextInputHint?: string;
   nextQuickActions?: Array<{ label: string; message: string }>;
 }
@@ -123,7 +122,6 @@ export type AgentStreamEvent =
       state: AgentState;
       draft?: ListingDraft;
       txPrepare?: TxPrepareResult;
-      sessionToken?: string;
       nextInputHint?: string;
       nextQuickActions?: Array<{ label: string; message: string }>;
     }
