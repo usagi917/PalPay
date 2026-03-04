@@ -394,6 +394,24 @@ function getClientIp(request: NextRequest): string {
     || "unknown";
 }
 
+const SAFE_ERROR_PREFIXES = [
+  "Factory address not configured",
+  "Invalid transaction action",
+  "Listing not found",
+  "Producer address required",
+  "Unknown tool",
+];
+
+function sanitizeToolError(error: unknown): string {
+  if (
+    error instanceof Error
+    && SAFE_ERROR_PREFIXES.some((p) => error.message.startsWith(p))
+  ) {
+    return error.message.slice(0, 200);
+  }
+  return "Tool execution failed";
+}
+
 function jsonError(message: string, status: number, headers?: Record<string, string>) {
   return NextResponse.json({ error: message }, { status, headers });
 }
@@ -589,9 +607,7 @@ async function handleStreamingPost(params: {
               );
             } catch (error) {
               console.error(`[Agent/Stream] Tool error (${fc.name}):`, error);
-              const safeMessage = error instanceof Error
-                ? error.message.slice(0, 200)
-                : "Tool execution failed";
+              const safeMessage = sanitizeToolError(error);
 
               toolCalls.push({
                 name: fc.name,
@@ -971,9 +987,7 @@ export async function POST(request: NextRequest) {
           });
         } catch (error) {
           console.error(`[Agent] Tool error (${toolName}):`, error);
-          const safeMessage = error instanceof Error
-            ? error.message.slice(0, 200)
-            : "Tool execution failed";
+          const safeMessage = sanitizeToolError(error);
 
           toolCalls.push({
             name: toolName,
@@ -1044,12 +1058,16 @@ export async function POST(request: NextRequest) {
       state: session.state,
       draft: session.draft,
       txPrepare: session.txPrepare,
-      sessionToken: session.authToken,
       nextInputHint,
       nextQuickActions,
     };
 
-    return NextResponse.json(chatResponse);
+    const responseHeaders: Record<string, string> = {};
+    if (session.authToken) {
+      responseHeaders["X-Session-Token"] = session.authToken;
+    }
+
+    return NextResponse.json(chatResponse, { headers: responseHeaders });
   } catch (error) {
     console.error("[Agent] Error:", error);
     return NextResponse.json(

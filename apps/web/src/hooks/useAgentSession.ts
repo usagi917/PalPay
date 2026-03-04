@@ -333,6 +333,10 @@ export function useAgentSession(): UseAgentSessionReturn {
         }
       } else {
         // --- Non-streaming (legacy JSON) path ---
+        const headerToken = response.headers.get("x-session-token");
+        if (headerToken) {
+          setSessionToken(headerToken);
+        }
         const data: ChatResponse = await response.json();
         if (!isLatestRequest()) return;
 
@@ -340,7 +344,6 @@ export function useAgentSession(): UseAgentSessionReturn {
         setState(data.state);
         if (data.draft) setDraft(data.draft);
         if (data.txPrepare) setTxPrepare(data.txPrepare);
-        if (data.sessionToken) setSessionToken(data.sessionToken);
         setNextInputHint(data.nextInputHint ?? null);
         setNextQuickActions(Array.isArray(data.nextQuickActions) ? data.nextQuickActions : []);
       }
