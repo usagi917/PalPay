@@ -446,8 +446,13 @@ async function handleStreamingPost(params: {
       const enqueue = (event: AgentStreamEvent) => {
         try {
           controller.enqueue(encoder.encode(sseEncode(event)));
-        } catch {
+        } catch (e) {
           // Controller may be closed if client disconnected
+          if (e instanceof TypeError && /enqueue|closed/i.test(e.message)) {
+            // Expected: client disconnected
+          } else {
+            console.warn("[Agent/SSE] Unexpected enqueue error:", e);
+          }
         }
       };
 
@@ -481,7 +486,9 @@ async function handleStreamingPost(params: {
                 let parsedArgs: Record<string, unknown> = {};
                 try {
                   parsedArgs = JSON.parse(event.arguments) as Record<string, unknown>;
-                } catch { /* empty */ }
+                } catch (e) {
+                  console.warn(`[Agent/Stream] Failed to parse tool args for ${event.name}, using empty args:`, e);
+                }
                 pendingFunctionCalls.push({
                   item_id: event.item_id,
                   call_id: event.call_id,
@@ -581,19 +588,22 @@ async function handleStreamingPost(params: {
                 },
               );
             } catch (error) {
-              console.error(`[Agent/Stream] Tool error:`, error);
+              console.error(`[Agent/Stream] Tool error (${fc.name}):`, error);
+              const safeMessage = error instanceof Error
+                ? error.message.slice(0, 200)
+                : "Tool execution failed";
 
               toolCalls.push({
                 name: fc.name,
                 args: effectiveArgs,
-                result: { error: "Tool execution failed" },
+                result: { error: safeMessage },
               });
 
               enqueue({
                 type: "tool_call_result",
                 callId: fc.call_id,
                 name: fc.name,
-                result: { error: "Tool execution failed" },
+                result: { error: safeMessage },
               });
 
               turnInput.push(
@@ -607,7 +617,7 @@ async function handleStreamingPost(params: {
                 {
                   type: "function_call_output",
                   call_id: fc.call_id,
-                  output: JSON.stringify({ error: "Tool execution failed" }),
+                  output: JSON.stringify({ error: safeMessage }),
                 },
               );
             }
@@ -669,7 +679,6 @@ async function handleStreamingPost(params: {
           state: session.state,
           draft: session.draft,
           txPrepare: session.txPrepare,
-          sessionToken: session.authToken,
           nextInputHint,
           nextQuickActions,
         });
@@ -682,13 +691,16 @@ async function handleStreamingPost(params: {
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    },
-  });
+  const headers: Record<string, string> = {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  };
+  if (session.authToken) {
+    headers["X-Session-Token"] = session.authToken;
+  }
+
+  return new Response(stream, { headers });
 }
 
 export async function POST(request: NextRequest) {
@@ -958,18 +970,21 @@ export async function POST(request: NextRequest) {
             response: { result: toolResult },
           });
         } catch (error) {
-          console.error(`[Agent] Tool error:`, error);
+          console.error(`[Agent] Tool error (${toolName}):`, error);
+          const safeMessage = error instanceof Error
+            ? error.message.slice(0, 200)
+            : "Tool execution failed";
 
           toolCalls.push({
             name: toolName,
             args: effectiveToolArgs,
-            result: { error: "Tool execution failed" },
+            result: { error: safeMessage },
           });
 
           functionResponses.push({
             id: fc.id || "",
             name: toolName,
-            response: { error: "Tool execution failed" },
+            response: { error: safeMessage },
           });
         }
       }
@@ -1046,6 +1061,10 @@ export async function POST(request: NextRequest) {
 
 // GET endpoint to check session state
 export async function GET(request: NextRequest) {
+  if (process.env.NEXT_PUBLIC_ENABLE_AGENT !== 'true') {
+    return jsonError('Agent is not available', 403);
+  }
+
   pruneSessions();
 
   const sessionId = request.nextUrl.searchParams.get("sessionId") || "";
@@ -1079,6 +1098,10 @@ export async function GET(request: NextRequest) {
 
 // DELETE endpoint to clear session
 export async function DELETE(request: NextRequest) {
+  if (process.env.NEXT_PUBLIC_ENABLE_AGENT !== 'true') {
+    return jsonError('Agent is not available', 403);
+  }
+
   pruneSessions();
 
   const sessionId = request.nextUrl.searchParams.get("sessionId") || "";

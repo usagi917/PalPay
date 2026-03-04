@@ -244,6 +244,10 @@ export function useAgentSession(): UseAgentSessionReturn {
       const contentType = response.headers.get("content-type") || "";
       if (contentType.includes("text/event-stream") && response.body) {
         // --- Streaming path ---
+        const headerToken = response.headers.get("x-session-token");
+        if (headerToken) {
+          setSessionToken(headerToken);
+        }
         setIsStreaming(true);
 
         for await (const sseEvent of parseSSE(response.body)) {
@@ -252,7 +256,8 @@ export function useAgentSession(): UseAgentSessionReturn {
           let parsed: AgentStreamEvent;
           try {
             parsed = JSON.parse(sseEvent.data) as AgentStreamEvent;
-          } catch {
+          } catch (e) {
+            console.warn("[Agent/SSE] Failed to parse SSE event data:", e);
             continue;
           }
 
@@ -312,7 +317,6 @@ export function useAgentSession(): UseAgentSessionReturn {
               setState(parsed.state);
               if (parsed.draft) setDraft(parsed.draft);
               if (parsed.txPrepare) setTxPrepare(parsed.txPrepare);
-              if (parsed.sessionToken) setSessionToken(parsed.sessionToken);
               setNextInputHint(parsed.nextInputHint ?? null);
               setNextQuickActions(Array.isArray(parsed.nextQuickActions) ? parsed.nextQuickActions : []);
               // Clear streaming state

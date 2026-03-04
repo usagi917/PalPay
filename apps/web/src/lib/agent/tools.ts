@@ -78,13 +78,20 @@ async function readEscrowSummary(
 }
 
 // Wrap a promise with a timeout that returns partial result on expiry
-async function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+async function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T, label?: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
+  let timedOut = false;
   const timeout = new Promise<T>((resolve) => {
-    timer = setTimeout(() => resolve(fallback), ms);
+    timer = setTimeout(() => {
+      timedOut = true;
+      resolve(fallback);
+    }, ms);
   });
   try {
     const result = await Promise.race([promise, timeout]);
+    if (timedOut) {
+      console.warn(`[Agent/Tool] ${label ?? "operation"} timed out after ${ms}ms, returning fallback`);
+    }
     return result;
   } finally {
     clearTimeout(timer!);
@@ -115,9 +122,15 @@ async function fetchAllListingSummaries(): Promise<ListingSummaryForAgent[]> {
     addresses.map((addr) => readEscrowSummary(client, addr))
   );
 
-  return results
-    .filter((r): r is PromiseFulfilledResult<ListingSummaryForAgent> => r.status === "fulfilled")
-    .map((r) => r.value);
+  const summaries: ListingSummaryForAgent[] = [];
+  for (const r of results) {
+    if (r.status === "fulfilled") {
+      summaries.push(r.value);
+    } else {
+      console.warn("[Agent/Tool] Failed to read listing summary:", r.reason);
+    }
+  }
+  return summaries;
 }
 
 // Tool implementations
@@ -127,38 +140,34 @@ export async function getListings(params: {
   limit?: number;
 }): Promise<ListingSummaryForAgent[]> {
   const client = createClient();
-  const factoryAddress = process.env.NEXT_PUBLIC_FACTORY_ADDRESS as Address;
-
-  if (!factoryAddress) {
-    throw new Error("Factory address not configured");
-  }
-
-  const addresses = await client.readContract({
-    address: factoryAddress,
-    abi: FACTORY_ABI,
-    functionName: "getListings",
-  }) as Address[];
-
+  const addresses = await fetchAllListingAddresses();
   const limit = params.limit || 10;
+
+  // Read listings in parallel
+  const results = await Promise.allSettled(
+    addresses.slice(0, Math.min(addresses.length, limit * 2)).map((addr) =>
+      readEscrowSummary(client, addr)
+    )
+  );
+
   const listings: ListingSummaryForAgent[] = [];
-
-  for (const escrowAddress of addresses.slice(0, Math.min(addresses.length, limit * 2))) {
-    try {
-      const listing = await readEscrowSummary(client, escrowAddress);
-
-      // Apply filters
-      if (params.category && listing.category !== params.category.toLowerCase()) {
-        continue;
-      }
-      if (params.status && listing.status !== params.status.toLowerCase()) {
-        continue;
-      }
-
-      listings.push(listing);
-      if (listings.length >= limit) break;
-    } catch (e) {
-      console.error(`Error reading listing ${escrowAddress}:`, e);
+  for (const result of results) {
+    if (result.status !== "fulfilled") {
+      console.warn("[Agent/Tool] Failed to read listing in getListings:", result.reason);
+      continue;
     }
+    const listing = result.value;
+
+    // Apply filters
+    if (params.category && listing.category !== params.category.toLowerCase()) {
+      continue;
+    }
+    if (params.status && listing.status !== params.status.toLowerCase()) {
+      continue;
+    }
+
+    listings.push(listing);
+    if (listings.length >= limit) break;
   }
 
   return listings;
@@ -221,12 +230,23 @@ export function prepareListingDraft(params: {
   };
 }
 
+const VALID_TX_ACTIONS = new Set<TxPrepareResult["action"]>([
+  "createListing",
+  "lock",
+  "approve",
+  "cancel",
+  "confirmDelivery",
+]);
+
 export function prepareTransaction(params: {
   action: string;
   escrowAddress?: string;
   draft?: Partial<ListingDraft>;
   amount?: string;
 }): TxPrepareResult {
+  if (!VALID_TX_ACTIONS.has(params.action as TxPrepareResult["action"])) {
+    throw new Error(`Invalid transaction action: ${params.action}`);
+  }
   const action = params.action as TxPrepareResult["action"];
 
   const result: TxPrepareResult = {
@@ -334,7 +354,7 @@ export async function analyzeMarket(params: {
   return withTimeout<MarketAnalysisResult>(doAnalysis(), TOOL_TIMEOUT_MS, {
     analyses: [],
     partial: true,
-  });
+  }, "analyzeMarket");
 }
 
 interface RiskAssessment {
@@ -448,7 +468,7 @@ export async function assessRisk(params: {
     producerAddress: params.producerAddress || params.escrowAddress || "",
     reasons: ["タイムアウトのため完全な分析ができませんでした。慎重に判断してください。"],
     stats: { totalListings: 0, completed: 0, cancelled: 0, active: 0, averageProgress: 0 },
-  });
+  }, "assessRisk");
 }
 
 interface NextActionSuggestion {
@@ -551,7 +571,7 @@ export async function suggestNextAction(params: {
     role: "none",
     actions: [],
     summary: "タイムアウトのため状況を完全に取得できませんでした。もう一度お試しください。",
-  });
+  }, "suggestNextAction");
 }
 
 // Execute tool by name
