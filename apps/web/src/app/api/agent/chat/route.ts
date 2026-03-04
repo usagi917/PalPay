@@ -46,13 +46,23 @@ function generateId(): string {
   return `msg_${randomUUID()}`;
 }
 
-const MAX_BODY_BYTES = Number(process.env.AGENT_MAX_BODY_BYTES || 16_000);
-const MAX_MESSAGE_CHARS = Number(process.env.AGENT_MAX_MESSAGE_CHARS || 2_000);
-const RATE_LIMIT_MAX = Number(process.env.AGENT_RATE_LIMIT_MAX || 20);
-const RATE_LIMIT_WINDOW_MS = Number(process.env.AGENT_RATE_LIMIT_WINDOW_MS || 60_000);
-const SESSION_IDLE_TTL_MS = Number(process.env.AGENT_SESSION_IDLE_TTL_MS || 60 * 60_000);
-const AUTH_TIMESTAMP_SKEW_MS = Number(process.env.AGENT_AUTH_SKEW_MS || 5 * 60_000);
-const AUTH_TOKEN_TTL_MS = Number(process.env.AGENT_AUTH_TOKEN_TTL_MS || 30 * 60_000);
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return parsed;
+}
+
+const MAX_BODY_BYTES = envInt("AGENT_MAX_BODY_BYTES", 16_000);
+const MAX_MESSAGE_CHARS = envInt("AGENT_MAX_MESSAGE_CHARS", 2_000);
+const RATE_LIMIT_MAX = envInt("AGENT_RATE_LIMIT_MAX", 20);
+const RATE_LIMIT_WINDOW_MS = envInt("AGENT_RATE_LIMIT_WINDOW_MS", 60_000);
+const SESSION_IDLE_TTL_MS = envInt("AGENT_SESSION_IDLE_TTL_MS", 60 * 60_000);
+const AUTH_TIMESTAMP_SKEW_MS = envInt("AGENT_AUTH_SKEW_MS", 5 * 60_000);
+const AUTH_TOKEN_TTL_MS = envInt("AGENT_AUTH_TOKEN_TTL_MS", 30 * 60_000);
+const MAX_HISTORY_ENTRIES = 40; // 20 round-trips (user + model)
+const MAX_TOOL_ROUNDS = 10;
 const DEFAULT_INPUT_HINT: Record<Locale, string> = {
   ja: "和牛を売りたい",
   en: "I want to sell wagyu",
@@ -384,10 +394,6 @@ function getClientIp(request: NextRequest): string {
     || "unknown";
 }
 
-function getClientKey(request: NextRequest): string {
-  return getClientIp(request);
-}
-
 function jsonError(message: string, status: number, headers?: Record<string, string>) {
   return NextResponse.json({ error: message }, { status, headers });
 }
@@ -502,7 +508,9 @@ async function handleStreamingPost(params: {
         await processStream(firstStream);
 
         // Tool execution loop
-        while (pendingFunctionCalls.length > 0) {
+        let toolRound = 0;
+        while (pendingFunctionCalls.length > 0 && toolRound < MAX_TOOL_ROUNDS) {
+          toolRound++;
           for (const fc of pendingFunctionCalls) {
             const effectiveArgs = { ...fc.args };
             if (fc.name === "prepare_transaction") {
@@ -520,7 +528,11 @@ async function handleStreamingPost(params: {
               }
             }
 
-            console.log(`[Agent/Stream] Tool call: ${fc.name}`, effectiveArgs);
+            if (process.env.NODE_ENV === "development") {
+              console.log(`[Agent/Stream] Tool call: ${fc.name}`, effectiveArgs);
+            } else {
+              console.log(`[Agent/Stream] Tool call: ${fc.name}`);
+            }
 
             try {
               const toolResult = await executeTool(fc.name, effectiveArgs);
@@ -574,14 +586,14 @@ async function handleStreamingPost(params: {
               toolCalls.push({
                 name: fc.name,
                 args: effectiveArgs,
-                result: { error: String(error) },
+                result: { error: "Tool execution failed" },
               });
 
               enqueue({
                 type: "tool_call_result",
                 callId: fc.call_id,
                 name: fc.name,
-                result: { error: String(error) },
+                result: { error: "Tool execution failed" },
               });
 
               turnInput.push(
@@ -595,7 +607,7 @@ async function handleStreamingPost(params: {
                 {
                   type: "function_call_output",
                   call_id: fc.call_id,
-                  output: JSON.stringify({ error: String(error) }),
+                  output: JSON.stringify({ error: "Tool execution failed" }),
                 },
               );
             }
@@ -608,11 +620,19 @@ async function handleStreamingPost(params: {
           await processStream(nextStream);
         }
 
+        if (toolRound >= MAX_TOOL_ROUNDS) {
+          console.warn("[Agent/Stream] Tool round limit reached");
+          enqueue({ type: "error", error: "Tool execution limit reached" });
+        }
+
         // Update history
         session.history.push(
           { role: "user", parts: [{ text: fullMessage }] },
           { role: "model", parts: [{ text: fullText }] },
         );
+        if (session.history.length > MAX_HISTORY_ENTRIES) {
+          session.history = session.history.slice(-MAX_HISTORY_ENTRIES);
+        }
 
         // Derive hints
         const nextInputHint = deriveNextInputHint({
@@ -655,7 +675,7 @@ async function handleStreamingPost(params: {
         });
       } catch (error) {
         console.error("[Agent/Stream] Error:", error);
-        enqueue({ type: "error", error: String(error) });
+        enqueue({ type: "error", error: "Internal server error" });
       } finally {
         controller.close();
       }
@@ -672,6 +692,13 @@ async function handleStreamingPost(params: {
 }
 
 export async function POST(request: NextRequest) {
+  if (process.env.NEXT_PUBLIC_ENABLE_AGENT !== 'true') {
+    return NextResponse.json(
+      { error: 'Agent is not available' },
+      { status: 403 }
+    );
+  }
+
   try {
     pruneSessions();
 
@@ -712,7 +739,7 @@ export async function POST(request: NextRequest) {
       return jsonError("Invalid userAddress", 400);
     }
 
-    const rateKey = getClientKey(request);
+    const rateKey = getClientIp(request);
     const rate = checkRateLimit(rateKey, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS);
     if (!rate.allowed) {
       const retryAfter = Math.ceil((rate.resetAt - Date.now()) / 1000);
@@ -814,23 +841,15 @@ export async function POST(request: NextRequest) {
       session.authTokenExpiresAt = now + AUTH_TOKEN_TTL_MS;
     }
 
-    if (!session) {
-      session = {
-        history: [],
-        state: "idle",
-        createdAt: now,
-        lastAccessAt: now,
-      };
-      sessions.set(sessionId, session);
-    }
     touchSession(session, now);
 
     const providerConfigError = getAgentProviderConfigError();
     if (providerConfigError) {
+      console.error(`[Agent] Provider config error: ${providerConfigError}`);
       return jsonError(
         locale === "ja"
-          ? `Agent設定エラー: ${providerConfigError}. apps/web/.env.local を確認してください。`
-          : `Agent configuration error: ${providerConfigError}. Check apps/web/.env.local.`,
+          ? "Agentサービスが一時的に利用できません。しばらくしてから再度お試しください。"
+          : "Agent service is temporarily unavailable. Please try again later.",
         503
       );
     }
@@ -907,7 +926,11 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        console.log(`[Agent] Tool call: ${toolName}`, effectiveToolArgs);
+        if (process.env.NODE_ENV === "development") {
+          console.log(`[Agent] Tool call: ${toolName}`, effectiveToolArgs);
+        } else {
+          console.log(`[Agent] Tool call: ${toolName}`);
+        }
 
         try {
           const toolResult = await executeTool(toolName, effectiveToolArgs);
@@ -940,13 +963,13 @@ export async function POST(request: NextRequest) {
           toolCalls.push({
             name: toolName,
             args: effectiveToolArgs,
-            result: { error: String(error) },
+            result: { error: "Tool execution failed" },
           });
 
           functionResponses.push({
             id: fc.id || "",
             name: toolName,
-            response: { error: String(error) },
+            response: { error: "Tool execution failed" },
           });
         }
       }
@@ -986,6 +1009,9 @@ export async function POST(request: NextRequest) {
       { role: "user", parts: [{ text: fullMessage }] },
       { role: "model", parts: [{ text: responseText }] }
     );
+    if (session.history.length > MAX_HISTORY_ENTRIES) {
+      session.history = session.history.slice(-MAX_HISTORY_ENTRIES);
+    }
 
     // Build response message
     const assistantMessage: ChatMessage = {
@@ -1012,7 +1038,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("[Agent] Error:", error);
     return NextResponse.json(
-      { error: "Internal server error", details: String(error) },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }

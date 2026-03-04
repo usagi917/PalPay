@@ -454,12 +454,12 @@ export default function AgentPage() {
   const router = useRouter();
 
   useEffect(() => {
-    if (process.env.NEXT_PUBLIC_ENABLE_AGENT === 'false') {
+    if (process.env.NEXT_PUBLIC_ENABLE_AGENT !== 'true') {
       router.replace('/');
     }
   }, [router]);
 
-  if (process.env.NEXT_PUBLIC_ENABLE_AGENT === 'false') {
+  if (process.env.NEXT_PUBLIC_ENABLE_AGENT !== 'true') {
     return null;
   }
 
