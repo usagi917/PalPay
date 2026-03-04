@@ -136,10 +136,15 @@ export async function GET(
 
     // Build metadata
     const baseUrl = request.nextUrl.origin;
+    const fallbackImageUrl = new URL(`/api/nft/${tokenId}/image`, baseUrl);
+    if (factoryAddressParam) {
+      fallbackImageUrl.searchParams.set("factoryAddress", factoryAddressParam);
+    }
+
     const metadata = {
       name: title || `Listing #${tokenId.padStart(3, "0")}`,
       description: description || `Milestone-based escrow for ${categoryLabel}. Progress: ${progressPercent}% (${completedCount}/${totalCount} milestones completed).`,
-      image: imageURI || `${baseUrl}/api/nft/${tokenId}/image`,
+      image: imageURI || fallbackImageUrl.toString(),
       external_url: `${baseUrl}/listing/${escrowAddress}`,
       attributes,
     };
