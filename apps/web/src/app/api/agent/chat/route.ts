@@ -6,7 +6,6 @@ import {
   getAgentProviderConfigError,
   AGENT_PROVIDER,
   streamResponse,
-  continueWithToolOutputs,
   historyToInput,
   type AgentHistoryContent,
   type ResponseInput,
@@ -39,7 +38,6 @@ type SessionRecord = {
   authTokenExpiresAt?: number;
   createdAt?: number;
   lastAccessAt?: number;
-  lastResponseId?: string;
 };
 const gSessions = globalThis as unknown as { __agentSessions?: Map<string, SessionRecord> };
 const sessions = (gSessions.__agentSessions ??= new Map<string, SessionRecord>());
@@ -449,15 +447,15 @@ async function handleStreamingPost(params: {
 
       try {
         // Build input from history + new user message
-        const input: ResponseInput[] = historyToInput(session.history);
-        input.push({ type: "message", role: "user", content: fullMessage });
+        const turnInput: ResponseInput[] = historyToInput(session.history);
+        turnInput.push({ type: "message", role: "user", content: fullMessage });
 
         const toolCalls: ToolCall[] = [];
         let fullText = "";
-        let currentResponseId: string | undefined = session.lastResponseId;
 
         // Streaming loop: keep going until we get a final text response
         let pendingFunctionCalls: Array<{
+          item_id: string;
           call_id: string;
           name: string;
           args: Record<string, unknown>;
@@ -479,6 +477,7 @@ async function handleStreamingPost(params: {
                   parsedArgs = JSON.parse(event.arguments) as Record<string, unknown>;
                 } catch { /* empty */ }
                 pendingFunctionCalls.push({
+                  item_id: event.item_id,
                   call_id: event.call_id,
                   name: event.name,
                   args: parsedArgs,
@@ -491,26 +490,19 @@ async function handleStreamingPost(params: {
                 });
                 break;
               }
-
-              case "response.completed":
-                currentResponseId = event.response.id;
-                break;
             }
           }
         };
 
         // First stream
-        const firstStreamGen = streamResponse({
+        const firstStream = streamResponse({
           instructions: systemInstruction,
-          input,
-          previousResponseId: currentResponseId,
+          input: turnInput,
         });
-        await processStream(firstStreamGen);
+        await processStream(firstStream);
 
         // Tool execution loop
         while (pendingFunctionCalls.length > 0) {
-          const toolOutputs: Array<{ call_id: string; output: string }> = [];
-
           for (const fc of pendingFunctionCalls) {
             const effectiveArgs = { ...fc.args };
             if (fc.name === "prepare_transaction") {
@@ -562,10 +554,20 @@ async function handleStreamingPost(params: {
                 result: toolResult,
               });
 
-              toolOutputs.push({
-                call_id: fc.call_id,
-                output: JSON.stringify({ result: toolResult }),
-              });
+              turnInput.push(
+                {
+                  type: "function_call",
+                  id: fc.item_id || `fc_${fc.call_id}`,
+                  call_id: fc.call_id,
+                  name: fc.name,
+                  arguments: JSON.stringify(effectiveArgs),
+                },
+                {
+                  type: "function_call_output",
+                  call_id: fc.call_id,
+                  output: JSON.stringify({ result: toolResult }),
+                },
+              );
             } catch (error) {
               console.error(`[Agent/Stream] Tool error:`, error);
 
@@ -582,25 +584,28 @@ async function handleStreamingPost(params: {
                 result: { error: String(error) },
               });
 
-              toolOutputs.push({
-                call_id: fc.call_id,
-                output: JSON.stringify({ error: String(error) }),
-              });
+              turnInput.push(
+                {
+                  type: "function_call",
+                  id: fc.item_id || `fc_${fc.call_id}`,
+                  call_id: fc.call_id,
+                  name: fc.name,
+                  arguments: JSON.stringify(effectiveArgs),
+                },
+                {
+                  type: "function_call_output",
+                  call_id: fc.call_id,
+                  output: JSON.stringify({ error: String(error) }),
+                },
+              );
             }
           }
 
-          // Continue with tool outputs
-          const nextStream = continueWithToolOutputs({
+          const nextStream = streamResponse({
             instructions: systemInstruction,
-            previousResponseId: currentResponseId!,
-            toolOutputs,
+            input: turnInput,
           });
           await processStream(nextStream);
-        }
-
-        // Save response ID for conversation chaining
-        if (currentResponseId) {
-          session.lastResponseId = currentResponseId;
         }
 
         // Update history

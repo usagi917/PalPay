@@ -12,7 +12,7 @@ const OPENAI_API_BASE_URL =
 // ---------- Type definitions for Responses API ----------
 
 type ResponseInputItem =
-  | { type: "message"; role: "user" | "system" | "developer"; content: string }
+  | { type: "message"; role: "user" | "assistant" | "system" | "developer"; content: string }
   | {
       type: "function_call";
       id: string;
@@ -90,10 +90,8 @@ export function historyToInput(history: AgentHistoryContent[]): ResponseInput[] 
   for (const entry of history) {
     const text = flattenParts(entry.parts);
     if (!text) continue;
-    const role = entry.role === "model" || entry.role === "assistant" ? "user" : entry.role;
-    // Responses API only accepts "user", "system", "developer" for message items.
-    // Model/assistant turns are excluded — tracked by previous_response_id chain.
-    if (role === "user" || role === "system") {
+    const role = entry.role === "model" ? "assistant" : entry.role;
+    if (role === "user" || role === "assistant" || role === "system" || role === "developer") {
       items.push({ type: "message", role, content: text });
     }
   }
