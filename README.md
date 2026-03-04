@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 > 和牛・日本酒・工芸品などの高額B2B取引を、マイルストーン連動決済で進めるエスクローDAppです。  
-> Next.js 15 を Cloud Run で運用し、AIアシスタントは OpenAI GPT-5 Nano を利用します。
+> Next.js 15 で運用し、AIアシスタントは OpenAI GPT-5 Nano を利用します。
 
 ## 何を解決するか
 
@@ -31,7 +31,7 @@
 flowchart LR
     U["ユーザー<br/>(Buyer / Seller)"]
     M["MetaMask"]
-    W["Web App<br/>Next.js 15 on Cloud Run"]
+    W["Web App<br/>Next.js 15"]
     A["Agent API<br/>/api/agent/*"]
     N["NFT API<br/>/api/nft/*"]
     V["OpenAI API<br/>GPT-5 Nano"]
@@ -56,7 +56,7 @@ flowchart LR
 ## リポジトリ構成
 
 ```text
-apps/web/    Next.js 15 フロントエンド + API routes + Cloud Run scripts
+apps/web/    Next.js 15 フロントエンド + API routes
 contracts/   Solidity コントラクト (ListingFactoryV6, MilestoneEscrowV6, MockERC20)
 docs/        構成図、デモ台本、動画成果物
 lib/         Foundryライブラリ（OpenZeppelinサブモジュール）
@@ -69,7 +69,6 @@ lib/         Foundryライブラリ（OpenZeppelinサブモジュール）
 - MetaMask
 - 対象チェーンのRPC URLとデプロイ済みコントラクトアドレス
 - （任意）Foundry (`forge`)：コントラクトをビルドする場合
-- （任意）`gcloud` CLI：Cloud Run へデプロイする場合
 
 `forge build` を使う場合は OpenZeppelin サブモジュールを初期化してください。
 
@@ -124,7 +123,6 @@ pnpm dev
 | `OPENAI_API_KEY` | Agent利用時必須 | OpenAI APIキー |
 | `OPENAI_MODEL` | Agent利用時推奨 | 利用するOpenAIモデル（デフォルト: `gpt-5-nano`） |
 | `OPENAI_API_BASE_URL` | No | OpenAI互換APIのベースURL上書き（デフォルト: `https://api.openai.com/v1`） |
-| `NEXT_PUBLIC_AGENT_AUTH_REQUIRED` | No | `false` でフロントの署名フローを無効化（デフォルト: 有効） |
 
 ### Vercel設定（Agent有効時）
 
@@ -136,13 +134,12 @@ pnpm dev
   - `NEXT_PUBLIC_CHAIN_ID`
   - `NEXT_PUBLIC_FACTORY_ADDRESS`
   - `NEXT_PUBLIC_TOKEN_ADDRESS`
-  - 必要なら `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE` / `NEXT_PUBLIC_XMTP_ENV` / `NEXT_PUBLIC_AGENT_AUTH_REQUIRED`
+  - 必要なら `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE` / `NEXT_PUBLIC_XMTP_ENV`
 
 ### Agentセキュリティ/制限（任意）
 
 | 変数名 | デフォルト | 用途 |
 | --- | --- | --- |
-| `AGENT_AUTH_DISABLED` | `false` | `true` でサーバー側署名検証を無効化 |
 | `AGENT_NONCE_TTL_MS` | `300000` | nonce有効期限 |
 | `AGENT_AUTH_SKEW_MS` | `300000` | 署名timestamp許容誤差 |
 | `AGENT_AUTH_TOKEN_TTL_MS` | `1800000` | セッショントークン有効期限 |
@@ -176,13 +173,13 @@ LOCKED --cancel()--> CANCELLED (全額返金)
 | Method | Path | 認証 | 用途 |
 | --- | --- | --- | --- |
 | `GET` | `/api/agent/nonce?sessionId=...` | 不要 | 署名用nonce発行 |
-| `POST` | `/api/agent/chat` | 初回は署名必須（`AGENT_AUTH_DISABLED=true` を除く） | Agentチャットとツール実行 |
+| `POST` | `/api/agent/chat` | 初回は署名必須 | Agentチャットとツール実行 |
 | `GET` | `/api/agent/chat?sessionId=...` | セッショントークン | Agentセッション状態確認 |
 | `DELETE` | `/api/agent/chat?sessionId=...` | セッショントークン | Agentセッション破棄 |
 | `GET` | `/api/nft/:tokenId` | 不要 | NFTメタデータJSON |
 | `GET` | `/api/nft/:tokenId/image` | 不要 | 動的NFT SVG画像 |
 
-### Agent認証フロー（署名有効時）
+### Agent認証フロー
 
 1. `GET /api/agent/nonce?sessionId=...` でnonce取得
 2. 以下形式のメッセージを `personal_sign`
@@ -196,52 +193,6 @@ Timestamp: <unix_ms>
 
 3. `POST /api/agent/chat` に `auth` を付けて送信
 4. レスポンスの `sessionToken` を `X-Session-Token` ヘッダで再送
-
-## Cloud Run Deployment
-
-### 1) 事前設定
-
-```bash
-gcloud config set project <YOUR_PROJECT_ID>
-gcloud auth login
-gcloud services enable run.googleapis.com \
-  cloudbuild.googleapis.com \
-  artifactregistry.googleapis.com
-```
-
-### 2) デプロイ
-
-```bash
-cd apps/web
-
-export NEXT_PUBLIC_RPC_URL="https://sepolia.base.org"
-export NEXT_PUBLIC_CHAIN_ID="84532"
-export NEXT_PUBLIC_FACTORY_ADDRESS="<FACTORY_ADDRESS>"
-export NEXT_PUBLIC_TOKEN_ADDRESS="<TOKEN_ADDRESS>"
-export OPENAI_API_KEY="<YOUR_OPENAI_API_KEY>"
-export OPENAI_MODEL="gpt-5-nano"
-export NEXT_PUBLIC_XMTP_ENV="dev"
-
-bash scripts/deploy-cloudrun.sh
-```
-
-`deploy-cloudrun.sh` は以下を実行します。
-
-- Artifact Registry リポジトリ作成/確認
-- `cloudbuild.yaml` で Docker build
-- Cloud Run へデプロイ
-
-必要に応じて以下を上書きできます。
-
-- `PROJECT_ID`, `REGION`, `SERVICE_NAME`, `REPOSITORY`, `IMAGE_NAME`, `IMAGE_TAG`
-
-### 3) デプロイ後確認
-
-```bash
-bash scripts/verify-cloudrun.sh "https://<your-service>.run.app"
-```
-
-`TEST_TOKEN_ID` を設定すると `/api/nft/:tokenId` の200応答も確認します。
 
 ## Development
 

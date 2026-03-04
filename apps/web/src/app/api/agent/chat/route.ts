@@ -6,7 +6,6 @@ import {
   getAgentProviderConfigError,
   AGENT_PROVIDER,
   streamResponse,
-  continueWithToolOutputs,
   historyToInput,
   type AgentHistoryContent,
   type ResponseInput,
@@ -39,7 +38,6 @@ type SessionRecord = {
   authTokenExpiresAt?: number;
   createdAt?: number;
   lastAccessAt?: number;
-  lastResponseId?: string;
 };
 const gSessions = globalThis as unknown as { __agentSessions?: Map<string, SessionRecord> };
 const sessions = (gSessions.__agentSessions ??= new Map<string, SessionRecord>());
@@ -53,7 +51,6 @@ const MAX_MESSAGE_CHARS = Number(process.env.AGENT_MAX_MESSAGE_CHARS || 2_000);
 const RATE_LIMIT_MAX = Number(process.env.AGENT_RATE_LIMIT_MAX || 20);
 const RATE_LIMIT_WINDOW_MS = Number(process.env.AGENT_RATE_LIMIT_WINDOW_MS || 60_000);
 const SESSION_IDLE_TTL_MS = Number(process.env.AGENT_SESSION_IDLE_TTL_MS || 60 * 60_000);
-const AUTH_DISABLED = process.env.AGENT_AUTH_DISABLED === "true";
 const AUTH_TIMESTAMP_SKEW_MS = Number(process.env.AGENT_AUTH_SKEW_MS || 5 * 60_000);
 const AUTH_TOKEN_TTL_MS = Number(process.env.AGENT_AUTH_TOKEN_TTL_MS || 30 * 60_000);
 const DEFAULT_INPUT_HINT: Record<Locale, string> = {
@@ -412,9 +409,6 @@ function pruneSessions(now = Date.now()) {
 }
 
 function ensureSessionAuthorized(request: NextRequest, session: SessionRecord): NextResponse | null {
-  if (AUTH_DISABLED) {
-    return null;
-  }
   const tokenHeader = request.headers.get("x-session-token") || "";
   if (!session.authToken || !tokenHeader || tokenHeader !== session.authToken) {
     return jsonError("Unauthorized", 401);
@@ -453,15 +447,15 @@ async function handleStreamingPost(params: {
 
       try {
         // Build input from history + new user message
-        const input: ResponseInput[] = historyToInput(session.history);
-        input.push({ type: "message", role: "user", content: fullMessage });
+        const turnInput: ResponseInput[] = historyToInput(session.history);
+        turnInput.push({ type: "message", role: "user", content: fullMessage });
 
         const toolCalls: ToolCall[] = [];
         let fullText = "";
-        let currentResponseId: string | undefined = session.lastResponseId;
 
         // Streaming loop: keep going until we get a final text response
         let pendingFunctionCalls: Array<{
+          item_id: string;
           call_id: string;
           name: string;
           args: Record<string, unknown>;
@@ -483,6 +477,7 @@ async function handleStreamingPost(params: {
                   parsedArgs = JSON.parse(event.arguments) as Record<string, unknown>;
                 } catch { /* empty */ }
                 pendingFunctionCalls.push({
+                  item_id: event.item_id,
                   call_id: event.call_id,
                   name: event.name,
                   args: parsedArgs,
@@ -495,26 +490,19 @@ async function handleStreamingPost(params: {
                 });
                 break;
               }
-
-              case "response.completed":
-                currentResponseId = event.response.id;
-                break;
             }
           }
         };
 
         // First stream
-        const firstStreamGen = streamResponse({
+        const firstStream = streamResponse({
           instructions: systemInstruction,
-          input,
-          previousResponseId: currentResponseId,
+          input: turnInput,
         });
-        await processStream(firstStreamGen);
+        await processStream(firstStream);
 
         // Tool execution loop
         while (pendingFunctionCalls.length > 0) {
-          const toolOutputs: Array<{ call_id: string; output: string }> = [];
-
           for (const fc of pendingFunctionCalls) {
             const effectiveArgs = { ...fc.args };
             if (fc.name === "prepare_transaction") {
@@ -566,10 +554,20 @@ async function handleStreamingPost(params: {
                 result: toolResult,
               });
 
-              toolOutputs.push({
-                call_id: fc.call_id,
-                output: JSON.stringify({ result: toolResult }),
-              });
+              turnInput.push(
+                {
+                  type: "function_call",
+                  id: fc.item_id || `fc_${fc.call_id}`,
+                  call_id: fc.call_id,
+                  name: fc.name,
+                  arguments: JSON.stringify(effectiveArgs),
+                },
+                {
+                  type: "function_call_output",
+                  call_id: fc.call_id,
+                  output: JSON.stringify({ result: toolResult }),
+                },
+              );
             } catch (error) {
               console.error(`[Agent/Stream] Tool error:`, error);
 
@@ -586,25 +584,28 @@ async function handleStreamingPost(params: {
                 result: { error: String(error) },
               });
 
-              toolOutputs.push({
-                call_id: fc.call_id,
-                output: JSON.stringify({ error: String(error) }),
-              });
+              turnInput.push(
+                {
+                  type: "function_call",
+                  id: fc.item_id || `fc_${fc.call_id}`,
+                  call_id: fc.call_id,
+                  name: fc.name,
+                  arguments: JSON.stringify(effectiveArgs),
+                },
+                {
+                  type: "function_call_output",
+                  call_id: fc.call_id,
+                  output: JSON.stringify({ error: String(error) }),
+                },
+              );
             }
           }
 
-          // Continue with tool outputs
-          const nextStream = continueWithToolOutputs({
+          const nextStream = streamResponse({
             instructions: systemInstruction,
-            previousResponseId: currentResponseId!,
-            toolOutputs,
+            input: turnInput,
           });
           await processStream(nextStream);
-        }
-
-        // Save response ID for conversation chaining
-        if (currentResponseId) {
-          session.lastResponseId = currentResponseId;
         }
 
         // Update history
@@ -722,97 +723,95 @@ export async function POST(request: NextRequest) {
 
     const now = Date.now();
     let session = sessions.get(sessionId);
-    if (!AUTH_DISABLED) {
-      const tokenHeader = request.headers.get("x-session-token") || "";
-      const hasMatchingToken = !!(
-        session?.authToken
-        && session.authTokenExpiresAt
-        && session.authTokenExpiresAt > now
-        && tokenHeader === session.authToken
-      );
+    const tokenHeader = request.headers.get("x-session-token") || "";
+    const hasMatchingToken = !!(
+      session?.authToken
+      && session.authTokenExpiresAt
+      && session.authTokenExpiresAt > now
+      && tokenHeader === session.authToken
+    );
 
-      // Token is the fast path; if token is missing (e.g. previous 500 before token reached client),
-      // allow explicit signature auth to recover the session.
-      if (!hasMatchingToken) {
-        if (!auth || !auth.address || !auth.signature || !auth.nonce || auth.timestamp === undefined) {
-          return jsonError("Unauthorized", 401);
-        }
-
-        if (typeof auth.address !== "string" || !isAddress(auth.address)) {
-          return jsonError("Invalid auth address", 400);
-        }
-
-        if (typeof auth.signature !== "string" || typeof auth.nonce !== "string") {
-          return jsonError("Invalid auth payload", 400);
-        }
-
-        if (userAddress && auth.address.toLowerCase() !== userAddress.toLowerCase()) {
-          return jsonError("Auth address mismatch", 401);
-        }
-
-        if (session?.userAddress && session.userAddress.toLowerCase() !== auth.address.toLowerCase()) {
-          return jsonError("Session address mismatch", 403);
-        }
-
-        const timestamp = Number(auth.timestamp);
-        if (!Number.isFinite(timestamp)) {
-          return jsonError("Invalid auth timestamp", 400);
-        }
-
-        if (Math.abs(now - timestamp) > AUTH_TIMESTAMP_SKEW_MS) {
-          return jsonError("Auth expired", 401);
-        }
-
-        if (!consumeNonce(sessionId, auth.nonce)) {
-          return jsonError("Invalid nonce", 401);
-        }
-
-        const authMessage = buildAgentAuthMessage({
-          sessionId,
-          nonce: auth.nonce,
-          timestamp,
-        });
-
-        let validSignature = false;
-        try {
-          validSignature = await verifyMessage({
-            address: auth.address as Address,
-            message: authMessage,
-            signature: auth.signature as `0x${string}`,
-          });
-        } catch (error) {
-          console.warn("[Agent] Invalid signature payload:", error);
-          return jsonError("Invalid signature", 401);
-        }
-
-        if (!validSignature) {
-          return jsonError("Invalid signature", 401);
-        }
-
-        if (!session) {
-          session = {
-            history: [],
-            state: "idle",
-            createdAt: now,
-            lastAccessAt: now,
-          };
-          sessions.set(sessionId, session);
-        }
-        session.userAddress = auth.address as Address;
-        session.authToken = randomUUID();
-      }
-
-      if (!session) {
+    // Token is the fast path; if token is missing (e.g. previous 500 before token reached client),
+    // allow explicit signature auth to recover the session.
+    if (!hasMatchingToken) {
+      if (!auth || !auth.address || !auth.signature || !auth.nonce || auth.timestamp === undefined) {
         return jsonError("Unauthorized", 401);
       }
 
-      if (session.userAddress && userAddress && session.userAddress.toLowerCase() !== userAddress.toLowerCase()) {
+      if (typeof auth.address !== "string" || !isAddress(auth.address)) {
+        return jsonError("Invalid auth address", 400);
+      }
+
+      if (typeof auth.signature !== "string" || typeof auth.nonce !== "string") {
+        return jsonError("Invalid auth payload", 400);
+      }
+
+      if (userAddress && auth.address.toLowerCase() !== userAddress.toLowerCase()) {
+        return jsonError("Auth address mismatch", 401);
+      }
+
+      if (session?.userAddress && session.userAddress.toLowerCase() !== auth.address.toLowerCase()) {
         return jsonError("Session address mismatch", 403);
       }
 
-      if (session.authToken) {
-        session.authTokenExpiresAt = now + AUTH_TOKEN_TTL_MS;
+      const timestamp = Number(auth.timestamp);
+      if (!Number.isFinite(timestamp)) {
+        return jsonError("Invalid auth timestamp", 400);
       }
+
+      if (Math.abs(now - timestamp) > AUTH_TIMESTAMP_SKEW_MS) {
+        return jsonError("Auth expired", 401);
+      }
+
+      if (!consumeNonce(sessionId, auth.nonce)) {
+        return jsonError("Invalid nonce", 401);
+      }
+
+      const authMessage = buildAgentAuthMessage({
+        sessionId,
+        nonce: auth.nonce,
+        timestamp,
+      });
+
+      let validSignature = false;
+      try {
+        validSignature = await verifyMessage({
+          address: auth.address as Address,
+          message: authMessage,
+          signature: auth.signature as `0x${string}`,
+        });
+      } catch (error) {
+        console.warn("[Agent] Invalid signature payload:", error);
+        return jsonError("Invalid signature", 401);
+      }
+
+      if (!validSignature) {
+        return jsonError("Invalid signature", 401);
+      }
+
+      if (!session) {
+        session = {
+          history: [],
+          state: "idle",
+          createdAt: now,
+          lastAccessAt: now,
+        };
+        sessions.set(sessionId, session);
+      }
+      session.userAddress = auth.address as Address;
+      session.authToken = randomUUID();
+    }
+
+    if (!session) {
+      return jsonError("Unauthorized", 401);
+    }
+
+    if (session.userAddress && userAddress && session.userAddress.toLowerCase() !== userAddress.toLowerCase()) {
+      return jsonError("Session address mismatch", 403);
+    }
+
+    if (session.authToken) {
+      session.authTokenExpiresAt = now + AUTH_TOKEN_TTL_MS;
     }
 
     if (!session) {

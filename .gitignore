@@ -11,6 +11,7 @@ lerna-debug.log*
 
 # Node.js
 node_modules/
+.pnpm-store/
 .pnp.*
 .turbo/
 
