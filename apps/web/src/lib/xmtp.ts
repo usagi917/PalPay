@@ -252,17 +252,21 @@ export async function getEscrowConversation(
     identifierKind: "Ethereum",
   };
 
+  // Sync conversations from network so we can find peer-created DMs
+  try {
+    await client.conversations.sync();
+  } catch (syncErr) {
+    console.warn("XMTP conversations.sync() failed, proceeding with local data:", syncErr);
+  }
+
   // Get peer's inbox ID first
   const peerInboxId = await client.findInboxIdByIdentifier(peerIdentifier);
 
   if (peerInboxId) {
-    // Check existing DMs for this peer
-    const dms = await client.conversations.listDms();
-    for (const dm of dms) {
-      const dmPeerInboxId = await dm.peerInboxId();
-      if (dmPeerInboxId === peerInboxId) {
-        return dm;
-      }
+    // Use SDK's dedicated lookup (handles DM stitching)
+    const existing = await client.conversations.getDmByInboxId(peerInboxId);
+    if (existing) {
+      return existing;
     }
   }
 

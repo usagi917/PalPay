@@ -246,7 +246,11 @@ export function useAgentSession(): UseAgentSessionReturn {
         // --- Streaming path ---
         const headerToken = response.headers.get("x-session-token");
         if (headerToken) {
-          setSessionToken(headerToken);
+          if (isLatestRequest()) {
+            setSessionToken(headerToken);
+          } else {
+            console.debug("[Agent/Session] Dropping session token from stale request", { requestId });
+          }
         }
         setIsStreaming(true);
 
@@ -335,7 +339,11 @@ export function useAgentSession(): UseAgentSessionReturn {
         // --- Non-streaming (legacy JSON) path ---
         const headerToken = response.headers.get("x-session-token");
         if (headerToken) {
-          setSessionToken(headerToken);
+          if (isLatestRequest()) {
+            setSessionToken(headerToken);
+          } else {
+            console.debug("[Agent/Session] Dropping session token from stale request", { requestId });
+          }
         }
         const data: ChatResponse = await response.json();
         if (!isLatestRequest()) return;
