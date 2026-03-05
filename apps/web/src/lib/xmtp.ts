@@ -1,7 +1,9 @@
 import {
   Client,
   Conversation,
+  Group,
   DecodedMessage,
+  GroupPermissionsOptions,
   Utils,
   type Signer,
   type Identifier,
@@ -236,42 +238,75 @@ export async function revokeAllInstallationsByAddress(
   };
 }
 
+interface EscrowGroupAppData {
+  escrowAddress: string;
+  version: 1;
+}
+
+function encodeEscrowAppData(escrowAddress: string): string {
+  return JSON.stringify({ escrowAddress: escrowAddress.toLowerCase(), version: 1 });
+}
+
+function decodeEscrowAppData(appData: string | undefined): EscrowGroupAppData | null {
+  if (!appData) return null;
+  try {
+    const parsed = JSON.parse(appData);
+    if (parsed?.escrowAddress && parsed.version === 1) return parsed;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function findGroupByEscrow(client: Client, normalizedEscrow: string): Promise<Group | null> {
+  const groups = await client.conversations.listGroups();
+  const matches = groups.filter((g) => {
+    const data = decodeEscrowAppData(g.appData);
+    return data?.escrowAddress === normalizedEscrow;
+  });
+  if (matches.length === 0) return null;
+  // 重複時は最小IDを選択（両者が同時作成した場合の決定的dedup）
+  matches.sort((a, b) => a.id.localeCompare(b.id));
+  return matches[0];
+}
+
 /**
- * Get or create a DM conversation with peer
- * Uses Identifier-based API for V3 compatibility
+ * Get or create a Group conversation for a specific escrow
+ * Uses 2-person Groups (instead of DMs) so each escrow gets its own thread
  */
 export async function getEscrowConversation(
   client: Client,
   peerAddress: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _escrowAddress: string // Reserved for future context/filtering
+  escrowAddress: string,
 ): Promise<Conversation> {
-  // Create peer identifier
-  const peerIdentifier: Identifier = {
-    identifier: peerAddress,
-    identifierKind: "Ethereum",
-  };
+  const normalizedEscrow = escrowAddress.toLowerCase();
+  const peerIdentifier: Identifier = { identifier: peerAddress, identifierKind: "Ethereum" };
 
-  // Sync conversations from network so we can find peer-created DMs
+  // 1. ネットワークからsync
   try {
     await client.conversations.sync();
-  } catch (syncErr) {
-    console.warn("XMTP conversations.sync() failed, proceeding with local data:", syncErr);
+  } catch (e) {
+    console.warn("XMTP conversations.sync() failed, proceeding with local data:", e);
   }
 
-  // Get peer's inbox ID first
-  const peerInboxId = await client.findInboxIdByIdentifier(peerIdentifier);
+  // 2. 既存グループ検索
+  const existing = await findGroupByEscrow(client, normalizedEscrow);
+  if (existing) return existing;
 
-  if (peerInboxId) {
-    // Use SDK's dedicated lookup (handles DM stitching)
-    const existing = await client.conversations.getDmByInboxId(peerInboxId);
-    if (existing) {
-      return existing;
-    }
-  }
+  // 3. 新規グループ作成（2人、AdminOnly権限）
+  const group = await client.conversations.newGroupWithIdentifiers(
+    [peerIdentifier],
+    { permissions: GroupPermissionsOptions.AdminOnly },
+  );
 
-  // Create new DM conversation using identifier
-  return await client.conversations.newDmWithIdentifier(peerIdentifier);
+  // 4. appDataにescrowAddress保存
+  await (group as Group).updateAppData(encodeEscrowAppData(normalizedEscrow));
+
+  // 5. race condition対策: 再syncして重複があれば最小IDの方を採用
+  try {
+    await client.conversations.sync();
+  } catch {}
+  return (await findGroupByEscrow(client, normalizedEscrow)) ?? group;
 }
 
 /**
