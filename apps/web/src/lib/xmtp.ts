@@ -9,6 +9,7 @@ import {
   type Identifier,
   type SafeInboxState,
 } from "@xmtp/browser-sdk";
+import { isAddress } from "viem";
 
 // XMTP environment
 const XMTP_ENV = process.env.NEXT_PUBLIC_XMTP_ENV === "production" ? "production" : "dev";
@@ -244,6 +245,9 @@ interface EscrowGroupAppData {
 }
 
 function encodeEscrowAppData(escrowAddress: string): string {
+  if (!isAddress(escrowAddress)) {
+    throw new Error(`Invalid escrow address: ${escrowAddress}`);
+  }
   return JSON.stringify({ escrowAddress: escrowAddress.toLowerCase(), version: 1 });
 }
 
@@ -251,14 +255,24 @@ function decodeEscrowAppData(appData: string | undefined): EscrowGroupAppData | 
   if (!appData) return null;
   try {
     const parsed = JSON.parse(appData);
-    if (parsed?.escrowAddress && parsed.version === 1) return parsed;
+    if (
+      typeof parsed?.escrowAddress === "string" &&
+      parsed.version === 1 &&
+      isAddress(parsed.escrowAddress)
+    ) {
+      return { escrowAddress: parsed.escrowAddress.toLowerCase(), version: 1 };
+    }
     return null;
   } catch {
     return null;
   }
 }
 
-async function findGroupByEscrow(client: Client, normalizedEscrow: string): Promise<Group | null> {
+async function findGroupByEscrow(
+  client: Client,
+  normalizedEscrow: string,
+  peerAddress: string,
+): Promise<Group | null> {
   const groups = await client.conversations.listGroups();
   const matches = groups.filter((g) => {
     const data = decodeEscrowAppData(g.appData);
@@ -267,7 +281,21 @@ async function findGroupByEscrow(client: Client, normalizedEscrow: string): Prom
   if (matches.length === 0) return null;
   // 重複時は最小IDを選択（両者が同時作成した場合の決定的dedup）
   matches.sort((a, b) => a.id.localeCompare(b.id));
-  return matches[0];
+
+  // peerAddressがメンバーに含まれるグループのみ返す
+  const normalizedPeer = peerAddress.toLowerCase();
+  for (const group of matches) {
+    const members = await group.members();
+    const hasPeer = members.some((m) =>
+      m.accountIdentifiers.some(
+        (id) =>
+          id.identifierKind === "Ethereum" &&
+          id.identifier.toLowerCase() === normalizedPeer,
+      ),
+    );
+    if (hasPeer) return group;
+  }
+  return null;
 }
 
 /**
@@ -289,8 +317,8 @@ export async function getEscrowConversation(
     console.warn("XMTP conversations.sync() failed, proceeding with local data:", e);
   }
 
-  // 2. 既存グループ検索
-  const existing = await findGroupByEscrow(client, normalizedEscrow);
+  // 2. 既存グループ検索（peerAddressのメンバーシップも検証）
+  const existing = await findGroupByEscrow(client, normalizedEscrow, peerAddress);
   if (existing) return existing;
 
   // 3. 新規グループ作成（2人、AdminOnly権限）
@@ -300,13 +328,30 @@ export async function getEscrowConversation(
   );
 
   // 4. appDataにescrowAddress保存
-  await (group as Group).updateAppData(encodeEscrowAppData(normalizedEscrow));
+  try {
+    await group.updateAppData(encodeEscrowAppData(normalizedEscrow));
+  } catch (e) {
+    console.error(
+      "Failed to set appData on newly created XMTP group. This group is now orphaned.",
+      { groupId: group.id, escrowAddress: normalizedEscrow, error: e },
+    );
+    throw e;
+  }
 
   // 5. race condition対策: 再syncして重複があれば最小IDの方を採用
   try {
     await client.conversations.sync();
-  } catch {}
-  return (await findGroupByEscrow(client, normalizedEscrow)) ?? group;
+  } catch (e) {
+    console.warn("XMTP post-creation sync failed, skipping dedup:", e);
+    return group;
+  }
+
+  try {
+    return (await findGroupByEscrow(client, normalizedEscrow, peerAddress)) ?? group;
+  } catch (e) {
+    console.warn("Post-creation dedup lookup failed, using created group:", e);
+    return group;
+  }
 }
 
 /**
