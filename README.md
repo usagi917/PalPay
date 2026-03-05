@@ -5,72 +5,102 @@
 [![Solidity 0.8.24](https://img.shields.io/badge/Solidity-0.8.24-363636?logo=solidity)](foundry.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> 和牛・日本酒・工芸品などの高額B2B取引を、マイルストーン連動決済で進めるエスクローDAppです。  
-> Next.js 15 で運用し、AIアシスタントは OpenAI GPT-5 Nano を利用します。
+> 高額B2B取引向けに、工程連動の段階支払い・動的NFT・当事者間チャットを統合したエスクローDAppです。
 
-## 何を解決するか
+## 概要
 
-長期の生産工程を伴う取引では、前払いリスクとキャッシュフローの課題が大きくなります。  
-このプロジェクトは「工程進捗に応じた段階支払い」「証跡付きの状態遷移」「当事者間チャット」を1つのDAppに統合します。
+`Proof of Trust` は、和牛・日本酒・工芸品のような長期生産型取引で発生する「前払いリスク」と「進捗可視化」の課題を解決するためのプロジェクトです。
+
+- Webアプリ: Next.js 15 + React 19 + viem
+- コントラクト: `ListingFactoryV6` / `MilestoneEscrowV6`（Solidity 0.8.24）
+- 決済: ERC-20
+- 権利証: ERC-721（動的メタデータ / SVG画像）
+- チャット: XMTP（E2E暗号化）
+
+## 主要取引シーケンス
+
+```mermaid
+sequenceDiagram
+    participant S as 出品者
+    participant B as 購入者
+    participant W as Web App
+    participant F as ListingFactoryV6
+    participant E as MilestoneEscrowV6
+    participant T as ERC-20
+
+    S->>W: 1. 出品を作成
+    W->>F: createListing(...)
+    Note over F,E: NFT発行（Escrowが保有）
+    F-->>W: escrowAddress / tokenId
+
+    B->>W: 2. 購入をロック
+    W->>T: approve(escrow, totalAmount)
+    W->>E: lock()
+    T-->>E: ERC-20（全額）
+    E-->>B: NFT移転
+    Note right of E: open → locked
+
+    B->>W: 3. 取引開始を承認
+    W->>E: approve()
+    Note right of E: locked → active
+
+    loop 中間マイルストーン（最終工程を除く）
+        S->>W: 4. 工程完了を報告
+        W->>E: submit(index, evidenceHash)
+        E-->>S: 分割払い（ERC-20）
+    end
+
+    B->>W: 5. 最終受領を確認
+    W->>E: confirmDelivery(evidenceHash)
+    E-->>S: 残額支払い（ERC-20）
+    Note right of E: active → completed
+```
+
+補足:
+- `cancel()` は `locked` 中のみ購入者が実行でき、全額返金されます。
 
 ## 主な機能
 
-- 出品ごとに `MilestoneEscrowV6` をデプロイし、ERC-721 NFT を発行
-- 状態遷移 `open -> locked -> active -> completed / cancelled` を実装
-- `lock()` でERC-20預け入れ、`submit()` で段階支払い、`confirmDelivery()` で最終支払い
-- Dynamic NFT API
+- 出品ごとに `MilestoneEscrowV6` を新規デプロイし、対応NFTを発行
+- ステータス遷移
+  - `open -> locked -> active -> completed`
+  - `locked -> cancelled`
+- `lock()` で購入者がERC-20を預け入れ、`approve()` 後に工程支払いを開始
+- 出品者が中間マイルストーンを `submit()`、最終工程は購入者が `confirmDelivery()`
+- 出品詳細ページに取引タイムライン（オンチェーンイベント）を表示
+- NFT API
   - `GET /api/nft/:tokenId`（メタデータ）
-  - `GET /api/nft/:tokenId/image`（動的SVG画像）
-- Agentページ（`/agent`）で出品支援・市場分析・リスク評価・次アクション提案
-- XMTPベースのE2E暗号化チャット
-- マイページ（`/my`）で出品者/購入者別の取引状況と集計を表示
-
-## ユーザーアーキテクチャ図
-
-```mermaid
-flowchart LR
-    U["ユーザー<br/>(Buyer / Seller)"]
-    M["MetaMask"]
-    W["Web App<br/>Next.js 15"]
-    A["Agent API<br/>/api/agent/*"]
-    N["NFT API<br/>/api/nft/*"]
-    V["OpenAI API<br/>GPT-5 Nano"]
-    F["ListingFactoryV6"]
-    E["MilestoneEscrowV6<br/>(per listing)"]
-    T["ERC-20 Token"]
-    X["XMTP Network"]
-
-    U -->|"取引操作 / 閲覧"| W
-    U -->|"ウォレット署名"| M
-    M -->|"tx署名"| W
-    W --> A
-    A -->|"Function Calling"| V
-    W --> N
-    W -->|"contract read/write"| F
-    F -->|"deploy"| E
-    E -->|"milestone payout"| T
-    U -->|"E2Eチャット"| X
-    W -->|"XMTP連携"| X
-```
+  - `GET /api/nft/:tokenId/image`（動的SVG）
+- XMTPチャット（出品者とNFT所有者のみ表示）
 
 ## リポジトリ構成
 
 ```text
 apps/web/    Next.js 15 フロントエンド + API routes
-contracts/   Solidity コントラクト (ListingFactoryV6, MilestoneEscrowV6, MockERC20)
-docs/        構成図、デモ台本、動画成果物
+contracts/   Solidity コントラクト（Factory/Escrow/MockERC20）
+docs/        構成図・デモ台本・動画成果物
 lib/         Foundryライブラリ（OpenZeppelinサブモジュール）
 ```
 
 ## 前提条件
 
-- Node.js 20 以上
+- Node.js 20+
 - `pnpm`
 - MetaMask
-- 対象チェーンのRPC URLとデプロイ済みコントラクトアドレス
-- （任意）Foundry (`forge`)：コントラクトをビルドする場合
+- 対象チェーンのRPC URL
+- デプロイ済みコントラクトアドレス
+  - `ListingFactoryV6`
+  - 決済用ERC-20
 
-`forge build` を使う場合は OpenZeppelin サブモジュールを初期化してください。
+対応チェーン（`apps/web/src/lib/config.ts`）:
+
+- Sepolia (`11155111`)
+- Base Sepolia (`84532`)
+- Base (`8453`)
+- Polygon Amoy (`80002`)
+- Avalanche Fuji (`43113`, デフォルト)
+
+Foundryでコントラクトをビルドする場合は、先にサブモジュールを初期化してください。
 
 ```bash
 git submodule update --init --recursive
@@ -79,120 +109,84 @@ git submodule update --init --recursive
 ## Installation
 
 ```bash
-cd apps/web
-pnpm install
+pnpm --dir apps/web install
 ```
 
-## Quick Start (Local)
+## Quick Start
 
 ```bash
-cd apps/web
-cp .env.example .env.local
-pnpm dev
+cp apps/web/.env.example apps/web/.env.local
+pnpm --dir apps/web dev
 ```
 
-最低限、`apps/web/.env.local` に以下を設定してください。
+ブラウザで `http://localhost:3000` を開きます。
 
-- `NEXT_PUBLIC_RPC_URL`
-- `NEXT_PUBLIC_CHAIN_ID`
-- `NEXT_PUBLIC_FACTORY_ADDRESS`
-- `NEXT_PUBLIC_TOKEN_ADDRESS`
-
-`/agent` も使う場合は、追加で以下が必要です。
-
-- `OPENAI_API_KEY`
-- `OPENAI_MODEL`（例: `gpt-5-nano`）
-
-起動後、`http://localhost:3000` を開いて確認します。
-
-## Configuration
+## 設定（`.env.local`）
 
 設定ファイル: `apps/web/.env.local`
 
-### DApp / Agent 実行設定
+### 必須（DApp本体）
 
-| 変数名 | 必須 | 説明 |
-| --- | --- | --- |
-| `NEXT_PUBLIC_RPC_URL` | Yes | 接続先RPC URL |
-| `NEXT_PUBLIC_CHAIN_ID` | Yes | チェーンID |
-| `NEXT_PUBLIC_FACTORY_ADDRESS` | Yes | `ListingFactoryV6` アドレス |
-| `NEXT_PUBLIC_TOKEN_ADDRESS` | Yes | 決済用ERC-20アドレス |
-| `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE` | No | TxリンクのベースURL |
-| `NEXT_PUBLIC_XMTP_ENV` | No | `dev` または `production`（デフォルト: `dev`） |
-| `CHAIN_ID` | No | APIルート側で使うチェーンID上書き |
-| `OPENAI_API_KEY` | Agent利用時必須 | OpenAI APIキー |
-| `OPENAI_MODEL` | Agent利用時推奨 | 利用するOpenAIモデル（デフォルト: `gpt-5-nano`） |
-| `OPENAI_API_BASE_URL` | No | OpenAI互換APIのベースURL上書き（デフォルト: `https://api.openai.com/v1`） |
+| 変数 | 説明 |
+| --- | --- |
+| `NEXT_PUBLIC_RPC_URL` | 接続先RPC URL |
+| `NEXT_PUBLIC_CHAIN_ID` | チェーンID |
+| `NEXT_PUBLIC_FACTORY_ADDRESS` | `ListingFactoryV6` アドレス |
+| `NEXT_PUBLIC_TOKEN_ADDRESS` | 決済用ERC-20アドレス |
 
-### Vercel設定（Agent有効時）
+### 任意（表示・運用）
 
-- `Root Directory`: `apps/web`
-- `Environment Variables`（Production / Preview / Developmentに設定）
-  - `OPENAI_API_KEY`
-  - `OPENAI_MODEL`（推奨: `gpt-5-nano`）
-  - `NEXT_PUBLIC_RPC_URL`
-  - `NEXT_PUBLIC_CHAIN_ID`
-  - `NEXT_PUBLIC_FACTORY_ADDRESS`
-  - `NEXT_PUBLIC_TOKEN_ADDRESS`
-  - 必要なら `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE` / `NEXT_PUBLIC_XMTP_ENV`
+| 変数 | 説明 |
+| --- | --- |
+| `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE` | TxリンクのベースURL |
+| `CHAIN_ID` | APIルート側のチェーンID上書き |
+| `NEXT_PUBLIC_XMTP_ENV` | `dev` または `production` |
 
-### Agentセキュリティ/制限（任意）
+## スマートコントラクト仕様（V6）
 
-| 変数名 | デフォルト | 用途 |
-| --- | --- | --- |
-| `AGENT_NONCE_TTL_MS` | `300000` | nonce有効期限 |
-| `AGENT_AUTH_SKEW_MS` | `300000` | 署名timestamp許容誤差 |
-| `AGENT_AUTH_TOKEN_TTL_MS` | `1800000` | セッショントークン有効期限 |
-| `AGENT_MAX_BODY_BYTES` | `16000` | `/api/agent/chat` ボディ上限 |
-| `AGENT_MAX_MESSAGE_CHARS` | `2000` | メッセージ文字数上限 |
-| `AGENT_RATE_LIMIT_MAX` | `20` | レート制限回数 |
-| `AGENT_RATE_LIMIT_WINDOW_MS` | `60000` | レート制限ウィンドウ |
+### Factory
 
-## スマートコントラクト
+- `ListingFactoryV6.createListing(...)` でEscrowをデプロイ
+- NFTは初期状態でEscrowが保有
+- セカンダリ移転はEscrow経由フローのみに制限
 
-- `ListingFactoryV6` が出品ごとに `MilestoneEscrowV6` を生成
-- NFTはFactoryからEscrowにmintされ、`lock()` 時に購入者へ移転
+### Escrow
 
-状態遷移:
+- `lock()`
+  - 購入者がERC-20を預け入れ
+  - NFTが購入者へ移転
+  - `open -> locked`
+- `approve()`
+  - 購入者が取引開始
+  - `locked -> active`
+- `submit(index, evidenceHash)`
+  - 出品者が中間工程を完了報告
+- `confirmDelivery(evidenceHash)`
+  - 購入者が最終受領確認（残額支払い）
+  - `active -> completed`
+- `cancel()`
+  - `locked` 状態のみ購入者が実行可
+  - NFTをEscrowへ戻し、全額返金
+  - `locked -> cancelled`
 
-```text
-OPEN --lock()--> LOCKED --approve()--> ACTIVE --submit(...)--> ... --confirmDelivery()--> COMPLETED
-LOCKED --cancel()--> CANCELLED (全額返金)
-```
+### マイルストーン配分（BPS, 合計10000）
 
-カテゴリ別のマイルストーン分配（BPS, 合計10000）:
-
-| categoryType | カテゴリ | ステップ数 | BPS配列 |
+| categoryType | カテゴリ | 工程数 | BPS配列 |
 | --- | --- | --- | --- |
-| `0` | wagyu | 11 | `300,500,500,500,500,500,500,500,700,1500,4000` |
+| `0` | wagyu | 10 | `200,300,400,500,600,650,700,750,900,5000` |
 | `1` | sake | 5 | `1000,1500,1500,2000,4000` |
 | `2` | craft | 4 | `1000,2000,2500,4500` |
 
-## API Endpoints
+## API
 
-| Method | Path | 認証 | 用途 |
-| --- | --- | --- | --- |
-| `GET` | `/api/agent/nonce?sessionId=...` | 不要 | 署名用nonce発行 |
-| `POST` | `/api/agent/chat` | 初回は署名必須 | Agentチャットとツール実行 |
-| `GET` | `/api/agent/chat?sessionId=...` | セッショントークン | Agentセッション状態確認 |
-| `DELETE` | `/api/agent/chat?sessionId=...` | セッショントークン | Agentセッション破棄 |
-| `GET` | `/api/nft/:tokenId` | 不要 | NFTメタデータJSON |
-| `GET` | `/api/nft/:tokenId/image` | 不要 | 動的NFT SVG画像 |
+### NFT API
 
-### Agent認証フロー
+| Method | Path | 用途 |
+| --- | --- | --- |
+| `GET` | `/api/nft/:tokenId` | NFTメタデータJSON |
+| `GET` | `/api/nft/:tokenId/image` | 動的SVG画像 |
 
-1. `GET /api/agent/nonce?sessionId=...` でnonce取得
-2. 以下形式のメッセージを `personal_sign`
-
-```text
-Proof of Trust Agent Authentication
-Session: <sessionId>
-Nonce: <nonce>
-Timestamp: <unix_ms>
-```
-
-3. `POST /api/agent/chat` に `auth` を付けて送信
-4. レスポンスの `sessionToken` を `X-Session-Token` ヘッダで再送
+`factoryAddress` クエリで対象Factoryを明示できます。
 
 ## Development
 
@@ -208,12 +202,6 @@ pnpm --dir apps/web lint
 
 ```bash
 forge build
-```
-
-デモ動画素材生成（任意）:
-
-```bash
-python3 apps/web/scripts/build_demo_video.py
 ```
 
 ## 関連ドキュメント

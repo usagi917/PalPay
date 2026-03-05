@@ -5,59 +5,79 @@
 [![Solidity 0.8.24](https://img.shields.io/badge/Solidity-0.8.24-363636?logo=solidity)](foundry.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> A milestone-based escrow DApp for high-value B2B transactions (wagyu, sake, and crafts).  
-> It runs on Next.js 15, with an AI assistant powered by OpenAI GPT-5 Nano.
+> A milestone-based escrow DApp for high-value B2B trade, combining staged payouts, dynamic NFTs, and party-to-party encrypted chat.
 
-## Problem It Solves
+## Overview
 
-Long production cycles create high prepayment risk and severe cash-flow gaps.  
-This project combines milestone-linked payouts, evidence-backed state transitions, and party-to-party chat in one DApp.
+`Proof of Trust` is designed for long production-cycle transactions such as wagyu, sake, and crafts, where prepayment risk and progress visibility are major concerns.
+
+- Web app: Next.js 15 + React 19 + viem
+- Contracts: `ListingFactoryV6` / `MilestoneEscrowV6` (Solidity 0.8.24)
+- Settlement: ERC-20
+- Ownership proof: ERC-721 (dynamic metadata / SVG)
+- Chat: XMTP (E2E encrypted)
+
+## Main Transaction Sequence (Mermaid)
+
+```mermaid
+sequenceDiagram
+    participant S as Seller
+    participant B as Buyer
+    participant W as Web App
+    participant F as ListingFactoryV6
+    participant E as MilestoneEscrowV6
+    participant T as ERC-20
+
+    S->>W: 1. Create listing
+    W->>F: createListing(...)
+    Note over F,E: Mint NFT (held by Escrow)
+    F-->>W: escrowAddress / tokenId
+
+    B->>W: 2. Lock purchase
+    W->>T: approve(escrow, totalAmount)
+    W->>E: lock()
+    T-->>E: ERC-20 (full amount)
+    E-->>B: Transfer NFT
+    Note right of E: open → locked
+
+    B->>W: 3. Approve transaction start
+    W->>E: approve()
+    Note right of E: locked → active
+
+    loop Intermediate milestones (except final)
+        S->>W: 4. Report milestone completion
+        W->>E: submit(index, evidenceHash)
+        E-->>S: Partial payout (ERC-20)
+    end
+
+    B->>W: 5. Confirm final delivery
+    W->>E: confirmDelivery(evidenceHash)
+    E-->>S: Remaining payout (ERC-20)
+    Note right of E: active → completed
+```
+
+Notes:
+- `cancel()` is buyer-only in `locked`, and refunds the full amount.
 
 ## Key Features
 
-- Deploys one `MilestoneEscrowV6` contract per listing and mints an ERC-721 NFT
-- Implements state flow: `open -> locked -> active -> completed / cancelled`
-- Handles ERC-20 deposit on `lock()`, stepwise payout on `submit()`, and final payout on `confirmDelivery()`
-- Dynamic NFT APIs
+- Deploys a dedicated `MilestoneEscrowV6` per listing and mints a linked NFT
+- State transitions
+  - `open -> locked -> active -> completed`
+  - `locked -> cancelled`
+- Buyer deposits ERC-20 via `lock()`, then starts milestone flow with `approve()`
+- Producer reports intermediate milestones via `submit()`; buyer finalizes with `confirmDelivery()`
+- Listing detail page renders on-chain event timeline
+- NFT APIs
   - `GET /api/nft/:tokenId` (metadata)
   - `GET /api/nft/:tokenId/image` (dynamic SVG)
-- Agent page (`/agent`) for listing support, market analysis, risk assessment, and next-action suggestions
-- XMTP-based end-to-end encrypted chat
-- My page (`/my`) with producer/buyer summaries and stats
-
-## User Architecture Diagram
-
-```mermaid
-flowchart LR
-    U["User<br/>(Buyer / Seller)"]
-    M["MetaMask"]
-    W["Web App<br/>Next.js 15"]
-    A["Agent API<br/>/api/agent/*"]
-    N["NFT API<br/>/api/nft/*"]
-    V["OpenAI API<br/>GPT-5 Nano"]
-    F["ListingFactoryV6"]
-    E["MilestoneEscrowV6<br/>(per listing)"]
-    T["ERC-20 Token"]
-    X["XMTP Network"]
-
-    U -->|"trade actions / browsing"| W
-    U -->|"wallet signature"| M
-    M -->|"tx signature"| W
-    W --> A
-    A -->|"function calling"| V
-    W --> N
-    W -->|"contract read/write"| F
-    F -->|"deploy"| E
-    E -->|"milestone payout"| T
-    U -->|"E2E chat"| X
-    W -->|"XMTP integration"| X
-```
+- XMTP chat (shown only to producer and current NFT holder)
 
 ## Repository Structure
 
 ```text
 apps/web/    Next.js 15 frontend + API routes
-contracts/   Solidity contracts (ListingFactoryV6, MilestoneEscrowV6, MockERC20)
+contracts/   Solidity contracts (Factory/Escrow/MockERC20)
 docs/        Architecture, demo script, and demo assets
 lib/         Foundry libraries (OpenZeppelin submodule)
 ```
@@ -67,10 +87,20 @@ lib/         Foundry libraries (OpenZeppelin submodule)
 - Node.js 20+
 - `pnpm`
 - MetaMask
-- RPC URL + deployed contract addresses for your target chain
-- (Optional) Foundry (`forge`) if you build contracts locally
+- RPC URL for your target chain
+- Deployed contract addresses
+  - `ListingFactoryV6`
+  - settlement ERC-20 token
 
-If you run `forge build`, initialize the OpenZeppelin submodule first:
+Supported chains (`apps/web/src/lib/config.ts`):
+
+- Sepolia (`11155111`)
+- Base Sepolia (`84532`)
+- Base (`8453`)
+- Polygon Amoy (`80002`)
+- Avalanche Fuji (`43113`, default)
+
+If you build contracts with Foundry, initialize submodules first.
 
 ```bash
 git submodule update --init --recursive
@@ -79,120 +109,84 @@ git submodule update --init --recursive
 ## Installation
 
 ```bash
-cd apps/web
-pnpm install
+pnpm --dir apps/web install
 ```
 
-## Quick Start (Local)
+## Quick Start
 
 ```bash
-cd apps/web
-cp .env.example .env.local
-pnpm dev
+cp apps/web/.env.example apps/web/.env.local
+pnpm --dir apps/web dev
 ```
 
-At minimum, set these values in `apps/web/.env.local`:
+Open `http://localhost:3000`.
 
-- `NEXT_PUBLIC_RPC_URL`
-- `NEXT_PUBLIC_CHAIN_ID`
-- `NEXT_PUBLIC_FACTORY_ADDRESS`
-- `NEXT_PUBLIC_TOKEN_ADDRESS`
-
-If you also use `/agent`, add:
-
-- `OPENAI_API_KEY`
-- `OPENAI_MODEL` (example: `gpt-5-nano`)
-
-Then open `http://localhost:3000`.
-
-## Configuration
+## Configuration (`.env.local`)
 
 Config file: `apps/web/.env.local`
 
-### DApp / Agent runtime
+### Required (Core DApp)
 
-| Variable | Required | Description |
-| --- | --- | --- |
-| `NEXT_PUBLIC_RPC_URL` | Yes | RPC URL for the target chain |
-| `NEXT_PUBLIC_CHAIN_ID` | Yes | Chain ID |
-| `NEXT_PUBLIC_FACTORY_ADDRESS` | Yes | `ListingFactoryV6` address |
-| `NEXT_PUBLIC_TOKEN_ADDRESS` | Yes | Settlement ERC-20 token address |
-| `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE` | No | Base URL for transaction links |
-| `NEXT_PUBLIC_XMTP_ENV` | No | `dev` or `production` (default: `dev`) |
-| `CHAIN_ID` | No | API route chain ID override |
-| `OPENAI_API_KEY` | Required for Agent | OpenAI API key |
-| `OPENAI_MODEL` | Recommended for Agent | OpenAI model name (default: `gpt-5-nano`) |
-| `OPENAI_API_BASE_URL` | No | Override base URL for OpenAI-compatible APIs (default: `https://api.openai.com/v1`) |
+| Variable | Description |
+| --- | --- |
+| `NEXT_PUBLIC_RPC_URL` | Target RPC URL |
+| `NEXT_PUBLIC_CHAIN_ID` | Chain ID |
+| `NEXT_PUBLIC_FACTORY_ADDRESS` | `ListingFactoryV6` address |
+| `NEXT_PUBLIC_TOKEN_ADDRESS` | Settlement ERC-20 address |
 
-### Vercel settings (with Agent enabled)
+### Optional (Display / Runtime)
 
-- `Root Directory`: `apps/web`
-- `Environment Variables` (set for Production / Preview / Development)
-  - `OPENAI_API_KEY`
-  - `OPENAI_MODEL` (recommended: `gpt-5-nano`)
-  - `NEXT_PUBLIC_RPC_URL`
-  - `NEXT_PUBLIC_CHAIN_ID`
-  - `NEXT_PUBLIC_FACTORY_ADDRESS`
-  - `NEXT_PUBLIC_TOKEN_ADDRESS`
-  - Add `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE` / `NEXT_PUBLIC_XMTP_ENV` when needed
+| Variable | Description |
+| --- | --- |
+| `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE` | Base URL for tx links |
+| `CHAIN_ID` | API-side chain override |
+| `NEXT_PUBLIC_XMTP_ENV` | `dev` or `production` |
 
-### Agent security and limits (optional)
+## Smart Contract Design (V6)
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `AGENT_NONCE_TTL_MS` | `300000` | Nonce TTL |
-| `AGENT_AUTH_SKEW_MS` | `300000` | Allowed auth timestamp skew |
-| `AGENT_AUTH_TOKEN_TTL_MS` | `1800000` | Session token TTL |
-| `AGENT_MAX_BODY_BYTES` | `16000` | Request body limit for `/api/agent/chat` |
-| `AGENT_MAX_MESSAGE_CHARS` | `2000` | Per-message character limit |
-| `AGENT_RATE_LIMIT_MAX` | `20` | Rate-limit allowance |
-| `AGENT_RATE_LIMIT_WINDOW_MS` | `60000` | Rate-limit window |
+### Factory
 
-## Smart Contracts
+- `ListingFactoryV6.createListing(...)` deploys a new escrow
+- NFT is initially owned by escrow
+- Secondary transfer is restricted to escrow-driven flows
 
-- `ListingFactoryV6` creates one `MilestoneEscrowV6` per listing
-- NFT is minted to escrow first, then transferred to buyer on `lock()`
+### Escrow
 
-State transitions:
+- `lock()`
+  - Buyer deposits ERC-20
+  - NFT moves to buyer
+  - `open -> locked`
+- `approve()`
+  - Buyer starts the transaction
+  - `locked -> active`
+- `submit(index, evidenceHash)`
+  - Producer reports intermediate milestone completion
+- `confirmDelivery(evidenceHash)`
+  - Buyer confirms final receipt (releases remaining amount)
+  - `active -> completed`
+- `cancel()`
+  - Buyer-only in `locked`
+  - Returns NFT to escrow and refunds full amount
+  - `locked -> cancelled`
 
-```text
-OPEN --lock()--> LOCKED --approve()--> ACTIVE --submit(...)--> ... --confirmDelivery()--> COMPLETED
-LOCKED --cancel()--> CANCELLED (full refund)
-```
-
-Category milestone distributions (BPS, total = 10000):
+### Milestone Distribution (BPS, total = 10000)
 
 | categoryType | Category | Steps | BPS array |
 | --- | --- | --- | --- |
-| `0` | wagyu | 11 | `300,500,500,500,500,500,500,500,700,1500,4000` |
+| `0` | wagyu | 10 | `200,300,400,500,600,650,700,750,900,5000` |
 | `1` | sake | 5 | `1000,1500,1500,2000,4000` |
 | `2` | craft | 4 | `1000,2000,2500,4500` |
 
-## API Endpoints
+## API
 
-| Method | Path | Auth | Purpose |
-| --- | --- | --- | --- |
-| `GET` | `/api/agent/nonce?sessionId=...` | None | Issue signing nonce |
-| `POST` | `/api/agent/chat` | Signature required on first call | Agent chat + tool execution |
-| `GET` | `/api/agent/chat?sessionId=...` | Session token | Inspect Agent session state |
-| `DELETE` | `/api/agent/chat?sessionId=...` | Session token | Clear Agent session |
-| `GET` | `/api/nft/:tokenId` | None | NFT metadata JSON |
-| `GET` | `/api/nft/:tokenId/image` | None | Dynamic NFT SVG |
+### NFT API
 
-### Agent auth flow
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/nft/:tokenId` | NFT metadata JSON |
+| `GET` | `/api/nft/:tokenId/image` | Dynamic SVG image |
 
-1. Fetch nonce from `GET /api/agent/nonce?sessionId=...`
-2. `personal_sign` the message below
-
-```text
-Proof of Trust Agent Authentication
-Session: <sessionId>
-Nonce: <nonce>
-Timestamp: <unix_ms>
-```
-
-3. Send `auth` payload in `POST /api/agent/chat`
-4. Reuse `sessionToken` via `X-Session-Token` header
+You can explicitly target a factory via the `factoryAddress` query parameter.
 
 ## Development
 
@@ -208,12 +202,6 @@ Contracts (optional):
 
 ```bash
 forge build
-```
-
-Demo asset generation (optional):
-
-```bash
-python3 apps/web/scripts/build_demo_video.py
 ```
 
 ## Related Docs
