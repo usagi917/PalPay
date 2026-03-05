@@ -110,7 +110,8 @@ async function fetchAllListingAddresses(maxCount?: number): Promise<Address[]> {
     functionName: "getListings",
   }) as Address[];
 
-  return addresses.slice(0, maxCount ?? MAX_LISTINGS_FETCH);
+  const effectiveMax = Math.min(Math.max(maxCount ?? MAX_LISTINGS_FETCH, 1), MAX_LISTINGS_FETCH);
+  return addresses.slice(0, effectiveMax);
 }
 
 // Fetch all listing summaries (with parallel reads)
@@ -145,9 +146,7 @@ export async function getListings(params: {
 
   // Read listings in parallel
   const results = await Promise.allSettled(
-    addresses.slice(0, Math.min(addresses.length, limit * 2)).map((addr) =>
-      readEscrowSummary(client, addr)
-    )
+    addresses.map((addr) => readEscrowSummary(client, addr))
   );
 
   const listings: ListingSummaryForAgent[] = [];

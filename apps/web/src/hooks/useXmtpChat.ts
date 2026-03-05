@@ -169,7 +169,11 @@ export function useXmtpChat({
 
         // Sync messages from network, then load
         setIsLoading(true);
-        await conversation.sync();
+        try {
+          await conversation.sync();
+        } catch (syncErr) {
+          console.warn("XMTP conversation sync failed, loading cached messages:", syncErr);
+        }
         const existingMessages = await conversation.messages();
 
         if (!isMounted) return;

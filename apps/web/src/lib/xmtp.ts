@@ -253,7 +253,11 @@ export async function getEscrowConversation(
   };
 
   // Sync conversations from network so we can find peer-created DMs
-  await client.conversations.sync();
+  try {
+    await client.conversations.sync();
+  } catch (syncErr) {
+    console.warn("XMTP conversations.sync() failed, proceeding with local data:", syncErr);
+  }
 
   // Get peer's inbox ID first
   const peerInboxId = await client.findInboxIdByIdentifier(peerIdentifier);
