@@ -99,7 +99,7 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T, labe
 }
 
 // Fetch all listing addresses from factory (capped)
-async function fetchAllListingAddresses(): Promise<Address[]> {
+async function fetchAllListingAddresses(maxCount?: number): Promise<Address[]> {
   const client = createClient();
   const factoryAddress = process.env.NEXT_PUBLIC_FACTORY_ADDRESS as Address;
   if (!factoryAddress) throw new Error("Factory address not configured");
@@ -110,7 +110,7 @@ async function fetchAllListingAddresses(): Promise<Address[]> {
     functionName: "getListings",
   }) as Address[];
 
-  return addresses.slice(0, MAX_LISTINGS_FETCH);
+  return addresses.slice(0, maxCount ?? MAX_LISTINGS_FETCH);
 }
 
 // Fetch all listing summaries (with parallel reads)
@@ -140,8 +140,8 @@ export async function getListings(params: {
   limit?: number;
 }): Promise<ListingSummaryForAgent[]> {
   const client = createClient();
-  const addresses = await fetchAllListingAddresses();
   const limit = params.limit || 10;
+  const addresses = await fetchAllListingAddresses(limit * 2);
 
   // Read listings in parallel
   const results = await Promise.allSettled(

@@ -167,8 +167,9 @@ export function useXmtpChat({
 
         conversationRef.current = conversation;
 
-        // Load existing messages
+        // Sync messages from network, then load
         setIsLoading(true);
+        await conversation.sync();
         const existingMessages = await conversation.messages();
 
         if (!isMounted) return;

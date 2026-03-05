@@ -245,7 +245,7 @@ export function useAgentSession(): UseAgentSessionReturn {
       if (contentType.includes("text/event-stream") && response.body) {
         // --- Streaming path ---
         const headerToken = response.headers.get("x-session-token");
-        if (headerToken) {
+        if (headerToken && isLatestRequest()) {
           setSessionToken(headerToken);
         }
         setIsStreaming(true);
@@ -334,7 +334,7 @@ export function useAgentSession(): UseAgentSessionReturn {
       } else {
         // --- Non-streaming (legacy JSON) path ---
         const headerToken = response.headers.get("x-session-token");
-        if (headerToken) {
+        if (headerToken && isLatestRequest()) {
           setSessionToken(headerToken);
         }
         const data: ChatResponse = await response.json();
