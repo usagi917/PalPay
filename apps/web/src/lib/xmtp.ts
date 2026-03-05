@@ -1,12 +1,15 @@
 import {
   Client,
   Conversation,
+  Group,
   DecodedMessage,
+  GroupPermissionsOptions,
   Utils,
   type Signer,
   type Identifier,
   type SafeInboxState,
 } from "@xmtp/browser-sdk";
+import { isAddress } from "viem";
 
 // XMTP environment
 const XMTP_ENV = process.env.NEXT_PUBLIC_XMTP_ENV === "production" ? "production" : "dev";
@@ -236,42 +239,119 @@ export async function revokeAllInstallationsByAddress(
   };
 }
 
+interface EscrowGroupAppData {
+  escrowAddress: string;
+  version: 1;
+}
+
+function encodeEscrowAppData(escrowAddress: string): string {
+  if (!isAddress(escrowAddress)) {
+    throw new Error(`Invalid escrow address: ${escrowAddress}`);
+  }
+  return JSON.stringify({ escrowAddress: escrowAddress.toLowerCase(), version: 1 });
+}
+
+function decodeEscrowAppData(appData: string | undefined): EscrowGroupAppData | null {
+  if (!appData) return null;
+  try {
+    const parsed = JSON.parse(appData);
+    if (
+      typeof parsed?.escrowAddress === "string" &&
+      parsed.version === 1 &&
+      isAddress(parsed.escrowAddress)
+    ) {
+      return { escrowAddress: parsed.escrowAddress.toLowerCase(), version: 1 };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function findGroupByEscrow(
+  client: Client,
+  normalizedEscrow: string,
+  peerAddress: string,
+): Promise<Group | null> {
+  const groups = await client.conversations.listGroups();
+  const matches = groups.filter((g) => {
+    const data = decodeEscrowAppData(g.appData);
+    return data?.escrowAddress === normalizedEscrow;
+  });
+  if (matches.length === 0) return null;
+  // 重複時は最小IDを選択（両者が同時作成した場合の決定的dedup）
+  matches.sort((a, b) => a.id.localeCompare(b.id));
+
+  // peerAddressがメンバーに含まれるグループのみ返す
+  const normalizedPeer = peerAddress.toLowerCase();
+  for (const group of matches) {
+    const members = await group.members();
+    const hasPeer = members.some((m) =>
+      m.accountIdentifiers.some(
+        (id) =>
+          id.identifierKind === "Ethereum" &&
+          id.identifier.toLowerCase() === normalizedPeer,
+      ),
+    );
+    if (hasPeer) return group;
+  }
+  return null;
+}
+
 /**
- * Get or create a DM conversation with peer
- * Uses Identifier-based API for V3 compatibility
+ * Get or create a Group conversation for a specific escrow
+ * Uses 2-person Groups (instead of DMs) so each escrow gets its own thread
  */
 export async function getEscrowConversation(
   client: Client,
   peerAddress: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _escrowAddress: string // Reserved for future context/filtering
+  escrowAddress: string,
 ): Promise<Conversation> {
-  // Create peer identifier
-  const peerIdentifier: Identifier = {
-    identifier: peerAddress,
-    identifierKind: "Ethereum",
-  };
+  const normalizedEscrow = escrowAddress.toLowerCase();
+  const peerIdentifier: Identifier = { identifier: peerAddress, identifierKind: "Ethereum" };
 
-  // Sync conversations from network so we can find peer-created DMs
+  // 1. ネットワークからsync
   try {
     await client.conversations.sync();
-  } catch (syncErr) {
-    console.warn("XMTP conversations.sync() failed, proceeding with local data:", syncErr);
+  } catch (e) {
+    console.warn("XMTP conversations.sync() failed, proceeding with local data:", e);
   }
 
-  // Get peer's inbox ID first
-  const peerInboxId = await client.findInboxIdByIdentifier(peerIdentifier);
+  // 2. 既存グループ検索（peerAddressのメンバーシップも検証）
+  const existing = await findGroupByEscrow(client, normalizedEscrow, peerAddress);
+  if (existing) return existing;
 
-  if (peerInboxId) {
-    // Use SDK's dedicated lookup (handles DM stitching)
-    const existing = await client.conversations.getDmByInboxId(peerInboxId);
-    if (existing) {
-      return existing;
-    }
+  // 3. 新規グループ作成（2人、AdminOnly権限）
+  const group = await client.conversations.newGroupWithIdentifiers(
+    [peerIdentifier],
+    { permissions: GroupPermissionsOptions.AdminOnly },
+  );
+
+  // 4. appDataにescrowAddress保存
+  try {
+    await group.updateAppData(encodeEscrowAppData(normalizedEscrow));
+  } catch (e) {
+    console.error(
+      "Failed to set appData on newly created XMTP group. This group is now orphaned.",
+      { groupId: group.id, escrowAddress: normalizedEscrow, error: e },
+    );
+    throw e;
   }
 
-  // Create new DM conversation using identifier
-  return await client.conversations.newDmWithIdentifier(peerIdentifier);
+  // 5. race condition対策: 再syncして重複があれば最小IDの方を採用
+  try {
+    await client.conversations.sync();
+  } catch (e) {
+    console.warn("XMTP post-creation sync failed, skipping dedup:", e);
+    return group;
+  }
+
+  try {
+    return (await findGroupByEscrow(client, normalizedEscrow, peerAddress)) ?? group;
+  } catch (e) {
+    console.warn("Post-creation dedup lookup failed, using created group:", e);
+    return group;
+  }
 }
 
 /**
