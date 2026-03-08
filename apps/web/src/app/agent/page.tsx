@@ -18,8 +18,11 @@ const AGENT_TX_FALLBACK_GAS = {
   tokenApprove: 200_000n,
   lock: 1_200_000n,
   approve: 350_000n,
+  activateAfterTimeout: 350_000n,
   cancel: 700_000n,
+  requestFinalDelivery: 400_000n,
   confirmDelivery: 500_000n,
+  finalizeAfterTimeout: 500_000n,
 } as const;
 
 const UNIT_MULTIPLIERS = {
@@ -272,7 +275,7 @@ function AgentPageContent() {
                 address: escrowAddress,
                 abi: ESCROW_ABI,
                 functionName: "getCore",
-              }) as [Address, Address, Address, Address, bigint, bigint, bigint, number];
+              }) as [Address, Address, Address, Address, bigint, bigint, bigint, number, bigint];
               amountWei = core[5];
             }
 
@@ -332,6 +335,26 @@ function AgentPageContent() {
             return;
           }
 
+          case "activateAfterTimeout": {
+            const hash = await writeContractWithGasFallback(
+              wallet,
+              {
+                address: requireEscrowAddress(),
+                abi: ESCROW_ABI,
+                functionName: "activateAfterTimeout",
+                args: [],
+                account,
+              },
+              AGENT_TX_FALLBACK_GAS.activateAfterTimeout,
+            );
+            const receipt = await client.waitForTransactionReceipt({ hash });
+            if (receipt.status !== "success") {
+              throw new Error(t("agentActivateAfterTimeoutFailed"));
+            }
+            console.log("Activate-after-timeout tx:", hash);
+            return;
+          }
+
           case "cancel": {
             const hash = await writeContractWithGasFallback(
               wallet,
@@ -352,15 +375,37 @@ function AgentPageContent() {
             return;
           }
 
+          case "requestFinalDelivery": {
+            const evidenceHash =
+              (params?.evidenceHash as `0x${string}`) ||
+              "0x0000000000000000000000000000000000000000000000000000000000000000";
+            const hash = await writeContractWithGasFallback(
+              wallet,
+              {
+                address: requireEscrowAddress(),
+                abi: ESCROW_ABI,
+                functionName: "requestFinalDelivery",
+                args: [evidenceHash],
+                account,
+              },
+              AGENT_TX_FALLBACK_GAS.requestFinalDelivery,
+            );
+            const receipt = await client.waitForTransactionReceipt({ hash });
+            if (receipt.status !== "success") {
+              throw new Error(t("agentRequestFinalDeliveryFailed"));
+            }
+            console.log("Request final delivery tx:", hash);
+            return;
+          }
+
           case "confirmDelivery": {
-            const evidenceHash = (params?.evidenceHash as `0x${string}`) || "0x0000000000000000000000000000000000000000000000000000000000000000";
             const hash = await writeContractWithGasFallback(
               wallet,
               {
                 address: requireEscrowAddress(),
                 abi: ESCROW_ABI,
                 functionName: "confirmDelivery",
-                args: [evidenceHash],
+                args: [],
                 account,
               },
               AGENT_TX_FALLBACK_GAS.confirmDelivery,
@@ -370,6 +415,26 @@ function AgentPageContent() {
               throw new Error(t("agentConfirmDeliveryFailed"));
             }
             console.log("Confirm delivery tx:", hash);
+            return;
+          }
+
+          case "finalizeAfterTimeout": {
+            const hash = await writeContractWithGasFallback(
+              wallet,
+              {
+                address: requireEscrowAddress(),
+                abi: ESCROW_ABI,
+                functionName: "finalizeAfterTimeout",
+                args: [],
+                account,
+              },
+              AGENT_TX_FALLBACK_GAS.finalizeAfterTimeout,
+            );
+            const receipt = await client.waitForTransactionReceipt({ hash });
+            if (receipt.status !== "success") {
+              throw new Error(t("agentFinalizeAfterTimeoutFailed"));
+            }
+            console.log("Finalize-after-timeout tx:", hash);
             return;
           }
 

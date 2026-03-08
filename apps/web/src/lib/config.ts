@@ -224,5 +224,4 @@ export const STATUS_LABELS: Record<string, { ja: string; en: string; color: stri
   locked: { ja: "条件確認中", en: "Under Review", color: "warning" },
   active: { ja: "進行中", en: "In Progress", color: "info" },
   completed: { ja: "取引完了", en: "Completed", color: "default" },
-  cancelled: { ja: "キャンセル済", en: "Cancelled", color: "error" },
 };

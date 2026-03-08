@@ -41,7 +41,15 @@ export interface ListingDraft {
 
 // Transaction preparation result
 export interface TxPrepareResult {
-  action: "createListing" | "lock" | "approve" | "cancel" | "confirmDelivery";
+  action:
+    | "createListing"
+    | "lock"
+    | "approve"
+    | "activateAfterTimeout"
+    | "cancel"
+    | "requestFinalDelivery"
+    | "confirmDelivery"
+    | "finalizeAfterTimeout";
   escrowAddress?: Address;
   params?: Record<string, unknown>;
   estimatedGas?: string;
@@ -135,6 +143,7 @@ export interface ListingSummaryForAgent {
   buyer: Address;
   totalAmount: string;
   status: string;
+  cancelCount: number;
   category: string;
   title: string;
   description: string;

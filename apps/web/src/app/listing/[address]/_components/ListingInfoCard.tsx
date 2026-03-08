@@ -41,6 +41,20 @@ export function ListingInfoCard({
   progressPercent,
   escrowAddress,
 }: ListingInfoCardProps) {
+  const formatDeadline = (deadline: bigint | null) => {
+    if (deadline === null) return null;
+    return new Intl.DateTimeFormat(locale === "ja" ? "ja-JP" : "en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(Number(deadline) * 1000));
+  };
+
+  const lockDeadlineLabel = formatDeadline(info.lockDeadline);
+  const finalDeadlineLabel = formatDeadline(info.finalConfirmationDeadline);
+
   return (
     <>
       {/* Dynamic NFT */}
@@ -173,6 +187,39 @@ export function ListingInfoCard({
               {formatAmount(info.releasedAmount, decimals, symbol)}
             </Typography>
           </Box>
+
+          {lockDeadlineLabel && info.status === "locked" && (
+            <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
+              <Typography sx={{ color: "var(--color-text-muted)" }}>
+                {locale === "ja" ? "開始確認期限" : "Review Deadline"}
+              </Typography>
+              <Typography sx={{ color: "var(--color-text-secondary)" }}>
+                {lockDeadlineLabel}
+              </Typography>
+            </Box>
+          )}
+
+          {finalDeadlineLabel && info.status === "active" && (
+            <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
+              <Typography sx={{ color: "var(--color-text-muted)" }}>
+                {locale === "ja" ? "最終確認期限" : "Final Confirmation Deadline"}
+              </Typography>
+              <Typography sx={{ color: "var(--color-text-secondary)" }}>
+                {finalDeadlineLabel}
+              </Typography>
+            </Box>
+          )}
+
+          {info.cancelCount > 0n && (
+            <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
+              <Typography sx={{ color: "var(--color-text-muted)" }}>
+                {locale === "ja" ? "キャンセル履歴" : "Cancel History"}
+              </Typography>
+              <Typography sx={{ color: "var(--color-text-secondary)" }}>
+                {info.cancelCount.toString()}
+              </Typography>
+            </Box>
+          )}
 
           {/* Progress */}
           <Box sx={{ mb: 3 }}>

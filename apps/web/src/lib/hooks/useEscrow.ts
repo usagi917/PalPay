@@ -29,7 +29,15 @@ export function useEscrowInfo(escrowAddress: Address | null) {
 
     try {
       const client = createClient();
-      const [core, meta] = await Promise.all([
+      const [
+        core,
+        meta,
+        lockedAt,
+        finalRequestedAt,
+        finalEvidenceHash,
+        lockTimeout,
+        finalConfirmTimeout,
+      ] = await Promise.all([
         client.readContract({
           address: escrowAddress,
           abi: ESCROW_ABI,
@@ -40,9 +48,39 @@ export function useEscrowInfo(escrowAddress: Address | null) {
           abi: ESCROW_ABI,
           functionName: "getMeta",
         }),
+        client.readContract({
+          address: escrowAddress,
+          abi: ESCROW_ABI,
+          functionName: "lockedAt",
+        }),
+        client.readContract({
+          address: escrowAddress,
+          abi: ESCROW_ABI,
+          functionName: "finalRequestedAt",
+        }),
+        client.readContract({
+          address: escrowAddress,
+          abi: ESCROW_ABI,
+          functionName: "finalEvidenceHash",
+        }),
+        client.readContract({
+          address: escrowAddress,
+          abi: ESCROW_ABI,
+          functionName: "LOCK_TIMEOUT",
+        }),
+        client.readContract({
+          address: escrowAddress,
+          abi: ESCROW_ABI,
+          functionName: "FINAL_CONFIRM_TIMEOUT",
+        }),
       ]) as [
-        [Address, Address, Address, Address, bigint, bigint, bigint, number],
-        [string, string, string, string, string]
+        [Address, Address, Address, Address, bigint, bigint, bigint, number, bigint],
+        [string, string, string, string, string],
+        bigint,
+        bigint,
+        `0x${string}`,
+        bigint,
+        bigint
       ];
 
       const [
@@ -54,8 +92,11 @@ export function useEscrowInfo(escrowAddress: Address | null) {
         totalAmount,
         releasedAmount,
         statusEnum,
+        cancelCount,
       ] = core;
       const [category, title, description, imageURI, status] = meta;
+      const lockDeadline = lockedAt > 0n ? lockedAt + lockTimeout : null;
+      const finalConfirmationDeadline = finalRequestedAt > 0n ? finalRequestedAt + finalConfirmTimeout : null;
 
       if (requestIdRef.current !== requestId) {
         return;
@@ -68,12 +109,20 @@ export function useEscrowInfo(escrowAddress: Address | null) {
         tokenId,
         totalAmount,
         releasedAmount,
+        cancelCount,
+        lockedAt,
+        finalRequestedAt,
+        finalEvidenceHash,
+        lockTimeout,
+        finalConfirmTimeout,
+        lockDeadline,
+        finalConfirmationDeadline,
         locked: statusEnum >= 1,
         category,
         title,
         description,
         imageURI,
-        status: status as "open" | "locked" | "active" | "completed" | "cancelled",
+        status: status as "open" | "locked" | "active" | "completed",
       });
     } catch (err) {
       if (requestIdRef.current !== requestId) {
@@ -179,8 +228,11 @@ const TX_FALLBACK_GAS = {
   lock: 1_200_000n,
   submit: 500_000n,
   approve: 350_000n,
+  activateAfterTimeout: 350_000n,
   cancel: 700_000n,
+  requestFinalDelivery: 400_000n,
   confirmDelivery: 500_000n,
+  finalizeAfterTimeout: 500_000n,
 } as const;
 
 export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () => void) {
@@ -359,7 +411,17 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
   );
 
   const makeAction = useCallback(
-    (functionName: "approve" | "cancel" | "confirmDelivery", args: unknown[], errorMsg: string) => async () => {
+    (
+      functionName:
+        | "approve"
+        | "activateAfterTimeout"
+        | "cancel"
+        | "requestFinalDelivery"
+        | "confirmDelivery"
+        | "finalizeAfterTimeout",
+      args: unknown[],
+      errorMsg: string,
+    ) => async () => {
       if (!escrowAddress) return;
       setIsLoading(true); setError(null); setTxHash(null); setTxStep("signing");
       try {
@@ -392,20 +454,50 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
   );
 
   const approve = useMemo(() => makeAction("approve", [], "取引開始に失敗しました"), [makeAction]);
+  const activateAfterTimeout = useMemo(
+    () => makeAction("activateAfterTimeout", [], "期限後の取引開始に失敗しました"),
+    [makeAction]
+  );
   const cancel = useMemo(() => makeAction("cancel", [], "キャンセルに失敗しました"), [makeAction]);
 
-  // confirmDelivery has unique evidenceHash logic
-  const confirmDelivery = useCallback(
+  const requestFinalDelivery = useCallback(
     async (evidenceHash?: string) => {
       const evidenceBytes32 = evidenceHash
         ? (evidenceHash.startsWith("0x") ? evidenceHash : `0x${evidenceHash}`)
         : "0x0000000000000000000000000000000000000000000000000000000000000000";
-      await makeAction("confirmDelivery", [evidenceBytes32 as `0x${string}`], "受取確認に失敗しました")();
+      await makeAction(
+        "requestFinalDelivery",
+        [evidenceBytes32 as `0x${string}`],
+        "最終納品申請に失敗しました",
+      )();
     },
     [makeAction]
   );
 
-  return { lock, submit, approve, cancel, confirmDelivery, isLoading, error, txHash, txStep, resetState };
+  const confirmDelivery = useMemo(
+    () => makeAction("confirmDelivery", [], "受取確認に失敗しました"),
+    [makeAction]
+  );
+  const finalizeAfterTimeout = useMemo(
+    () => makeAction("finalizeAfterTimeout", [], "期限後の最終確定に失敗しました"),
+    [makeAction]
+  );
+
+  return {
+    lock,
+    submit,
+    approve,
+    activateAfterTimeout,
+    cancel,
+    requestFinalDelivery,
+    confirmDelivery,
+    finalizeAfterTimeout,
+    isLoading,
+    error,
+    txHash,
+    txStep,
+    resetState,
+  };
 }
 
 export function useEscrowEvents(escrowAddress: Address | null) {
@@ -475,7 +567,16 @@ export function useEscrowEvents(escrowAddress: Address | null) {
         setFromBlock(effectiveFromBlock);
       }
 
-      const [lockedLogs, approvedLogs, cancelledLogs, completedLogs, deliveryConfirmedLogs] = await Promise.all([
+      const [
+        lockedLogs,
+        approvedLogs,
+        cancelledLogs,
+        completedLogs,
+        deliveryConfirmedLogs,
+        activatedAfterTimeoutLogs,
+        finalDeliveryRequestedLogs,
+        finalizedAfterTimeoutLogs,
+      ] = await Promise.all([
         client.getLogs({
           address: escrowAddress,
           event: {
@@ -522,6 +623,7 @@ export function useEscrowEvents(escrowAddress: Address | null) {
             inputs: [
               { name: "index", type: "uint256", indexed: true },
               { name: "amount", type: "uint256", indexed: false },
+              { name: "evidenceHash", type: "bytes32", indexed: false },
             ],
           },
           fromBlock: effectiveFromBlock,
@@ -534,6 +636,45 @@ export function useEscrowEvents(escrowAddress: Address | null) {
             name: "DeliveryConfirmed",
             inputs: [
               { name: "buyer", type: "address", indexed: true },
+              { name: "amount", type: "uint256", indexed: false },
+            ],
+          },
+          fromBlock: effectiveFromBlock,
+          toBlock: "latest",
+        }),
+        client.getLogs({
+          address: escrowAddress,
+          event: {
+            type: "event",
+            name: "ActivatedAfterTimeout",
+            inputs: [
+              { name: "caller", type: "address", indexed: true },
+              { name: "activatedAt", type: "uint256", indexed: false },
+            ],
+          },
+          fromBlock: effectiveFromBlock,
+          toBlock: "latest",
+        }),
+        client.getLogs({
+          address: escrowAddress,
+          event: {
+            type: "event",
+            name: "FinalDeliveryRequested",
+            inputs: [
+              { name: "evidenceHash", type: "bytes32", indexed: false },
+              { name: "deadline", type: "uint256", indexed: false },
+            ],
+          },
+          fromBlock: effectiveFromBlock,
+          toBlock: "latest",
+        }),
+        client.getLogs({
+          address: escrowAddress,
+          event: {
+            type: "event",
+            name: "FinalizedAfterTimeout",
+            inputs: [
+              { name: "caller", type: "address", indexed: true },
               { name: "amount", type: "uint256", indexed: false },
             ],
           },
@@ -588,6 +729,7 @@ export function useEscrowEvents(escrowAddress: Address | null) {
           logIndex: log.logIndex ?? undefined,
           index: log.args.index,
           amount: log.args.amount,
+          evidenceHash: log.args.evidenceHash,
         });
       }
 
@@ -600,6 +742,41 @@ export function useEscrowEvents(escrowAddress: Address | null) {
           transactionIndex: log.transactionIndex ?? undefined,
           logIndex: log.logIndex ?? undefined,
           amount: log.args.amount,
+        });
+      }
+
+      for (const log of activatedAfterTimeoutLogs) {
+        allEvents.push({
+          type: "ActivatedAfterTimeout",
+          txHash: log.transactionHash!,
+          blockNumber: log.blockNumber!,
+          transactionIndex: log.transactionIndex ?? undefined,
+          logIndex: log.logIndex ?? undefined,
+          caller: log.args.caller!,
+        });
+      }
+
+      for (const log of finalDeliveryRequestedLogs) {
+        allEvents.push({
+          type: "FinalDeliveryRequested",
+          txHash: log.transactionHash!,
+          blockNumber: log.blockNumber!,
+          transactionIndex: log.transactionIndex ?? undefined,
+          logIndex: log.logIndex ?? undefined,
+          deadline: log.args.deadline,
+          evidenceHash: log.args.evidenceHash,
+        });
+      }
+
+      for (const log of finalizedAfterTimeoutLogs) {
+        allEvents.push({
+          type: "FinalizedAfterTimeout",
+          txHash: log.transactionHash!,
+          blockNumber: log.blockNumber!,
+          transactionIndex: log.transactionIndex ?? undefined,
+          logIndex: log.logIndex ?? undefined,
+          amount: log.args.amount,
+          caller: log.args.caller!,
         });
       }
 

@@ -50,23 +50,27 @@ sequenceDiagram
         E-->>S: Partial payout (ERC-20)
     end
 
-    B->>W: 5. Confirm final delivery
-    W->>E: confirmDelivery(evidenceHash)
+    S->>W: 5. Request final delivery
+    W->>E: requestFinalDelivery(evidenceHash)
+    B->>W: 6. Confirm final delivery
+    W->>E: confirmDelivery()
     E-->>S: Remaining payout (ERC-20)
     Note right of E: active → completed
 ```
 
 Notes:
-- `cancel()` is buyer-only in `locked`, and refunds the full amount.
+- `cancel()` is buyer-only in `locked`, refunds the full amount, returns the NFT to the producer, and reopens the listing.
+- After 14 days in `locked`, anyone can call `activateAfterTimeout()` to move the listing to `active`.
+- After 14 days from `requestFinalDelivery()`, anyone can call `finalizeAfterTimeout()` to release the remaining payout.
 
 ## Key Features
 
 - Deploys a dedicated `MilestoneEscrowV6` per listing and mints a linked NFT
 - State transitions
   - `open -> locked -> active -> completed`
-  - `locked -> cancelled`
-- Buyer deposits ERC-20 via `lock()`, then starts milestone flow with `approve()`
-- Producer reports intermediate milestones via `submit()`; buyer finalizes with `confirmDelivery()`
+  - `locked -> open` (via `cancel()`, ready for relisting)
+- Buyer deposits ERC-20 via `lock()`, then starts milestone flow with `approve()` or `activateAfterTimeout()`
+- Producer reports intermediate milestones via `submit()`; the final step uses `requestFinalDelivery()` -> `confirmDelivery()` / `finalizeAfterTimeout()`
 - Listing detail page renders on-chain event timeline
 - NFT APIs
   - `GET /api/nft/:tokenId` (metadata)
@@ -157,17 +161,25 @@ Config file: `apps/web/.env.local`
   - NFT moves to buyer
   - `open -> locked`
 - `approve()`
-  - Buyer starts the transaction
+  - Buyer starts the transaction within the review window
+  - `locked -> active`
+- `activateAfterTimeout()`
+  - Callable by anyone after 14 days in `locked`
   - `locked -> active`
 - `submit(index, evidenceHash)`
   - Producer reports intermediate milestone completion
-- `confirmDelivery(evidenceHash)`
-  - Buyer confirms final receipt (releases remaining amount)
+- `requestFinalDelivery(evidenceHash)`
+  - Producer starts the buyer confirmation window for the final delivery
+- `confirmDelivery()`
+  - Buyer confirms final receipt before the deadline
+  - `active -> completed`
+- `finalizeAfterTimeout()`
+  - Callable by anyone after the final confirmation deadline
   - `active -> completed`
 - `cancel()`
   - Buyer-only in `locked`
-  - Returns NFT to escrow and refunds full amount
-  - `locked -> cancelled`
+  - Returns NFT to producer and refunds full amount
+  - `locked -> open`
 
 ### Milestone Distribution (BPS, total = 10000)
 

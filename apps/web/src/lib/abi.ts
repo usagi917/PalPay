@@ -136,6 +136,30 @@ export const ESCROW_ABI = [
       { name: "amount", type: "uint256", indexed: false },
     ],
   },
+  {
+    type: "event",
+    name: "ActivatedAfterTimeout",
+    inputs: [
+      { name: "caller", type: "address", indexed: true },
+      { name: "activatedAt", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "FinalDeliveryRequested",
+    inputs: [
+      { name: "evidenceHash", type: "bytes32", indexed: false },
+      { name: "deadline", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "FinalizedAfterTimeout",
+    inputs: [
+      { name: "caller", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
   // Read functions
   {
     type: "function",
@@ -186,7 +210,49 @@ export const ESCROW_ABI = [
     outputs: [{ name: "", type: "uint256" }],
     stateMutability: "view",
   },
-  // V6: status enum (OPEN=0, LOCKED=1, ACTIVE=2, COMPLETED=3, CANCELLED=4)
+  {
+    type: "function",
+    name: "cancelCount",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "lockedAt",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "finalRequestedAt",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "finalEvidenceHash",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes32" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "LOCK_TIMEOUT",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "FINAL_CONFIRM_TIMEOUT",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  // V6: status enum (OPEN=0, LOCKED=1, ACTIVE=2, COMPLETED=3)
   {
     type: "function",
     name: "status",
@@ -299,6 +365,7 @@ export const ESCROW_ABI = [
       { name: "totalAmount", type: "uint256" },
       { name: "releasedAmount", type: "uint256" },
       { name: "status", type: "uint8" },
+      { name: "cancelCount", type: "uint256" },
     ],
     stateMutability: "view",
   },
@@ -331,6 +398,13 @@ export const ESCROW_ABI = [
     outputs: [],
     stateMutability: "nonpayable",
   },
+  {
+    type: "function",
+    name: "activateAfterTimeout",
+    inputs: [],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
   // V6: cancel function (buyer cancels with full refund, LOCKED only)
   {
     type: "function",
@@ -339,13 +413,26 @@ export const ESCROW_ABI = [
     outputs: [],
     stateMutability: "nonpayable",
   },
-  // V6: confirmDelivery function (buyer confirms final milestone)
   {
     type: "function",
-    name: "confirmDelivery",
+    name: "requestFinalDelivery",
     inputs: [
       { name: "evidenceHash", type: "bytes32" },
     ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "confirmDelivery",
+    inputs: [],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "finalizeAfterTimeout",
+    inputs: [],
     outputs: [],
     stateMutability: "nonpayable",
   },

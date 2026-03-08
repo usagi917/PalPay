@@ -9,20 +9,16 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title MilestoneEscrowV6
- * @notice Per-listing escrow with buyer approval flow and XMTP chat support
- * @dev V6 adds:
- *   - Status enum: OPEN, LOCKED, ACTIVE, COMPLETED, CANCELLED
- *   - approve(): Buyer approves to start milestones
- *   - cancel(): Buyer can cancel with full refund (LOCKED only)
- *   - confirmDelivery(): Buyer confirms final milestone
- *   - Adjusted bps: small first, large last (incentivizes delivery)
+ * @notice Per-listing escrow with relisting support and milestone-based payouts
  */
 contract MilestoneEscrowV6 is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     uint16 private constant BPS_DENOMINATOR = 10_000;
+    uint256 public constant LOCK_TIMEOUT = 14 days;
+    uint256 public constant FINAL_CONFIRM_TIMEOUT = 14 days;
 
-    enum Status { OPEN, LOCKED, ACTIVE, COMPLETED, CANCELLED }
+    enum Status { OPEN, LOCKED, ACTIVE, COMPLETED }
 
     struct Milestone {
         uint16 bps;
@@ -43,6 +39,10 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
     string public imageURI;
     Milestone[] public milestones;
     uint256 public releasedAmount;
+    uint256 public lockedAt;
+    uint256 public finalRequestedAt;
+    bytes32 public finalEvidenceHash;
+    uint256 public cancelCount;
 
     mapping(uint256 => bytes32) public evidenceHashes;
 
@@ -51,6 +51,9 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
     event Cancelled(address indexed buyer, uint256 refundAmount);
     event Completed(uint256 indexed index, uint256 amount, bytes32 evidenceHash);
     event DeliveryConfirmed(address indexed buyer, uint256 amount);
+    event ActivatedAfterTimeout(address indexed caller, uint256 activatedAt);
+    event FinalDeliveryRequested(bytes32 evidenceHash, uint256 deadline);
+    event FinalizedAfterTimeout(address indexed caller, uint256 amount);
 
     error Unauthorized();
     error InvalidState();
@@ -64,6 +67,14 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
     error UnexpectedNFT();
     error SelfPurchase();
     error PreviousMilestonesIncomplete();
+    error LockTimeoutNotReached();
+    error LockTimeoutExpired();
+    error FinalConfirmationNotRequested();
+    error FinalConfirmationTimeoutNotReached();
+    error FinalConfirmationTimeoutExpired();
+    error InsufficientTokenReceived();
+    error InvalidNFTOwner();
+    error FinalDeliveryAlreadyRequested();
 
     constructor(
         address f,
@@ -93,7 +104,7 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
         imageURI = img;
         status = Status.OPEN;
 
-        // V6: Adjusted bps - small first, large last (requires buyer confirmation)
+        // Adjusted bps: small first, large last (requires buyer confirmation)
         // wagyu (10 steps): 200,300,400,500,600,650,700,750,900,5000 = 10000
         uint16[10] memory w = [uint16(200), 300, 400, 500, 600, 650, 700, 750, 900, 5000];
         // sake (5 steps): 1000,1500,1500,2000,4000 = 10000
@@ -123,18 +134,27 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
 
     /**
      * @notice Buyer purchases the listing
-     * @dev Transfers JPYC to escrow and NFT to buyer, status -> LOCKED
+     * @dev Transfers the full token amount to escrow, then moves the NFT to the buyer.
+     *      The NFT may currently be held by the escrow (initial sale) or by the producer (after cancel/relist).
      */
     function lock() external nonReentrant {
         if (status != Status.OPEN) revert InvalidState();
         if (msg.sender == producer) revert SelfPurchase();
-        if (IERC721(factory).ownerOf(tokenId) != address(this)) revert InvalidState();
+        address currentOwner = IERC721(factory).ownerOf(tokenId);
+        if (currentOwner != address(this) && currentOwner != producer) revert InvalidNFTOwner();
+
+        uint256 balanceBefore = IERC20(tokenAddress).balanceOf(address(this));
+        IERC20(tokenAddress).safeTransferFrom(msg.sender, address(this), totalAmount);
+        uint256 receivedAmount = IERC20(tokenAddress).balanceOf(address(this)) - balanceBefore;
+        if (receivedAmount != totalAmount) revert InsufficientTokenReceived();
+
+        IERC721(factory).safeTransferFrom(currentOwner, msg.sender, tokenId);
 
         buyer = msg.sender;
         status = Status.LOCKED;
-
-        IERC20(tokenAddress).safeTransferFrom(msg.sender, address(this), totalAmount);
-        IERC721(factory).safeTransferFrom(address(this), msg.sender, tokenId);
+        lockedAt = block.timestamp;
+        finalRequestedAt = 0;
+        finalEvidenceHash = bytes32(0);
 
         emit Locked(msg.sender, totalAmount);
     }
@@ -146,6 +166,7 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
     function approve() external nonReentrant {
         if (msg.sender != buyer) revert Unauthorized();
         if (status != Status.LOCKED) revert InvalidState();
+        if (block.timestamp >= lockedAt + LOCK_TIMEOUT) revert LockTimeoutExpired();
 
         status = Status.ACTIVE;
         emit Approved(msg.sender);
@@ -158,20 +179,35 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
     function cancel() external nonReentrant {
         if (msg.sender != buyer) revert Unauthorized();
         if (status != Status.LOCKED) revert InvalidState();
-        if (IERC721(factory).ownerOf(tokenId) != buyer) revert InvalidState();
+        if (block.timestamp >= lockedAt + LOCK_TIMEOUT) revert LockTimeoutExpired();
 
-        status = Status.CANCELLED;
+        address currentBuyer = buyer;
+        if (IERC721(factory).ownerOf(tokenId) != currentBuyer) revert InvalidNFTOwner();
 
-        // Return NFT to escrow (from buyer), then refund
-        IERC721(factory).safeTransferFrom(buyer, address(this), tokenId);
-        IERC20(tokenAddress).safeTransfer(buyer, totalAmount);
+        IERC20(tokenAddress).safeTransfer(currentBuyer, totalAmount);
+        IERC721(factory).safeTransferFrom(currentBuyer, producer, tokenId);
 
-        emit Cancelled(buyer, totalAmount);
+        buyer = address(0);
+        status = Status.OPEN;
+        lockedAt = 0;
+        finalRequestedAt = 0;
+        finalEvidenceHash = bytes32(0);
+        cancelCount += 1;
+
+        emit Cancelled(currentBuyer, totalAmount);
+    }
+
+    function activateAfterTimeout() external nonReentrant {
+        if (status != Status.LOCKED) revert InvalidState();
+        if (block.timestamp < lockedAt + LOCK_TIMEOUT) revert LockTimeoutNotReached();
+
+        status = Status.ACTIVE;
+        emit ActivatedAfterTimeout(msg.sender, block.timestamp);
     }
 
     /**
      * @notice Producer submits milestone completion (except last)
-     * @dev Only producer, only ACTIVE, must be sequential, last milestone uses confirmDelivery
+     * @dev Only producer, only ACTIVE, must be sequential, last milestone uses requestFinalDelivery
      */
     function submit(uint256 i, bytes32 _evidenceHash) external nonReentrant {
         if (msg.sender != producer) revert Unauthorized();
@@ -196,33 +232,50 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
     }
 
     /**
-     * @notice Buyer confirms final milestone delivery
-     * @dev Only buyer, only ACTIVE, all previous milestones must be complete
+     * @notice Producer requests final delivery confirmation
      */
-    function confirmDelivery(bytes32 _evidenceHash) external nonReentrant {
-        if (msg.sender != buyer) revert Unauthorized();
+    function requestFinalDelivery(bytes32 _evidenceHash) external nonReentrant {
+        if (msg.sender != producer) revert Unauthorized();
         if (status != Status.ACTIVE) revert InvalidState();
+        if (finalRequestedAt != 0) revert FinalDeliveryAlreadyRequested();
 
         uint256 lastIndex = milestones.length - 1;
         if (milestones[lastIndex].completed) revert InvalidState();
-
-        // All previous milestones must be complete
         for (uint256 i = 0; i < lastIndex; i++) {
             if (!milestones[i].completed) revert PreviousMilestonesIncomplete();
         }
 
-        milestones[lastIndex].completed = true;
-        evidenceHashes[lastIndex] = _evidenceHash;
+        finalRequestedAt = block.timestamp;
+        finalEvidenceHash = _evidenceHash;
 
-        // Final payment: remaining balance to avoid rounding errors
-        uint256 amt = totalAmount - releasedAmount;
-        releasedAmount = totalAmount;
+        emit FinalDeliveryRequested(_evidenceHash, block.timestamp + FINAL_CONFIRM_TIMEOUT);
+    }
 
-        IERC20(tokenAddress).safeTransfer(producer, amt);
+    /**
+     * @notice Buyer confirms final milestone delivery
+     * @dev Only buyer, only ACTIVE, only after requestFinalDelivery(), before timeout expiry
+     */
+    function confirmDelivery() external nonReentrant {
+        if (msg.sender != buyer) revert Unauthorized();
+        if (status != Status.ACTIVE) revert InvalidState();
+        if (finalRequestedAt == 0) revert FinalConfirmationNotRequested();
+        if (block.timestamp >= finalRequestedAt + FINAL_CONFIRM_TIMEOUT) revert FinalConfirmationTimeoutExpired();
 
-        status = Status.COMPLETED;
-        emit Completed(lastIndex, amt, _evidenceHash);
+        (uint256 lastIndex, uint256 amt, bytes32 evidenceHash) = _completeFinalMilestone();
+
+        emit Completed(lastIndex, amt, evidenceHash);
         emit DeliveryConfirmed(buyer, amt);
+    }
+
+    function finalizeAfterTimeout() external nonReentrant {
+        if (status != Status.ACTIVE) revert InvalidState();
+        if (finalRequestedAt == 0) revert FinalConfirmationNotRequested();
+        if (block.timestamp < finalRequestedAt + FINAL_CONFIRM_TIMEOUT) revert FinalConfirmationTimeoutNotReached();
+
+        (uint256 lastIndex, uint256 amt, bytes32 evidenceHash) = _completeFinalMilestone();
+
+        emit Completed(lastIndex, amt, evidenceHash);
+        emit FinalizedAfterTimeout(msg.sender, amt);
     }
 
     function _nextIncompleteIndex() internal view returns (uint256) {
@@ -230,6 +283,26 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
             if (!milestones[j].completed) return j;
         }
         return milestones.length;
+    }
+
+    function _completeFinalMilestone() internal returns (uint256 lastIndex, uint256 amt, bytes32 evidenceHash) {
+        lastIndex = milestones.length - 1;
+        if (milestones[lastIndex].completed) revert InvalidState();
+        for (uint256 i = 0; i < lastIndex; i++) {
+            if (!milestones[i].completed) revert PreviousMilestonesIncomplete();
+        }
+
+        evidenceHash = finalEvidenceHash;
+        milestones[lastIndex].completed = true;
+        evidenceHashes[lastIndex] = evidenceHash;
+
+        amt = totalAmount - releasedAmount;
+        releasedAmount = totalAmount;
+        status = Status.COMPLETED;
+        finalRequestedAt = 0;
+        finalEvidenceHash = bytes32(0);
+
+        IERC20(tokenAddress).safeTransfer(producer, amt);
     }
 
     // View functions
@@ -251,7 +324,6 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
         if (status == Status.LOCKED) return "locked";
         if (status == Status.ACTIVE) return "active";
         if (status == Status.COMPLETED) return "completed";
-        if (status == Status.CANCELLED) return "cancelled";
         return "unknown";
     }
 
@@ -269,9 +341,9 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
     function getCore()
         external
         view
-        returns (address, address, address, address, uint256, uint256, uint256, Status)
+        returns (address, address, address, address, uint256, uint256, uint256, Status, uint256)
     {
-        return (factory, tokenAddress, producer, buyer, tokenId, totalAmount, releasedAmount, status);
+        return (factory, tokenAddress, producer, buyer, tokenId, totalAmount, releasedAmount, status, cancelCount);
     }
 
     function getMeta()
@@ -402,8 +474,9 @@ contract ListingFactoryV6 is ERC721 {
      * @dev Restrict secondary transfers to escrow-driven moves only.
      * Allowed flows:
      *  - mint: 0x0 -> escrow
-     *  - lock: escrow -> buyer
-     *  - cancel: buyer -> escrow
+     *  - initial lock: escrow -> buyer
+     *  - cancel: buyer -> producer
+     *  - relock after cancel: producer -> buyer
      */
     function _update(address to, uint256 tokenId, address auth) internal override returns (address) {
         address from = _ownerOf(tokenId);

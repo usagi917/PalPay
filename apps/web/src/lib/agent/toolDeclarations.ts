@@ -43,7 +43,7 @@ export const toolDeclarations: FunctionDeclaration[] = [
         },
         status: {
           type: "string",
-          description: "状態でフィルタ (open, locked, active, completed, cancelled)",
+          description: "状態でフィルタ (open, locked, active, completed)",
         },
         limit: {
           type: "number",
@@ -122,7 +122,7 @@ export const toolDeclarations: FunctionDeclaration[] = [
       properties: {
         action: {
           type: "string",
-          description: "操作の種類 (createListing, lock, approve, cancel, confirmDelivery)",
+          description: "操作の種類 (createListing, lock, approve, activateAfterTimeout, cancel, requestFinalDelivery, confirmDelivery, finalizeAfterTimeout)",
         },
         escrowAddress: {
           type: "string",
@@ -162,7 +162,7 @@ export const toolDeclarations: FunctionDeclaration[] = [
   },
   {
     name: "assess_risk",
-    description: "特定の出品または出品者の購入リスクを評価します。出品者の過去実績（完了率、キャンセル率）を分析しリスクスコアを返します。",
+    description: "特定の出品または出品者の購入リスクを評価します。出品者の過去実績（完了率、cancelCount ベースのキャンセル履歴）を分析しリスクスコアを返します。",
     parametersJsonSchema: {
       type: "object",
       properties: {

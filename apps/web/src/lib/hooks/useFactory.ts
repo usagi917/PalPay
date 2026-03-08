@@ -80,12 +80,12 @@ export function useListingSummaries() {
                 functionName: "getProgress",
               }),
             ]) as [
-              [Address, Address, Address, Address, bigint, bigint, bigint, number],
+              [Address, Address, Address, Address, bigint, bigint, bigint, number, bigint],
               [string, string, string, string, string],
               [bigint, bigint]
             ];
 
-            const [, , producer, buyer, tokenId, totalAmount, releasedAmount, statusEnum] = core;
+            const [, , producer, buyer, tokenId, totalAmount, releasedAmount, statusEnum, cancelCount] = core;
             const [category, title, description, imageURI, status] = meta;
 
             return {
@@ -95,12 +95,13 @@ export function useListingSummaries() {
               buyer,
               totalAmount,
               releasedAmount,
+              cancelCount,
               locked: statusEnum >= 1,
               category,
               title,
               description,
               imageURI,
-              status: status as "open" | "locked" | "active" | "completed" | "cancelled",
+              status: status as "open" | "locked" | "active" | "completed",
               progress: {
                 completed: Number(progress[0]),
                 total: Number(progress[1]),

@@ -56,8 +56,14 @@ export function EventTimeline({
                   return locale === "ja" ? "取引開始" : "Transaction Started";
                 case "Cancelled":
                   return locale === "ja" ? "キャンセル・返金" : "Cancelled & Refunded";
+                case "ActivatedAfterTimeout":
+                  return locale === "ja" ? "期限後に取引開始" : "Activated After Timeout";
+                case "FinalDeliveryRequested":
+                  return locale === "ja" ? "最終納品申請" : "Final Delivery Requested";
                 case "DeliveryConfirmed":
                   return locale === "ja" ? "受取確認・取引完了" : "Receipt Confirmed";
+                case "FinalizedAfterTimeout":
+                  return locale === "ja" ? "期限後に最終確定" : "Finalized After Timeout";
                 case "Completed":
                   return milestoneName ||
                     (event.index !== undefined
@@ -90,6 +96,13 @@ export function EventTimeline({
                   {event.amount && (
                     <Typography variant="caption" sx={{ color: "var(--color-text-muted)" }}>
                       {formatAmount(event.amount, decimals, symbol)}
+                    </Typography>
+                  )}
+                  {event.deadline && (
+                    <Typography variant="caption" sx={{ display: "block", color: "var(--color-text-muted)" }}>
+                      {locale === "ja"
+                        ? `期限: ${new Date(Number(event.deadline) * 1000).toLocaleString("ja-JP")}`
+                        : `Deadline: ${new Date(Number(event.deadline) * 1000).toLocaleString("en-US")}`}
                     </Typography>
                   )}
                 </Box>

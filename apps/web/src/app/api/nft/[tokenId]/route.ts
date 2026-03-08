@@ -79,7 +79,7 @@ export async function GET(
         functionName: "getProgress",
       }),
     ]) as [
-      [Address, Address, Address, Address, bigint, bigint, bigint, number],
+      [Address, Address, Address, Address, bigint, bigint, bigint, number, bigint],
       [string, string, string, string, string],
       [bigint, bigint]
     ];
@@ -108,9 +108,9 @@ export async function GET(
     // Determine status label
     const statusLabels: Record<string, string> = {
       open: "Open",
+      locked: "Locked",
       active: "In Progress",
       completed: "Completed",
-      cancelled: "Cancelled",
     };
     const statusLabel = statusLabels[status] || status;
 

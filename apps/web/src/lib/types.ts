@@ -17,12 +17,20 @@ export interface EscrowInfo {
   tokenId: bigint;
   totalAmount: bigint;
   releasedAmount: bigint;
+  cancelCount: bigint;
+  lockedAt: bigint;
+  finalRequestedAt: bigint;
+  finalEvidenceHash: `0x${string}`;
+  lockTimeout: bigint;
+  finalConfirmTimeout: bigint;
+  lockDeadline: bigint | null;
+  finalConfirmationDeadline: bigint | null;
   locked: boolean;
   category: string;
   title: string;
   description: string;
   imageURI: string;
-  status: "open" | "locked" | "active" | "completed" | "cancelled";
+  status: "open" | "locked" | "active" | "completed";
 }
 
 // V6: Listing summary (for list display)
@@ -33,12 +41,13 @@ export interface ListingSummary {
   buyer: Address;
   totalAmount: bigint;
   releasedAmount: bigint;
+  cancelCount: bigint;
   locked: boolean;
   category: string;
   title: string;
   description: string;
   imageURI: string;
-  status: "open" | "locked" | "active" | "completed" | "cancelled";
+  status: "open" | "locked" | "active" | "completed";
   progress: {
     completed: number;
     total: number;
@@ -46,7 +55,15 @@ export interface ListingSummary {
 }
 
 // V6: Event types
-export type EventType = "Locked" | "Approved" | "Cancelled" | "Completed" | "DeliveryConfirmed";
+export type EventType =
+  | "Locked"
+  | "Approved"
+  | "Cancelled"
+  | "Completed"
+  | "DeliveryConfirmed"
+  | "ActivatedAfterTimeout"
+  | "FinalDeliveryRequested"
+  | "FinalizedAfterTimeout";
 
 export interface TimelineEvent {
   type: EventType;
@@ -57,9 +74,12 @@ export interface TimelineEvent {
   timestamp?: number;
   // Locked
   buyer?: Address;
+  caller?: Address;
   amount?: bigint;
   // Completed
   index?: bigint;
+  deadline?: bigint;
+  evidenceHash?: Hash;
 }
 
 // v2: User role (no admin)

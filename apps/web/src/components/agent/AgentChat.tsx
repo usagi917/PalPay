@@ -64,10 +64,16 @@ export function AgentChat({ userAddress, walletConnected, onExecuteTx }: AgentCh
         return t("agentSuccessLock");
       case "approve":
         return t("agentSuccessApprove");
+      case "activateAfterTimeout":
+        return t("agentSuccessActivateAfterTimeout");
       case "cancel":
         return t("agentSuccessCancel");
+      case "requestFinalDelivery":
+        return t("agentSuccessRequestFinalDelivery");
       case "confirmDelivery":
         return t("agentSuccessConfirmDelivery");
+      case "finalizeAfterTimeout":
+        return t("agentSuccessFinalizeAfterTimeout");
       default:
         return t("agentSuccessDefault");
     }
