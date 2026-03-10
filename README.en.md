@@ -59,7 +59,7 @@ sequenceDiagram
 ```
 
 Notes:
-- `cancel()` is buyer-only in `locked`, refunds the full amount, returns the NFT to the producer, and reopens the listing.
+- `cancel()` is buyer-only in `locked`, refunds the full amount, returns the NFT to escrow custody, and reopens the listing.
 - After 14 days in `locked`, anyone can call `activateAfterTimeout()` to move the listing to `active`.
 - After 14 days from `requestFinalDelivery()`, anyone can call `finalizeAfterTimeout()` to release the remaining payout.
 
@@ -178,7 +178,7 @@ Config file: `apps/web/.env.local`
   - `active -> completed`
 - `cancel()`
   - Buyer-only in `locked`
-  - Returns NFT to producer and refunds full amount
+  - Returns NFT to escrow custody and refunds full amount
   - `locked -> open`
 
 ### Milestone Distribution (BPS, total = 10000)
@@ -215,6 +215,61 @@ Contracts (optional):
 ```bash
 forge build
 ```
+
+## Fuji Testnet Deployment
+
+`ListingFactoryV6` takes two constructor arguments: `tokenAddress` and `baseURI`.[contracts/ListingFactoryV6.sol](/Users/you/programming/hackathon/contracts/ListingFactoryV6.sol#L441)
+
+Use the public web app URL for `baseURI`. For example, if you set `BASE_URI=https://your-app.example.com`, `tokenURI()` will resolve to `https://your-app.example.com/api/nft/<tokenId>`.[contracts/ListingFactoryV6.sol](/Users/you/programming/hackathon/contracts/ListingFactoryV6.sol#L476)
+
+1. Set environment variables
+
+```bash
+export AVALANCHE_FUJI_RPC_URL="https://your-fuji-rpc"
+export PRIVATE_KEY="0x..."
+```
+
+2. If you do not already have a settlement ERC-20 on Fuji, deploy the test token first
+
+```bash
+export TOKEN_NAME="Mock JPYC"
+export TOKEN_SYMBOL="mJPYC"
+export TOKEN_DECIMALS="18"
+forge script script/DeployMockERC20.s.sol:DeployMockERC20 \
+  --rpc-url "$AVALANCHE_FUJI_RPC_URL" \
+  --broadcast
+```
+
+3. Deploy the factory
+
+```bash
+export TOKEN_ADDRESS="0xYourTokenAddress"
+export BASE_URI="https://your-app.example.com"
+forge script script/DeployListingFactoryV6.s.sol:DeployListingFactoryV6 \
+  --rpc-url "$AVALANCHE_FUJI_RPC_URL" \
+  --broadcast
+```
+
+4. Update the web app env
+
+```bash
+cat > apps/web/.env.local <<'EOF'
+NEXT_PUBLIC_RPC_URL=https://your-fuji-rpc
+NEXT_PUBLIC_CHAIN_ID=43113
+NEXT_PUBLIC_FACTORY_ADDRESS=0xYourFactoryAddress
+NEXT_PUBLIC_TOKEN_ADDRESS=0xYourTokenAddress
+EOF
+```
+
+5. Start the app and verify the flow
+
+```bash
+pnpm --dir apps/web dev
+```
+
+Notes:
+- The deployed addresses are available in the `broadcast/` output or directly in the `forge script` logs.
+- `MockERC20` is a test token with a public `mint()` function. Do not use it for production-like validation.[contracts/MockERC20.sol](/Users/you/programming/hackathon/contracts/MockERC20.sol#L36)
 
 ## Related Docs
 

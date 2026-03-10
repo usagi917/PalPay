@@ -23,7 +23,7 @@ contract MilestoneEscrowV6Test is EscrowFixture {
         escrow.cancel();
 
         assertEq(uint256(uint8(escrow.getStatusEnum())), uint256(uint8(MilestoneEscrowV6.Status.OPEN)), "status should reopen");
-        assertEq(factory.ownerOf(tokenId), PRODUCER, "producer should recover the NFT");
+        assertEq(factory.ownerOf(tokenId), escrowAddress, "escrow should recover the NFT");
         assertEq(token.balanceOf(BUYER), TOTAL_AMOUNT * 2, "buyer should be fully refunded");
     }
 

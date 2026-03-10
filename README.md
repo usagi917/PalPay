@@ -59,7 +59,7 @@ sequenceDiagram
 ```
 
 補足:
-- `cancel()` は `locked` 中のみ購入者が実行でき、全額返金後にNFTは producer へ戻り、listing は `open` に戻ります。
+- `cancel()` は `locked` 中のみ購入者が実行でき、全額返金後にNFTは escrow 保管へ戻り、listing は `open` に戻ります。
 - `locked` で 14 日を過ぎた場合は `activateAfterTimeout()` で `active` に進めます。
 - `requestFinalDelivery()` 後 14 日を過ぎた場合は `finalizeAfterTimeout()` で最終支払いを確定できます。
 
@@ -178,7 +178,7 @@ pnpm --dir apps/web dev
   - `active -> completed`
 - `cancel()`
   - `locked` 状態のみ購入者が実行可
-  - NFTを producer へ戻し、全額返金
+  - NFTを escrow 保管へ戻し、全額返金
   - `locked -> open`
 
 ### マイルストーン配分（BPS, 合計10000）
@@ -215,6 +215,61 @@ pnpm --dir apps/web lint
 ```bash
 forge build
 ```
+
+## Fuji Testnet Deploy
+
+`ListingFactoryV6` の constructor は `tokenAddress` と `baseURI` の2つです。[contracts/ListingFactoryV6.sol](/Users/you/programming/hackathon/contracts/ListingFactoryV6.sol#L441)
+
+`baseURI` には、NFTメタデータAPIを配信するWebアプリの公開URLを入れてください。たとえば `https://your-app.example.com` を指定すると、`tokenURI()` は `https://your-app.example.com/api/nft/<tokenId>` を返します。[contracts/ListingFactoryV6.sol](/Users/you/programming/hackathon/contracts/ListingFactoryV6.sol#L476)
+
+1. 環境変数を設定
+
+```bash
+export AVALANCHE_FUJI_RPC_URL="https://your-fuji-rpc"
+export PRIVATE_KEY="0x..."
+```
+
+2. 決済用ERC-20が未デプロイなら、テスト用トークンを先にデプロイ
+
+```bash
+export TOKEN_NAME="Mock JPYC"
+export TOKEN_SYMBOL="mJPYC"
+export TOKEN_DECIMALS="18"
+forge script script/DeployMockERC20.s.sol:DeployMockERC20 \
+  --rpc-url "$AVALANCHE_FUJI_RPC_URL" \
+  --broadcast
+```
+
+3. Factory をデプロイ
+
+```bash
+export TOKEN_ADDRESS="0xYourTokenAddress"
+export BASE_URI="https://your-app.example.com"
+forge script script/DeployListingFactoryV6.s.sol:DeployListingFactoryV6 \
+  --rpc-url "$AVALANCHE_FUJI_RPC_URL" \
+  --broadcast
+```
+
+4. フロント側の env を更新
+
+```bash
+cat > apps/web/.env.local <<'EOF'
+NEXT_PUBLIC_RPC_URL=https://your-fuji-rpc
+NEXT_PUBLIC_CHAIN_ID=43113
+NEXT_PUBLIC_FACTORY_ADDRESS=0xYourFactoryAddress
+NEXT_PUBLIC_TOKEN_ADDRESS=0xYourTokenAddress
+EOF
+```
+
+5. 起動して動作確認
+
+```bash
+pnpm --dir apps/web dev
+```
+
+補足:
+- コントラクトのデプロイアドレスは `broadcast/` 配下の実行結果か、`forge script` の出力から確認できます。
+- `MockERC20` は `mint()` が誰でも呼べるテスト用トークンです。本番相当の検証以外では使わないでください。[contracts/MockERC20.sol](/Users/you/programming/hackathon/contracts/MockERC20.sol#L36)
 
 ## 関連ドキュメント
 

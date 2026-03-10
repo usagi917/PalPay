@@ -73,6 +73,7 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
     error FinalConfirmationTimeoutNotReached();
     error FinalConfirmationTimeoutExpired();
     error InsufficientTokenReceived();
+    error InexactTokenTransfer();
     error InvalidNFTOwner();
     error FinalDeliveryAlreadyRequested();
 
@@ -135,13 +136,13 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
     /**
      * @notice Buyer purchases the listing
      * @dev Transfers the full token amount to escrow, then moves the NFT to the buyer.
-     *      The NFT may currently be held by the escrow (initial sale) or by the producer (after cancel/relist).
+     *      Open listings always keep the NFT in escrow custody.
      */
     function lock() external nonReentrant {
         if (status != Status.OPEN) revert InvalidState();
         if (msg.sender == producer) revert SelfPurchase();
         address currentOwner = IERC721(factory).ownerOf(tokenId);
-        if (currentOwner != address(this) && currentOwner != producer) revert InvalidNFTOwner();
+        if (currentOwner != address(this)) revert InvalidNFTOwner();
 
         uint256 balanceBefore = IERC20(tokenAddress).balanceOf(address(this));
         IERC20(tokenAddress).safeTransferFrom(msg.sender, address(this), totalAmount);
@@ -174,7 +175,7 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
 
     /**
      * @notice Buyer cancels the purchase and gets full refund
-     * @dev Only buyer, only when LOCKED, returns JPYC and NFT
+     * @dev Only buyer, only when LOCKED, returns funds and restores escrow custody of the NFT
      */
     function cancel() external nonReentrant {
         if (msg.sender != buyer) revert Unauthorized();
@@ -184,8 +185,8 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
         address currentBuyer = buyer;
         if (IERC721(factory).ownerOf(tokenId) != currentBuyer) revert InvalidNFTOwner();
 
-        IERC20(tokenAddress).safeTransfer(currentBuyer, totalAmount);
-        IERC721(factory).safeTransferFrom(currentBuyer, producer, tokenId);
+        _safeTransferExact(currentBuyer, totalAmount);
+        IERC721(factory).safeTransferFrom(currentBuyer, address(this), tokenId);
 
         buyer = address(0);
         status = Status.OPEN;
@@ -227,7 +228,7 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
         uint256 amt = (totalAmount * milestones[i].bps) / BPS_DENOMINATOR;
         releasedAmount += amt;
 
-        IERC20(tokenAddress).safeTransfer(producer, amt);
+        _safeTransferExact(producer, amt);
         emit Completed(i, amt, _evidenceHash);
     }
 
@@ -302,7 +303,14 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
         finalRequestedAt = 0;
         finalEvidenceHash = bytes32(0);
 
-        IERC20(tokenAddress).safeTransfer(producer, amt);
+        _safeTransferExact(producer, amt);
+    }
+
+    function _safeTransferExact(address recipient, uint256 amount) internal {
+        uint256 balanceBefore = IERC20(tokenAddress).balanceOf(recipient);
+        IERC20(tokenAddress).safeTransfer(recipient, amount);
+        uint256 receivedAmount = IERC20(tokenAddress).balanceOf(recipient) - balanceBefore;
+        if (receivedAmount != amount) revert InexactTokenTransfer();
     }
 
     // View functions
@@ -474,9 +482,8 @@ contract ListingFactoryV6 is ERC721 {
      * @dev Restrict secondary transfers to escrow-driven moves only.
      * Allowed flows:
      *  - mint: 0x0 -> escrow
-     *  - initial lock: escrow -> buyer
-     *  - cancel: buyer -> producer
-     *  - relock after cancel: producer -> buyer
+     *  - lock / relock: escrow -> buyer
+     *  - cancel: buyer -> escrow
      */
     function _update(address to, uint256 tokenId, address auth) internal override returns (address) {
         address from = _ownerOf(tokenId);
@@ -489,7 +496,7 @@ contract ListingFactoryV6 is ERC721 {
 
     /**
      * @dev Allow each escrow contract to move only its corresponding NFT.
-     * This enables cancel() to return the NFT without a separate buyer approval transaction.
+     * This enables lock()/cancel() flows without a separate owner approval transaction.
      */
     function _isAuthorized(address owner, address spender, uint256 tokenId) internal view override returns (bool) {
         address escrow = tokenIdToEscrow[tokenId];
