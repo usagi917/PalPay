@@ -5,7 +5,7 @@ import { type Address, type Hash } from "viem";
 import { createClient, createWallet, config, ensureWalletChain, getMetaMaskProvider } from "../config";
 import { FACTORY_ABI, ESCROW_ABI } from "../abi";
 import { formatTxError } from "../tx";
-import type { ListingSummary } from "../types";
+import type { EscrowStatus, ListingSummary } from "../types";
 
 export function useListings() {
   const [listings, setListings] = useState<Address[]>([]);
@@ -101,7 +101,7 @@ export function useListingSummaries() {
               title,
               description,
               imageURI,
-              status: status as "open" | "locked" | "active" | "completed",
+              status: status as EscrowStatus,
               progress: {
                 completed: Number(progress[0]),
                 total: Number(progress[1]),

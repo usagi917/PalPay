@@ -1,5 +1,6 @@
 import { type Address, formatUnits } from "viem";
 import { FACTORY_ABI, ESCROW_ABI } from "@/lib/abi";
+import type { EscrowStatus } from "@/lib/types";
 import { MILESTONE_NAMES } from "@/lib/constants";
 import { createClient } from "@/lib/config";
 import {
@@ -65,7 +66,7 @@ async function readEscrowSummary(
     producer,
     buyer,
     totalAmount: formatUnits(totalAmount, 18),
-    status: statusStr.toLowerCase(),
+    status: statusStr.toLowerCase() as EscrowStatus,
     cancelCount: Number(cancelCount),
     category: category.toLowerCase(),
     title,

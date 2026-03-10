@@ -1,5 +1,6 @@
 import type { Address } from "viem";
 import type { Locale } from "@/lib/locale";
+import type { EscrowStatus } from "@/lib/types";
 
 // Agent state machine
 export type AgentState =
@@ -142,7 +143,7 @@ export interface ListingSummaryForAgent {
   producer: Address;
   buyer: Address;
   totalAmount: string;
-  status: string;
+  status: EscrowStatus;
   cancelCount: number;
   category: string;
   title: string;

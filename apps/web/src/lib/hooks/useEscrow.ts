@@ -6,7 +6,7 @@ import { createClient, createWallet, config, ensureWalletChain, getMetaMaskProvi
 import { ESCROW_ABI, ERC20_ABI } from "../abi";
 import { getMilestoneName } from "../constants";
 import { formatTxError, writeContractWithGasFallback } from "../tx";
-import type { EscrowInfo, Milestone, TimelineEvent } from "../types";
+import type { EscrowInfo, EscrowStatus, Milestone, TimelineEvent } from "../types";
 
 export function useEscrowInfo(escrowAddress: Address | null) {
   const [info, setInfo] = useState<EscrowInfo | null>(null);
@@ -122,7 +122,7 @@ export function useEscrowInfo(escrowAddress: Address | null) {
         title,
         description,
         imageURI,
-        status: status as "open" | "locked" | "active" | "completed",
+        status: status as EscrowStatus,
       });
     } catch (err) {
       if (requestIdRef.current !== requestId) {

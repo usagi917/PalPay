@@ -185,15 +185,17 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
         address currentBuyer = buyer;
         if (IERC721(factory).ownerOf(tokenId) != currentBuyer) revert InvalidNFTOwner();
 
-        _safeTransferExact(currentBuyer, totalAmount);
-        IERC721(factory).safeTransferFrom(currentBuyer, address(this), tokenId);
-
+        // Effects first (CEI pattern)
         buyer = address(0);
         status = Status.OPEN;
         lockedAt = 0;
         finalRequestedAt = 0;
         finalEvidenceHash = bytes32(0);
         cancelCount += 1;
+
+        // Interactions last
+        _safeTransferExact(currentBuyer, totalAmount);
+        IERC721(factory).safeTransferFrom(currentBuyer, address(this), tokenId);
 
         emit Cancelled(currentBuyer, totalAmount);
     }
@@ -214,7 +216,7 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
         if (msg.sender != producer) revert Unauthorized();
         if (status != Status.ACTIVE) revert InvalidState();
 
-        // Cannot submit last milestone - use confirmDelivery instead
+        // Cannot submit last milestone - use requestFinalDelivery() then confirmDelivery()
         if (i >= milestones.length - 1) revert InvalidMilestoneIndex();
         if (milestones[i].completed) revert InvalidState();
 
@@ -310,7 +312,7 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
         uint256 balanceBefore = IERC20(tokenAddress).balanceOf(recipient);
         IERC20(tokenAddress).safeTransfer(recipient, amount);
         uint256 receivedAmount = IERC20(tokenAddress).balanceOf(recipient) - balanceBefore;
-        if (receivedAmount != amount) revert InexactTokenTransfer();
+        if (receivedAmount < amount) revert InexactTokenTransfer();
     }
 
     // View functions

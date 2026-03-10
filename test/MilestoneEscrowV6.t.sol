@@ -131,6 +131,65 @@ contract MilestoneEscrowV6Test is EscrowFixture {
         assertEq(escrow.getEvidenceHash(lastIndex), finalEvidenceHash, "stored evidence should match the producer request");
     }
 
+    function testSubmitRevertsWhenCalledByNonProducer() public {
+        _lockAs(BUYER);
+        _approveLockedAsBuyer();
+
+        vm.expectRevert(MilestoneEscrowV6.Unauthorized.selector);
+        vm.prank(BUYER);
+        escrow.submit(0, keccak256("evidence"));
+
+        vm.expectRevert(MilestoneEscrowV6.Unauthorized.selector);
+        vm.prank(STRANGER);
+        escrow.submit(0, keccak256("evidence"));
+    }
+
+    function testRequestFinalDeliveryRevertsWhenCalledByNonProducer() public {
+        _lockAs(BUYER);
+        _approveLockedAsBuyer();
+        _completeNonFinalMilestones();
+
+        vm.expectRevert(MilestoneEscrowV6.Unauthorized.selector);
+        vm.prank(BUYER);
+        escrow.requestFinalDelivery(keccak256("final"));
+    }
+
+    function testConfirmDeliveryRevertsWhenCalledByNonBuyer() public {
+        _lockAs(BUYER);
+        _approveLockedAsBuyer();
+        _completeNonFinalMilestones();
+        _requestFinalDelivery(keccak256("final"));
+
+        vm.expectRevert(MilestoneEscrowV6.Unauthorized.selector);
+        vm.prank(PRODUCER);
+        escrow.confirmDelivery();
+
+        vm.expectRevert(MilestoneEscrowV6.Unauthorized.selector);
+        vm.prank(STRANGER);
+        escrow.confirmDelivery();
+    }
+
+    function testFinalizeAfterTimeoutRevertsBeforeDeadline() public {
+        _lockAs(BUYER);
+        _approveLockedAsBuyer();
+        _completeNonFinalMilestones();
+        _requestFinalDelivery(keccak256("final"));
+
+        vm.warp(escrow.finalRequestedAt() + escrow.FINAL_CONFIRM_TIMEOUT() - 1);
+
+        vm.expectRevert(MilestoneEscrowV6.FinalConfirmationTimeoutNotReached.selector);
+        vm.prank(STRANGER);
+        escrow.finalizeAfterTimeout();
+    }
+
+    function testLockRevertsOnSelfPurchase() public {
+        _mintAndApprove(PRODUCER, TOTAL_AMOUNT * 2);
+
+        vm.expectRevert(MilestoneEscrowV6.SelfPurchase.selector);
+        vm.prank(PRODUCER);
+        escrow.lock();
+    }
+
     function testGetCoreIncludesCancelCount() public {
         _lockAs(BUYER);
 

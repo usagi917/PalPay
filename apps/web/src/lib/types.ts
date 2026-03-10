@@ -1,5 +1,7 @@
 import type { Address, Hash } from "viem";
 
+export type EscrowStatus = "open" | "locked" | "active" | "completed";
+
 // v2: Milestone (code-based for contract size optimization)
 export interface Milestone {
   code: number;
@@ -30,7 +32,7 @@ export interface EscrowInfo {
   title: string;
   description: string;
   imageURI: string;
-  status: "open" | "locked" | "active" | "completed";
+  status: EscrowStatus;
 }
 
 // V6: Listing summary (for list display)
@@ -47,7 +49,7 @@ export interface ListingSummary {
   title: string;
   description: string;
   imageURI: string;
-  status: "open" | "locked" | "active" | "completed";
+  status: EscrowStatus;
   progress: {
     completed: number;
     total: number;

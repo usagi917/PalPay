@@ -21,14 +21,13 @@ import { formatAmount } from "@/lib/hooks";
 import type { TxStep } from "@/lib/hooks";
 import type { Locale } from "@/lib/i18n";
 import type { EscrowInfo, Milestone, UserRole } from "@/lib/types";
-import type { Address, Hash } from "viem";
+import type { Hash } from "viem";
 
 export interface ActionCardProps {
   info: EscrowInfo;
   locale: Locale;
   decimals: number;
   symbol: string;
-  nftOwner: Address | null;
   userRole: UserRole;
   txStep: TxStep;
   txHash: Hash | null;
@@ -54,7 +53,6 @@ export function ActionCard({
   locale,
   decimals,
   symbol,
-  nftOwner,
   userRole,
   txStep,
   txHash,
@@ -82,9 +80,7 @@ export function ActionCard({
   const lockExpired = info.lockDeadline !== null && nowSec >= info.lockDeadline;
   const finalRequested = info.finalRequestedAt > 0n;
   const finalExpired = info.finalConfirmationDeadline !== null && nowSec >= info.finalConfirmationDeadline;
-  const relistReady = info.status === "open"
-    && nftOwner !== null
-    && nftOwner.toLowerCase() === info.producer.toLowerCase();
+  const relistReady = info.status === "open" && info.cancelCount > 0n;
 
   useEffect(() => {
     const timer = setInterval(() => {

@@ -254,7 +254,6 @@ export default function ListingDetailPage() {
                         locale={locale}
                         decimals={decimals}
                         symbol={symbol}
-                        nftOwner={nftOwner}
                         userRole={userRole}
                         txStep={txStep}
                         txHash={txHash}
