@@ -50,23 +50,27 @@ sequenceDiagram
         E-->>S: Partial payout (ERC-20)
     end
 
-    B->>W: 5. Confirm final delivery
-    W->>E: confirmDelivery(evidenceHash)
+    S->>W: 5. Request final delivery
+    W->>E: requestFinalDelivery(evidenceHash)
+    B->>W: 6. Confirm final delivery
+    W->>E: confirmDelivery()
     E-->>S: Remaining payout (ERC-20)
     Note right of E: active → completed
 ```
 
 Notes:
-- `cancel()` is buyer-only in `locked`, and refunds the full amount.
+- `cancel()` is buyer-only in `locked`, refunds the full amount, returns the NFT to escrow custody, and reopens the listing.
+- After 14 days in `locked`, anyone can call `activateAfterTimeout()` to move the listing to `active`.
+- After 14 days from `requestFinalDelivery()`, anyone can call `finalizeAfterTimeout()` to release the remaining payout.
 
 ## Key Features
 
 - Deploys a dedicated `MilestoneEscrowV6` per listing and mints a linked NFT
 - State transitions
   - `open -> locked -> active -> completed`
-  - `locked -> cancelled`
-- Buyer deposits ERC-20 via `lock()`, then starts milestone flow with `approve()`
-- Producer reports intermediate milestones via `submit()`; buyer finalizes with `confirmDelivery()`
+  - `locked -> open` (via `cancel()`, ready for relisting)
+- Buyer deposits ERC-20 via `lock()`, then starts milestone flow with `approve()` or `activateAfterTimeout()`
+- Producer reports intermediate milestones via `submit()`; the final step uses `requestFinalDelivery()` -> `confirmDelivery()` / `finalizeAfterTimeout()`
 - Listing detail page renders on-chain event timeline
 - NFT APIs
   - `GET /api/nft/:tokenId` (metadata)
@@ -157,17 +161,25 @@ Config file: `apps/web/.env.local`
   - NFT moves to buyer
   - `open -> locked`
 - `approve()`
-  - Buyer starts the transaction
+  - Buyer starts the transaction within the review window
+  - `locked -> active`
+- `activateAfterTimeout()`
+  - Callable by anyone after 14 days in `locked`
   - `locked -> active`
 - `submit(index, evidenceHash)`
   - Producer reports intermediate milestone completion
-- `confirmDelivery(evidenceHash)`
-  - Buyer confirms final receipt (releases remaining amount)
+- `requestFinalDelivery(evidenceHash)`
+  - Producer starts the buyer confirmation window for the final delivery
+- `confirmDelivery()`
+  - Buyer confirms final receipt before the deadline
+  - `active -> completed`
+- `finalizeAfterTimeout()`
+  - Callable by anyone after the final confirmation deadline
   - `active -> completed`
 - `cancel()`
   - Buyer-only in `locked`
-  - Returns NFT to escrow and refunds full amount
-  - `locked -> cancelled`
+  - Returns NFT to escrow custody and refunds full amount
+  - `locked -> open`
 
 ### Milestone Distribution (BPS, total = 10000)
 
@@ -203,6 +215,61 @@ Contracts (optional):
 ```bash
 forge build
 ```
+
+## Fuji Testnet Deployment
+
+`ListingFactoryV6` takes two constructor arguments: `tokenAddress` and `baseURI`.[contracts/ListingFactoryV6.sol](/Users/you/programming/hackathon/contracts/ListingFactoryV6.sol#L441)
+
+Use the public web app URL for `baseURI`. For example, if you set `BASE_URI=https://your-app.example.com`, `tokenURI()` will resolve to `https://your-app.example.com/api/nft/<tokenId>`.[contracts/ListingFactoryV6.sol](/Users/you/programming/hackathon/contracts/ListingFactoryV6.sol#L476)
+
+1. Set environment variables
+
+```bash
+export AVALANCHE_FUJI_RPC_URL="https://your-fuji-rpc"
+export PRIVATE_KEY="0x..."
+```
+
+2. If you do not already have a settlement ERC-20 on Fuji, deploy the test token first
+
+```bash
+export TOKEN_NAME="Mock JPYC"
+export TOKEN_SYMBOL="mJPYC"
+export TOKEN_DECIMALS="18"
+forge script script/DeployMockERC20.s.sol:DeployMockERC20 \
+  --rpc-url "$AVALANCHE_FUJI_RPC_URL" \
+  --broadcast
+```
+
+3. Deploy the factory
+
+```bash
+export TOKEN_ADDRESS="0xYourTokenAddress"
+export BASE_URI="https://your-app.example.com"
+forge script script/DeployListingFactoryV6.s.sol:DeployListingFactoryV6 \
+  --rpc-url "$AVALANCHE_FUJI_RPC_URL" \
+  --broadcast
+```
+
+4. Update the web app env
+
+```bash
+cat > apps/web/.env.local <<'EOF'
+NEXT_PUBLIC_RPC_URL=https://your-fuji-rpc
+NEXT_PUBLIC_CHAIN_ID=43113
+NEXT_PUBLIC_FACTORY_ADDRESS=0xYourFactoryAddress
+NEXT_PUBLIC_TOKEN_ADDRESS=0xYourTokenAddress
+EOF
+```
+
+5. Start the app and verify the flow
+
+```bash
+pnpm --dir apps/web dev
+```
+
+Notes:
+- The deployed addresses are available in the `broadcast/` output or directly in the `forge script` logs.
+- `MockERC20` is a test token with a public `mint()` function. Do not use it for production-like validation.[contracts/MockERC20.sol](/Users/you/programming/hackathon/contracts/MockERC20.sol#L36)
 
 ## Related Docs
 

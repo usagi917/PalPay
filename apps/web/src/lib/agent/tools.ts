@@ -1,5 +1,6 @@
 import { type Address, formatUnits } from "viem";
 import { FACTORY_ABI, ESCROW_ABI } from "@/lib/abi";
+import type { EscrowStatus } from "@/lib/types";
 import { MILESTONE_NAMES } from "@/lib/constants";
 import { createClient } from "@/lib/config";
 import {
@@ -42,7 +43,7 @@ async function readEscrowSummary(
       address: escrowAddress,
       abi: ESCROW_ABI,
       functionName: "getCore",
-    }) as Promise<[Address, Address, Address, Address, bigint, bigint, bigint, number]>,
+    }) as Promise<[Address, Address, Address, Address, bigint, bigint, bigint, number, bigint]>,
     client.readContract({
       address: escrowAddress,
       abi: ESCROW_ABI,
@@ -55,7 +56,7 @@ async function readEscrowSummary(
     }) as Promise<[bigint, bigint]>,
   ]);
 
-  const [, , producer, buyer, tokenId, totalAmount] = core;
+  const [, , producer, buyer, tokenId, totalAmount, , , cancelCount] = core;
   const [category, title, description, imageURI, statusStr] = meta;
   const [completed, total] = progress;
 
@@ -65,7 +66,8 @@ async function readEscrowSummary(
     producer,
     buyer,
     totalAmount: formatUnits(totalAmount, 18),
-    status: statusStr.toLowerCase(),
+    status: statusStr.toLowerCase() as EscrowStatus,
+    cancelCount: Number(cancelCount),
     category: category.toLowerCase(),
     title,
     description,
@@ -233,8 +235,11 @@ const VALID_TX_ACTIONS = new Set<TxPrepareResult["action"]>([
   "createListing",
   "lock",
   "approve",
+  "activateAfterTimeout",
   "cancel",
+  "requestFinalDelivery",
   "confirmDelivery",
+  "finalizeAfterTimeout",
 ]);
 
 export function prepareTransaction(params: {
@@ -281,10 +286,21 @@ export function prepareTransaction(params: {
       break;
 
     case "approve":
+    case "activateAfterTimeout":
     case "cancel":
     case "confirmDelivery":
+    case "finalizeAfterTimeout":
       if (result.escrowAddress) {
         result.params = { escrowAddress: result.escrowAddress };
+      }
+      break;
+
+    case "requestFinalDelivery":
+      if (result.escrowAddress) {
+        result.params = {
+          escrowAddress: result.escrowAddress,
+          evidenceHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
+        };
       }
       break;
   }
@@ -392,7 +408,7 @@ export async function assessRisk(params: {
     );
 
     const completed = producerListings.filter((l) => l.status === "completed").length;
-    const cancelled = producerListings.filter((l) => l.status === "cancelled").length;
+    const cancelled = producerListings.reduce((sum, listing) => sum + listing.cancelCount, 0);
     const active = producerListings.filter((l) => l.status === "active").length;
     const total = producerListings.length;
 
@@ -500,8 +516,10 @@ export async function suggestNextAction(params: {
         const isLast = l.progress.completed === l.progress.total - 1;
         actions.push({
           priority: "high",
-          action: isLast ? "最終マイルストーン - 購入者の確認を待つ" : "マイルストーン完了報告",
-          description: `「${l.title}」の次のマイルストーンを報告できます（${l.progress.completed}/${l.progress.total}完了）`,
+          action: isLast ? "最終工程対応" : "マイルストーン完了報告",
+          description: isLast
+            ? `「${l.title}」は最終工程です。最終納品申請または確認待ち状況を確認してください`
+            : `「${l.title}」の次のマイルストーンを報告できます（${l.progress.completed}/${l.progress.total}完了）`,
           escrowAddress: l.escrowAddress,
           title: l.title,
         });
@@ -531,8 +549,8 @@ export async function suggestNextAction(params: {
       if (l.status === "active" && l.progress.completed === l.progress.total - 1) {
         actions.push({
           priority: "high",
-          action: "納品確認が必要",
-          description: `「${l.title}」の最終マイルストーンの納品確認をしてください`,
+          action: "最終工程の確認",
+          description: `「${l.title}」は最終工程です。最終納品申請の有無と受取確認要否を確認してください`,
           escrowAddress: l.escrowAddress,
           title: l.title,
         });

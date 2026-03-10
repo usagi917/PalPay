@@ -50,23 +50,27 @@ sequenceDiagram
         E-->>S: 分割払い（ERC-20）
     end
 
-    B->>W: 5. 最終受領を確認
-    W->>E: confirmDelivery(evidenceHash)
+    S->>W: 5. 最終納品を申請
+    W->>E: requestFinalDelivery(evidenceHash)
+    B->>W: 6. 最終受領を確認
+    W->>E: confirmDelivery()
     E-->>S: 残額支払い（ERC-20）
     Note right of E: active → completed
 ```
 
 補足:
-- `cancel()` は `locked` 中のみ購入者が実行でき、全額返金されます。
+- `cancel()` は `locked` 中のみ購入者が実行でき、全額返金後にNFTは escrow 保管へ戻り、listing は `open` に戻ります。
+- `locked` で 14 日を過ぎた場合は `activateAfterTimeout()` で `active` に進めます。
+- `requestFinalDelivery()` 後 14 日を過ぎた場合は `finalizeAfterTimeout()` で最終支払いを確定できます。
 
 ## 主な機能
 
 - 出品ごとに `MilestoneEscrowV6` を新規デプロイし、対応NFTを発行
 - ステータス遷移
   - `open -> locked -> active -> completed`
-  - `locked -> cancelled`
-- `lock()` で購入者がERC-20を預け入れ、`approve()` 後に工程支払いを開始
-- 出品者が中間マイルストーンを `submit()`、最終工程は購入者が `confirmDelivery()`
+  - `locked -> open`（`cancel()` で再販可能に復帰）
+- `lock()` で購入者がERC-20を預け入れ、`approve()` または `activateAfterTimeout()` 後に工程支払いを開始
+- 出品者が中間マイルストーンを `submit()`、最終工程は `requestFinalDelivery()` -> `confirmDelivery()` / `finalizeAfterTimeout()`
 - 出品詳細ページに取引タイムライン（オンチェーンイベント）を表示
 - NFT API
   - `GET /api/nft/:tokenId`（メタデータ）
@@ -157,17 +161,25 @@ pnpm --dir apps/web dev
   - NFTが購入者へ移転
   - `open -> locked`
 - `approve()`
-  - 購入者が取引開始
+  - 購入者が期限内に取引開始
+  - `locked -> active`
+- `activateAfterTimeout()`
+  - `locked` から 14 日経過後に誰でも実行可
   - `locked -> active`
 - `submit(index, evidenceHash)`
   - 出品者が中間工程を完了報告
-- `confirmDelivery(evidenceHash)`
-  - 購入者が最終受領確認（残額支払い）
+- `requestFinalDelivery(evidenceHash)`
+  - 出品者が最終納品を申請し、購入者確認の期限を開始
+- `confirmDelivery()`
+  - 購入者が期限内に最終受領確認（残額支払い）
+  - `active -> completed`
+- `finalizeAfterTimeout()`
+  - 最終確認期限経過後に誰でも実行可
   - `active -> completed`
 - `cancel()`
   - `locked` 状態のみ購入者が実行可
-  - NFTをEscrowへ戻し、全額返金
-  - `locked -> cancelled`
+  - NFTを escrow 保管へ戻し、全額返金
+  - `locked -> open`
 
 ### マイルストーン配分（BPS, 合計10000）
 
@@ -203,6 +215,61 @@ pnpm --dir apps/web lint
 ```bash
 forge build
 ```
+
+## Fuji Testnet Deploy
+
+`ListingFactoryV6` の constructor は `tokenAddress` と `baseURI` の2つです。[contracts/ListingFactoryV6.sol](/Users/you/programming/hackathon/contracts/ListingFactoryV6.sol#L441)
+
+`baseURI` には、NFTメタデータAPIを配信するWebアプリの公開URLを入れてください。たとえば `https://your-app.example.com` を指定すると、`tokenURI()` は `https://your-app.example.com/api/nft/<tokenId>` を返します。[contracts/ListingFactoryV6.sol](/Users/you/programming/hackathon/contracts/ListingFactoryV6.sol#L476)
+
+1. 環境変数を設定
+
+```bash
+export AVALANCHE_FUJI_RPC_URL="https://your-fuji-rpc"
+export PRIVATE_KEY="0x..."
+```
+
+2. 決済用ERC-20が未デプロイなら、テスト用トークンを先にデプロイ
+
+```bash
+export TOKEN_NAME="Mock JPYC"
+export TOKEN_SYMBOL="mJPYC"
+export TOKEN_DECIMALS="18"
+forge script script/DeployMockERC20.s.sol:DeployMockERC20 \
+  --rpc-url "$AVALANCHE_FUJI_RPC_URL" \
+  --broadcast
+```
+
+3. Factory をデプロイ
+
+```bash
+export TOKEN_ADDRESS="0xYourTokenAddress"
+export BASE_URI="https://your-app.example.com"
+forge script script/DeployListingFactoryV6.s.sol:DeployListingFactoryV6 \
+  --rpc-url "$AVALANCHE_FUJI_RPC_URL" \
+  --broadcast
+```
+
+4. フロント側の env を更新
+
+```bash
+cat > apps/web/.env.local <<'EOF'
+NEXT_PUBLIC_RPC_URL=https://your-fuji-rpc
+NEXT_PUBLIC_CHAIN_ID=43113
+NEXT_PUBLIC_FACTORY_ADDRESS=0xYourFactoryAddress
+NEXT_PUBLIC_TOKEN_ADDRESS=0xYourTokenAddress
+EOF
+```
+
+5. 起動して動作確認
+
+```bash
+pnpm --dir apps/web dev
+```
+
+補足:
+- コントラクトのデプロイアドレスは `broadcast/` 配下の実行結果か、`forge script` の出力から確認できます。
+- `MockERC20` は `mint()` が誰でも呼べるテスト用トークンです。本番相当の検証以外では使わないでください。[contracts/MockERC20.sol](/Users/you/programming/hackathon/contracts/MockERC20.sol#L36)
 
 ## 関連ドキュメント
 

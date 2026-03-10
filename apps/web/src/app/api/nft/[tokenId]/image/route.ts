@@ -59,7 +59,7 @@ function generateSVG(
   const accentColor = "#f39c12";
   const successColor = "#27ae60";
   const pendingColor = "#3498db";
-  const cancelledColor = "#95a5a6";
+  const lockedColor = "#e67e22";
   const progressStart = "#d4af37";
   const progressEnd = "#f4d03f";
   const textColor = "#ecf0f1";
@@ -67,7 +67,7 @@ function generateSVG(
 
   const categoryLabel = CATEGORY_LABELS[category]?.en || category;
   const categoryEmoji = category === "wagyu" ? "🐂" : category === "sake" ? "🍶" : category === "craft" ? "🏺" : "📦";
-  const completedEmoji = status === "completed" ? "✨" : status === "cancelled" ? "❌" : "";
+  const completedEmoji = status === "completed" ? "✨" : "";
   const safeCategoryLabel = escapeSvgText(categoryLabel.toUpperCase());
   const safeTitle = escapeSvgText(title.length > 25 ? `${title.slice(0, 25)}...` : title);
   const safeTokenId = escapeSvgText(tokenId.padStart(3, "0"));
@@ -150,8 +150,8 @@ function generateSVG(
   <text x="210" y="165" font-size="50" text-anchor="middle">${categoryEmoji}${completedEmoji}</text>
 
   <!-- Status Badge -->
-  <rect x="130" y="185" width="160" height="28" rx="14" fill="${status === "completed" ? successColor : status === "active" ? accentColor : status === "cancelled" ? cancelledColor : pendingColor}30"/>
-  <text x="210" y="204" font-family="Arial, sans-serif" font-size="12" fill="${status === "completed" ? successColor : status === "active" ? accentColor : status === "cancelled" ? cancelledColor : pendingColor}" text-anchor="middle" font-weight="bold">
+  <rect x="130" y="185" width="160" height="28" rx="14" fill="${status === "completed" ? successColor : status === "active" ? accentColor : status === "locked" ? lockedColor : pendingColor}30"/>
+  <text x="210" y="204" font-family="Arial, sans-serif" font-size="12" fill="${status === "completed" ? successColor : status === "active" ? accentColor : status === "locked" ? lockedColor : pendingColor}" text-anchor="middle" font-weight="bold">
     ${safeStatus}
   </text>
 
@@ -245,7 +245,7 @@ export async function GET(
         functionName: "categoryType",
       }),
     ]) as readonly [
-      readonly [Address, Address, Address, Address, bigint, bigint, bigint, number],
+      readonly [Address, Address, Address, Address, bigint, bigint, bigint, number, bigint],
       readonly [string, string, string, string, string],
       ReadonlyArray<{ bps: bigint | number; completed: boolean }>,
       number

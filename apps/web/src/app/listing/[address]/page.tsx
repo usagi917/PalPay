@@ -83,10 +83,21 @@ export default function ListingDetailPage() {
     router.refresh();
   }, [refetchInfo, refetchMilestones, refetchEvents, purchaseValidation, router]);
 
-  const { lock, submit, approve, cancel, confirmDelivery, isLoading: actionLoading, error: actionError, txHash, txStep, resetState } = useEscrowActions(
-    escrowAddress,
-    handleSuccess
-  );
+  const {
+    lock,
+    submit,
+    approve,
+    activateAfterTimeout,
+    cancel,
+    requestFinalDelivery,
+    confirmDelivery,
+    finalizeAfterTimeout,
+    isLoading: actionLoading,
+    error: actionError,
+    txHash,
+    txStep,
+    resetState,
+  } = useEscrowActions(escrowAddress, handleSuccess);
 
   // 成功後に3秒で自動リセット
   useEffect(() => {
@@ -256,8 +267,11 @@ export default function ListingDetailPage() {
                         onLock={handleLock}
                         onSubmit={handleSubmit}
                         onApprove={approve}
+                        onActivateAfterTimeout={activateAfterTimeout}
                         onCancel={() => setCancelDialogOpen(true)}
+                        onRequestFinalDelivery={requestFinalDelivery}
                         onConfirmDelivery={confirmDelivery}
+                        onFinalizeAfterTimeout={finalizeAfterTimeout}
                       />
                     )}
 

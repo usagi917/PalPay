@@ -48,15 +48,30 @@ export function TxConfirmPanel({
       icon: <CheckCircleIcon />,
       description: t("agentActionApproveDescription"),
     },
+    activateAfterTimeout: {
+      label: t("agentActionActivateAfterTimeout"),
+      icon: <CheckCircleIcon />,
+      description: t("agentActionActivateAfterTimeoutDescription"),
+    },
     cancel: {
       label: t("agentActionCancel"),
       icon: <CancelIcon />,
       description: t("agentActionCancelDescription"),
     },
+    requestFinalDelivery: {
+      label: t("agentActionRequestFinalDelivery"),
+      icon: <CheckCircleIcon />,
+      description: t("agentActionRequestFinalDeliveryDescription"),
+    },
     confirmDelivery: {
       label: t("agentActionConfirmDelivery"),
       icon: <CheckCircleIcon />,
       description: t("agentActionConfirmDeliveryDescription"),
+    },
+    finalizeAfterTimeout: {
+      label: t("agentActionFinalizeAfterTimeout"),
+      icon: <CheckCircleIcon />,
+      description: t("agentActionFinalizeAfterTimeoutDescription"),
     },
   };
 

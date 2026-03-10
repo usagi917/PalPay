@@ -1,5 +1,6 @@
 import type { Address } from "viem";
 import type { Locale } from "@/lib/locale";
+import type { EscrowStatus } from "@/lib/types";
 
 // Agent state machine
 export type AgentState =
@@ -41,7 +42,15 @@ export interface ListingDraft {
 
 // Transaction preparation result
 export interface TxPrepareResult {
-  action: "createListing" | "lock" | "approve" | "cancel" | "confirmDelivery";
+  action:
+    | "createListing"
+    | "lock"
+    | "approve"
+    | "activateAfterTimeout"
+    | "cancel"
+    | "requestFinalDelivery"
+    | "confirmDelivery"
+    | "finalizeAfterTimeout";
   escrowAddress?: Address;
   params?: Record<string, unknown>;
   estimatedGas?: string;
@@ -134,7 +143,8 @@ export interface ListingSummaryForAgent {
   producer: Address;
   buyer: Address;
   totalAmount: string;
-  status: string;
+  status: EscrowStatus;
+  cancelCount: number;
   category: string;
   title: string;
   description: string;

@@ -40,8 +40,8 @@ export function canAccessChat(
 ): boolean {
   if (!userAddress || !info) return false;
 
-  // Must be paid (not OPEN, not CANCELLED)
-  if (info.status === "open" || info.status === "cancelled") return false;
+  // Must be paid (OPEN listings are not yet in a buyer/producer chat flow)
+  if (info.status === "open") return false;
 
   const lower = userAddress.toLowerCase();
 

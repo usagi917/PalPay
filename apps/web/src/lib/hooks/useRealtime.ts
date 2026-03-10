@@ -109,11 +109,8 @@ export function useMyListings(address: Address | null) {
       buyerActive: buyer.filter((s) => s.status === "active").length,
       buyerCompleted: buyer.filter((s) => s.status === "completed").length,
       totalEarned: producer
-        .filter((s) => s.status !== "open" && s.status !== "locked")
         .reduce((sum, s) => sum + s.releasedAmount, 0n),
-      totalSpent: buyer
-        .filter((s) => s.status !== "cancelled")
-        .reduce((sum, s) => sum + s.totalAmount, 0n),
+      totalSpent: buyer.reduce((sum, s) => sum + s.totalAmount, 0n),
     };
   }, [myListings]);
 

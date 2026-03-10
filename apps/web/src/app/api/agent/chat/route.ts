@@ -119,10 +119,16 @@ function deriveNextInputHint(params: {
           return "支払いを確定する";
         case "approve":
           return "取引を開始する";
+        case "activateAfterTimeout":
+          return "期限後に取引開始する";
         case "cancel":
           return "キャンセルする";
+        case "requestFinalDelivery":
+          return "最終納品を申請する";
         case "confirmDelivery":
           return "受取りを確認する";
+        case "finalizeAfterTimeout":
+          return "期限後に最終確定する";
         default:
           return "確認して実行する";
       }
@@ -134,10 +140,16 @@ function deriveNextInputHint(params: {
         return "Confirm payment deposit";
       case "approve":
         return "Start this transaction";
+      case "activateAfterTimeout":
+        return "Activate after timeout";
       case "cancel":
         return "Cancel this transaction";
+      case "requestFinalDelivery":
+        return "Request final delivery";
       case "confirmDelivery":
         return "Confirm delivery receipt";
+      case "finalizeAfterTimeout":
+        return "Finalize after timeout";
       default:
         return "Confirm and execute";
     }
@@ -211,14 +223,29 @@ function deriveNextQuickActions(params: {
             { label: "取引を開始", message: "取引を開始して" },
             { label: "やめる", message: "一旦やめたい" },
           ];
+        case "activateAfterTimeout":
+          return [
+            { label: "期限後に開始", message: "期限後に取引開始して" },
+            { label: "やめる", message: "一旦やめたい" },
+          ];
         case "cancel":
           return [
             { label: "キャンセル", message: "キャンセルして" },
             { label: "やめる", message: "一旦やめたい" },
           ];
+        case "requestFinalDelivery":
+          return [
+            { label: "最終納品を申請", message: "最終納品を申請して" },
+            { label: "やめる", message: "一旦やめたい" },
+          ];
         case "confirmDelivery":
           return [
             { label: "受取確認", message: "受取りを確認して" },
+            { label: "やめる", message: "一旦やめたい" },
+          ];
+        case "finalizeAfterTimeout":
+          return [
+            { label: "期限後に最終確定", message: "期限後に最終確定して" },
             { label: "やめる", message: "一旦やめたい" },
           ];
         default:
@@ -244,14 +271,29 @@ function deriveNextQuickActions(params: {
           { label: "Start transaction", message: "Start this transaction." },
           { label: "Not now", message: "I want to pause for now." },
         ];
+      case "activateAfterTimeout":
+        return [
+          { label: "Activate now", message: "Activate this transaction after timeout." },
+          { label: "Not now", message: "I want to pause for now." },
+        ];
       case "cancel":
         return [
           { label: "Cancel", message: "Cancel this transaction." },
           { label: "Not now", message: "I want to pause for now." },
         ];
+      case "requestFinalDelivery":
+        return [
+          { label: "Request final delivery", message: "Request final delivery." },
+          { label: "Not now", message: "I want to pause for now." },
+        ];
       case "confirmDelivery":
         return [
           { label: "Confirm receipt", message: "Confirm delivery receipt." },
+          { label: "Not now", message: "I want to pause for now." },
+        ];
+      case "finalizeAfterTimeout":
+        return [
+          { label: "Finalize now", message: "Finalize this transaction after timeout." },
           { label: "Not now", message: "I want to pause for now." },
         ];
       default:
