@@ -58,6 +58,31 @@ contract NonReceiverProducer {
 }
 
 contract ListingFactoryV6Test is EscrowFixture {
+    uint256 internal constant OUTBOUND_FEE_BPS = 500;
+
+    function _createOutboundFeeEscrow() internal returns (OutboundFeeERC20 feeToken, MilestoneEscrowV6 feeEscrow) {
+        feeToken = new OutboundFeeERC20();
+        ListingFactoryV6 feeFactory = new ListingFactoryV6(address(feeToken), "https://example.test");
+
+        vm.prank(PRODUCER);
+        (address feeEscrowAddress,) =
+            feeFactory.createListing(CATEGORY_CRAFT, "Outbound Fee Listing", "Fee on payout", TOTAL_AMOUNT, "ipfs://outbound-fee");
+        feeEscrow = MilestoneEscrowV6(feeEscrowAddress);
+        feeToken.setFeeExemptRecipient(feeEscrowAddress);
+    }
+
+    function _lockOutboundFeeEscrow(OutboundFeeERC20 feeToken, MilestoneEscrowV6 feeEscrow) internal {
+        feeToken.mint(BUYER, TOTAL_AMOUNT * 2);
+        vm.startPrank(BUYER);
+        feeToken.approve(address(feeEscrow), type(uint256).max);
+        feeEscrow.lock();
+        vm.stopPrank();
+    }
+
+    function _netAfterOutboundFee(uint256 amount) internal pure returns (uint256) {
+        return amount - ((amount * OUTBOUND_FEE_BPS) / 10_000);
+    }
+
     function testCreateListingMintsNFTToEscrow() public view {
         assertEq(factory.ownerOf(tokenId), escrowAddress, "escrow should hold the NFT after creation");
         assertEq(factory.tokenIdToEscrow(tokenId), escrowAddress, "factory should map tokenId to escrow");
@@ -133,43 +158,83 @@ contract ListingFactoryV6Test is EscrowFixture {
     }
 
     function testCancelRevertsWhenTokenShortChangesRefund() public {
-        OutboundFeeERC20 feeToken = new OutboundFeeERC20();
-        ListingFactoryV6 feeFactory = new ListingFactoryV6(address(feeToken), "https://example.test");
+        (OutboundFeeERC20 feeToken, MilestoneEscrowV6 feeEscrow) = _createOutboundFeeEscrow();
 
-        vm.prank(PRODUCER);
-        (address feeEscrowAddress,) =
-            feeFactory.createListing(CATEGORY_CRAFT, "Outbound Fee Listing", "Fee on payout", TOTAL_AMOUNT, "ipfs://outbound-fee");
-        MilestoneEscrowV6 feeEscrow = MilestoneEscrowV6(feeEscrowAddress);
-        feeToken.setFeeExemptRecipient(feeEscrowAddress);
+        _lockOutboundFeeEscrow(feeToken, feeEscrow);
 
-        feeToken.mint(BUYER, TOTAL_AMOUNT * 2);
         vm.startPrank(BUYER);
-        feeToken.approve(address(feeEscrow), type(uint256).max);
-        feeEscrow.lock();
         vm.expectRevert(MilestoneEscrowV6.InexactTokenTransfer.selector);
         feeEscrow.cancel();
         vm.stopPrank();
     }
 
+    function testCancelAcceptingTransferFeeReopensListing() public {
+        (OutboundFeeERC20 feeToken, MilestoneEscrowV6 feeEscrow) = _createOutboundFeeEscrow();
+
+        _lockOutboundFeeEscrow(feeToken, feeEscrow);
+
+        vm.prank(BUYER);
+        feeEscrow.cancelAcceptingTransferFee();
+
+        uint256 expectedRefund = _netAfterOutboundFee(TOTAL_AMOUNT);
+        assertEq(uint256(uint8(feeEscrow.getStatusEnum())), uint256(uint8(MilestoneEscrowV6.Status.OPEN)), "status should reopen");
+        assertEq(feeToken.balanceOf(BUYER), TOTAL_AMOUNT + expectedRefund, "buyer should receive the net refund");
+        assertEq(feeToken.balanceOf(address(0xFEE)), TOTAL_AMOUNT - expectedRefund, "collector should receive the transfer fee");
+    }
+
     function testSubmitRevertsWhenTokenShortChangesProducerPayout() public {
-        OutboundFeeERC20 feeToken = new OutboundFeeERC20();
-        ListingFactoryV6 feeFactory = new ListingFactoryV6(address(feeToken), "https://example.test");
+        (OutboundFeeERC20 feeToken, MilestoneEscrowV6 feeEscrow) = _createOutboundFeeEscrow();
 
-        vm.prank(PRODUCER);
-        (address feeEscrowAddress,) =
-            feeFactory.createListing(CATEGORY_CRAFT, "Outbound Fee Listing", "Fee on payout", TOTAL_AMOUNT, "ipfs://outbound-fee");
-        MilestoneEscrowV6 feeEscrow = MilestoneEscrowV6(feeEscrowAddress);
-        feeToken.setFeeExemptRecipient(feeEscrowAddress);
+        _lockOutboundFeeEscrow(feeToken, feeEscrow);
 
-        feeToken.mint(BUYER, TOTAL_AMOUNT * 2);
-        vm.startPrank(BUYER);
-        feeToken.approve(address(feeEscrow), type(uint256).max);
-        feeEscrow.lock();
+        vm.prank(BUYER);
         feeEscrow.approve();
-        vm.stopPrank();
 
         vm.expectRevert(MilestoneEscrowV6.InexactTokenTransfer.selector);
         vm.prank(PRODUCER);
         feeEscrow.submit(0, keccak256("evidence"));
+    }
+
+    function testSubmitAcceptingTransferFeePaysNetAmount() public {
+        (OutboundFeeERC20 feeToken, MilestoneEscrowV6 feeEscrow) = _createOutboundFeeEscrow();
+
+        _lockOutboundFeeEscrow(feeToken, feeEscrow);
+
+        vm.prank(BUYER);
+        feeEscrow.approve();
+
+        vm.prank(PRODUCER);
+        feeEscrow.submitAcceptingTransferFee(0, keccak256("evidence"));
+
+        uint256 firstMilestoneAmount = TOTAL_AMOUNT / 10;
+        assertEq(feeToken.balanceOf(PRODUCER), _netAfterOutboundFee(firstMilestoneAmount), "producer should receive the net milestone payout");
+        assertEq(feeEscrow.releasedAmount(), firstMilestoneAmount, "released amount should track the full milestone amount");
+        assertEq(feeEscrow.nextMilestoneIndex(), 1, "next milestone should advance");
+    }
+
+    function testConfirmDeliveryAcceptingTransferFeeCompletesListing() public {
+        (OutboundFeeERC20 feeToken, MilestoneEscrowV6 feeEscrow) = _createOutboundFeeEscrow();
+        bytes32 finalEvidenceHash = keccak256("final-evidence");
+
+        _lockOutboundFeeEscrow(feeToken, feeEscrow);
+
+        vm.prank(BUYER);
+        feeEscrow.approve();
+
+        vm.startPrank(PRODUCER);
+        feeEscrow.submitAcceptingTransferFee(0, keccak256("evidence-0"));
+        feeEscrow.submitAcceptingTransferFee(1, keccak256("evidence-1"));
+        feeEscrow.submitAcceptingTransferFee(2, keccak256("evidence-2"));
+        feeEscrow.requestFinalDelivery(finalEvidenceHash);
+        vm.stopPrank();
+
+        vm.prank(BUYER);
+        feeEscrow.confirmDeliveryAcceptingTransferFee();
+
+        uint256 lastIndex = feeEscrow.getMilestoneCount() - 1;
+        assertEq(uint256(uint8(feeEscrow.getStatusEnum())), uint256(uint8(MilestoneEscrowV6.Status.COMPLETED)), "status should become completed");
+        assertEq(feeToken.balanceOf(PRODUCER), _netAfterOutboundFee(TOTAL_AMOUNT), "producer should receive the net total payout");
+        assertEq(feeEscrow.releasedAmount(), TOTAL_AMOUNT, "released amount should match the full listing amount");
+        assertEq(feeEscrow.getEvidenceHash(lastIndex), finalEvidenceHash, "final evidence should be stored");
     }
 }

@@ -54,6 +54,7 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
     event ActivatedAfterTimeout(address indexed caller, uint256 activatedAt);
     event FinalDeliveryRequested(bytes32 evidenceHash, uint256 deadline);
     event FinalizedAfterTimeout(address indexed caller, uint256 amount);
+    event TransferFeeAccepted(address indexed recipient, uint256 expectedAmount, uint256 actualAmount);
 
     error Unauthorized();
     error InvalidState();
@@ -178,6 +179,17 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
      * @dev Only buyer, only when LOCKED, returns funds and restores escrow custody of the NFT
      */
     function cancel() external nonReentrant {
+        _cancel(false);
+    }
+
+    /**
+     * @notice Buyer accepts a fee-on-transfer refund to reopen the listing
+     */
+    function cancelAcceptingTransferFee() external nonReentrant {
+        _cancel(true);
+    }
+
+    function _cancel(bool allowInexactTransfer) internal {
         if (msg.sender != buyer) revert Unauthorized();
         if (status != Status.LOCKED) revert InvalidState();
         if (block.timestamp >= lockedAt + LOCK_TIMEOUT) revert LockTimeoutExpired();
@@ -194,10 +206,10 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
         cancelCount += 1;
 
         // Interactions last
-        _safeTransferExact(currentBuyer, totalAmount);
+        uint256 refundedAmount = _transferOut(currentBuyer, totalAmount, allowInexactTransfer);
         IERC721(factory).safeTransferFrom(currentBuyer, address(this), tokenId);
 
-        emit Cancelled(currentBuyer, totalAmount);
+        emit Cancelled(currentBuyer, refundedAmount);
     }
 
     function activateAfterTimeout() external nonReentrant {
@@ -213,6 +225,17 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
      * @dev Only producer, only ACTIVE, must be sequential, last milestone uses requestFinalDelivery
      */
     function submit(uint256 i, bytes32 _evidenceHash) external nonReentrant {
+        _submit(i, _evidenceHash, false);
+    }
+
+    /**
+     * @notice Producer accepts a fee-on-transfer payout for a milestone
+     */
+    function submitAcceptingTransferFee(uint256 i, bytes32 _evidenceHash) external nonReentrant {
+        _submit(i, _evidenceHash, true);
+    }
+
+    function _submit(uint256 i, bytes32 _evidenceHash, bool allowInexactTransfer) internal {
         if (msg.sender != producer) revert Unauthorized();
         if (status != Status.ACTIVE) revert InvalidState();
 
@@ -230,7 +253,7 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
         uint256 amt = (totalAmount * milestones[i].bps) / BPS_DENOMINATOR;
         releasedAmount += amt;
 
-        _safeTransferExact(producer, amt);
+        _transferOut(producer, amt, allowInexactTransfer);
         emit Completed(i, amt, _evidenceHash);
     }
 
@@ -259,23 +282,45 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
      * @dev Only buyer, only ACTIVE, only after requestFinalDelivery(), before timeout expiry
      */
     function confirmDelivery() external nonReentrant {
+        _confirmDelivery(false);
+    }
+
+    /**
+     * @notice Buyer accepts a fee-on-transfer payout for the final milestone
+     */
+    function confirmDeliveryAcceptingTransferFee() external nonReentrant {
+        _confirmDelivery(true);
+    }
+
+    function _confirmDelivery(bool allowInexactTransfer) internal {
         if (msg.sender != buyer) revert Unauthorized();
         if (status != Status.ACTIVE) revert InvalidState();
         if (finalRequestedAt == 0) revert FinalConfirmationNotRequested();
         if (block.timestamp >= finalRequestedAt + FINAL_CONFIRM_TIMEOUT) revert FinalConfirmationTimeoutExpired();
 
-        (uint256 lastIndex, uint256 amt, bytes32 evidenceHash) = _completeFinalMilestone();
+        (uint256 lastIndex, uint256 amt, bytes32 evidenceHash) = _completeFinalMilestone(allowInexactTransfer);
 
         emit Completed(lastIndex, amt, evidenceHash);
         emit DeliveryConfirmed(buyer, amt);
     }
 
     function finalizeAfterTimeout() external nonReentrant {
+        _finalizeAfterTimeout(false);
+    }
+
+    /**
+     * @notice Anyone finalizes after timeout while accepting a fee-on-transfer payout
+     */
+    function finalizeAfterTimeoutAcceptingTransferFee() external nonReentrant {
+        _finalizeAfterTimeout(true);
+    }
+
+    function _finalizeAfterTimeout(bool allowInexactTransfer) internal {
         if (status != Status.ACTIVE) revert InvalidState();
         if (finalRequestedAt == 0) revert FinalConfirmationNotRequested();
         if (block.timestamp < finalRequestedAt + FINAL_CONFIRM_TIMEOUT) revert FinalConfirmationTimeoutNotReached();
 
-        (uint256 lastIndex, uint256 amt, bytes32 evidenceHash) = _completeFinalMilestone();
+        (uint256 lastIndex, uint256 amt, bytes32 evidenceHash) = _completeFinalMilestone(allowInexactTransfer);
 
         emit Completed(lastIndex, amt, evidenceHash);
         emit FinalizedAfterTimeout(msg.sender, amt);
@@ -288,7 +333,10 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
         return milestones.length;
     }
 
-    function _completeFinalMilestone() internal returns (uint256 lastIndex, uint256 amt, bytes32 evidenceHash) {
+    function _completeFinalMilestone(bool allowInexactTransfer)
+        internal
+        returns (uint256 lastIndex, uint256 amt, bytes32 evidenceHash)
+    {
         lastIndex = milestones.length - 1;
         if (milestones[lastIndex].completed) revert InvalidState();
         for (uint256 i = 0; i < lastIndex; i++) {
@@ -305,14 +353,24 @@ contract MilestoneEscrowV6 is ReentrancyGuard {
         finalRequestedAt = 0;
         finalEvidenceHash = bytes32(0);
 
-        _safeTransferExact(producer, amt);
+        _transferOut(producer, amt, allowInexactTransfer);
     }
 
     function _safeTransferExact(address recipient, uint256 amount) internal {
+        _transferOut(recipient, amount, false);
+    }
+
+    function _transferOut(address recipient, uint256 amount, bool allowInexactTransfer)
+        internal
+        returns (uint256 receivedAmount)
+    {
         uint256 balanceBefore = IERC20(tokenAddress).balanceOf(recipient);
         IERC20(tokenAddress).safeTransfer(recipient, amount);
-        uint256 receivedAmount = IERC20(tokenAddress).balanceOf(recipient) - balanceBefore;
-        if (receivedAmount < amount) revert InexactTokenTransfer();
+        receivedAmount = IERC20(tokenAddress).balanceOf(recipient) - balanceBefore;
+        if (!allowInexactTransfer && receivedAmount < amount) revert InexactTokenTransfer();
+        if (allowInexactTransfer && receivedAmount != amount) {
+            emit TransferFeeAccepted(recipient, amount, receivedAmount);
+        }
     }
 
     // View functions
