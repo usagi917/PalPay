@@ -462,8 +462,9 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
 
   const requestFinalDelivery = useCallback(
     async (evidenceHash?: string) => {
-      const evidenceBytes32 = evidenceHash
-        ? (evidenceHash.startsWith("0x") ? evidenceHash : `0x${evidenceHash}`)
+      const normalizedEvidenceHash = typeof evidenceHash === "string" ? evidenceHash : undefined;
+      const evidenceBytes32 = normalizedEvidenceHash
+        ? (normalizedEvidenceHash.startsWith("0x") ? normalizedEvidenceHash : `0x${normalizedEvidenceHash}`)
         : "0x0000000000000000000000000000000000000000000000000000000000000000";
       await makeAction(
         "requestFinalDelivery",
