@@ -2,9 +2,7 @@ import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { isAddress, verifyMessage, type Address } from "viem";
 import {
-  createChat,
   getAgentProviderConfigError,
-  AGENT_PROVIDER,
   streamResponse,
   historyToInput,
   type AgentHistoryContent,
@@ -790,7 +788,6 @@ export async function POST(request: NextRequest) {
       return jsonError("Invalid JSON", 400);
     }
     const { message, sessionId, locale, userAddress, auth } = body;
-    const wantsStream = (body as unknown as Record<string, unknown>).stream === true;
     const normalizedMessage = typeof message === "string" ? message.trim() : "";
 
     if (typeof sessionId !== "string" || !sessionId || !normalizedMessage || !isLocale(locale)) {
@@ -952,164 +949,14 @@ export async function POST(request: NextRequest) {
       : "";
     const fullMessage = normalizedMessage + userContext;
 
-    // --- Streaming path (openai-responses provider) ---
-    if (wantsStream && AGENT_PROVIDER === "openai-responses") {
-      return handleStreamingPost({
-        session,
-        sessionId,
-        fullMessage,
-        locale,
-        systemInstruction,
-        effectiveUserAddress: effectiveUserAddress as string | undefined,
-      });
-    }
-
-    // --- Non-streaming (legacy) path ---
-    const chat = createChat(systemInstruction, session.history);
-    let response = await chat.sendMessage({ message: fullMessage });
-
-    // Collect tool calls
-    const toolCalls: ToolCall[] = [];
-
-    // Process function calls (tool use)
-    let functionCalls = response.functionCalls;
-    while (functionCalls && functionCalls.length > 0) {
-      const functionResponses: Array<{ id: string; name: string; response: Record<string, unknown> }> = [];
-
-      for (const fc of functionCalls) {
-        const toolName = fc.name!;
-        const toolArgs = (fc.args || {}) as Record<string, unknown>;
-
-        const effectiveToolArgs = { ...toolArgs };
-        if (toolName === "prepare_transaction") {
-          const action = typeof toolArgs.action === "string" ? toolArgs.action : "";
-          if (action === "createListing" && session.draft) {
-            const incomingDraft = toolArgs.draft;
-            if (incomingDraft && typeof incomingDraft === "object") {
-              effectiveToolArgs.draft = {
-                ...session.draft,
-                ...(incomingDraft as Record<string, unknown>),
-              };
-            } else {
-              effectiveToolArgs.draft = session.draft;
-            }
-          }
-        }
-
-        if (process.env.NODE_ENV === "development") {
-          console.log(`[Agent] Tool call: ${toolName}`, effectiveToolArgs);
-        } else {
-          console.log(`[Agent] Tool call: ${toolName}`);
-        }
-
-        try {
-          const toolResult = await executeTool(toolName, effectiveToolArgs);
-
-          toolCalls.push({
-            name: toolName,
-            args: effectiveToolArgs,
-            result: toolResult,
-          });
-
-          // Update session state based on tool calls
-          if (toolName === "prepare_listing_draft") {
-            session.draft = toolResult as ListingDraft;
-            session.state = "draft_ready";
-          } else if (toolName === "prepare_transaction") {
-            session.txPrepare = toolResult as TxPrepareResult;
-            session.state = "tx_prepared";
-          } else if (toolName === "get_listings" || toolName === "get_listing_detail") {
-            session.state = "gathering_info";
-          }
-
-          functionResponses.push({
-            id: fc.id || "",
-            name: toolName,
-            response: { result: toolResult },
-          });
-        } catch (error) {
-          console.error(`[Agent] Tool error (${toolName}):`, error);
-          const safeMessage = sanitizeToolError(error);
-
-          toolCalls.push({
-            name: toolName,
-            args: effectiveToolArgs,
-            result: { error: safeMessage },
-          });
-
-          functionResponses.push({
-            id: fc.id || "",
-            name: toolName,
-            response: { error: safeMessage },
-          });
-        }
-      }
-
-      // Send all function responses back to the model
-      response = await chat.sendMessage({
-        message: functionResponses.map((fr) => ({
-          functionResponse: fr,
-        })),
-      });
-
-      // Check for more function calls
-      functionCalls = response.functionCalls;
-    }
-
-    // Get final text response (property, not method)
-    const responseText = response.text ?? "";
-    const nextInputHint = deriveNextInputHint({
+    return handleStreamingPost({
+      session,
+      sessionId,
+      fullMessage,
       locale,
-      state: session.state,
-      draft: session.draft,
-      txPrepare: session.txPrepare,
-      toolCalls,
-      responseText,
+      systemInstruction,
+      effectiveUserAddress: effectiveUserAddress as string | undefined,
     });
-    const nextQuickActions = deriveNextQuickActions({
-      locale,
-      state: session.state,
-      draft: session.draft,
-      txPrepare: session.txPrepare,
-      toolCalls,
-      responseText,
-    });
-
-    // Update history
-    session.history.push(
-      { role: "user", parts: [{ text: fullMessage }] },
-      { role: "model", parts: [{ text: responseText }] }
-    );
-    if (session.history.length > MAX_HISTORY_ENTRIES) {
-      session.history = session.history.slice(-MAX_HISTORY_ENTRIES);
-    }
-
-    // Build response message
-    const assistantMessage: ChatMessage = {
-      id: generateId(),
-      role: "assistant",
-      content: responseText,
-      timestamp: Date.now(),
-      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-      draft: session.draft,
-      txPrepare: session.txPrepare,
-    };
-
-    const chatResponse: ChatResponse = {
-      message: assistantMessage,
-      state: session.state,
-      draft: session.draft,
-      txPrepare: session.txPrepare,
-      nextInputHint,
-      nextQuickActions,
-    };
-
-    const responseHeaders: Record<string, string> = {};
-    if (session.authToken) {
-      responseHeaders["X-Session-Token"] = session.authToken;
-    }
-
-    return NextResponse.json(chatResponse, { headers: responseHeaders });
   } catch (error) {
     console.error("[Agent] Error:", error);
     return NextResponse.json(
