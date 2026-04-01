@@ -16,7 +16,6 @@ import { checkRateLimit, consumeNonce, isValidSessionId } from "@/lib/server/age
 import type { Locale } from "@/lib/locale";
 import type {
   ChatRequest,
-  ChatResponse,
   ChatMessage,
   AgentState,
   AgentStreamEvent,
