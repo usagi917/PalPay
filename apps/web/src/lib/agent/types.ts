@@ -92,6 +92,7 @@ export interface ChatRequest {
   message: string;
   sessionId: string;
   locale: Locale;
+  stream?: boolean;
   userAddress?: string;
   auth?: {
     address: string;

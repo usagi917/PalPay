@@ -13,7 +13,7 @@ export const translations = {
     // Hero
     heroEyebrow: "palpay",
     heroTitle: "育成の記録が、そのまま信頼になる。",
-    heroSubtitle: "スマホで進み具合を残すだけで、相手への説明と次の支払い準備まで一本化します。",
+    heroSubtitle: "進捗を残すと支払いまで一本化します。",
 
 
     // Wallet
@@ -214,7 +214,7 @@ export const translations = {
     // Hero
     heroEyebrow: "palpay",
     heroTitle: "Progress records become shared trust.",
-    heroSubtitle: "Capture work from a phone, show the counterpart what changed, and keep the next payout decision in one place.",
+    heroSubtitle: "Record progress and keep payments in one flow.",
     heroPillTrust: "Trust",
     heroPillEvidence: "Evidence",
 

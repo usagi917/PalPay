@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Box,
   Typography,
@@ -24,6 +24,8 @@ import type { TxStep } from "@/lib/hooks";
 import type { Locale } from "@/lib/i18n";
 import type { EscrowInfo, Milestone, UserRole } from "@/lib/types";
 import type { Hash } from "viem";
+
+const MAX_EVIDENCE_PHOTO_BYTES = 8 * 1024 * 1024;
 
 export interface ActionCardProps {
   info: EscrowInfo;
@@ -124,38 +126,45 @@ export function ActionCard({
     txStep !== "success" &&
     !milestonesLoading;
 
-  const resetEvidenceDraft = () => {
-    setShowEvidenceForm(false);
+  const clearEvidenceDraft = useCallback(() => {
     setEvidenceNote("");
     setEvidencePhoto(null);
     setEvidenceError(null);
-  };
+  }, []);
+
+  const closeEvidenceForm = useCallback(() => {
+    setShowEvidenceForm(false);
+    clearEvidenceDraft();
+  }, [clearEvidenceDraft]);
 
   const buildEvidenceHash = async (): Promise<`0x${string}` | undefined> => {
+    if (!showEvidenceForm) {
+      return undefined;
+    }
+
     const trimmedNote = evidenceNote.trim();
     if (!trimmedNote && !evidencePhoto) {
       return undefined;
     }
 
-    const encoder = new TextEncoder();
-    const chunks: Uint8Array[] = [];
-    chunks.push(encoder.encode(`note:${trimmedNote}`));
-
     if (evidencePhoto) {
-      const fileBytes = new Uint8Array(await evidencePhoto.arrayBuffer());
-      chunks.push(encoder.encode(`file:${evidencePhoto.name}:${evidencePhoto.type}:${evidencePhoto.size}`));
-      chunks.push(fileBytes);
+      if (evidencePhoto.size > MAX_EVIDENCE_PHOTO_BYTES) {
+        throw new Error(
+          isJapanese
+            ? "写真は 8MB 以下にしてください。"
+            : "Photos must be 8MB or smaller.",
+        );
+      }
     }
 
-    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-    const merged = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const chunk of chunks) {
-      merged.set(chunk, offset);
-      offset += chunk.length;
-    }
-
-    const digest = await crypto.subtle.digest("SHA-256", merged);
+    const payload = new Blob([
+      `note:${trimmedNote}\n`,
+      evidencePhoto
+        ? `file:${evidencePhoto.name}:${evidencePhoto.type}:${evidencePhoto.size}\n`
+        : "",
+      evidencePhoto ?? "",
+    ]);
+    const digest = await crypto.subtle.digest("SHA-256", await payload.arrayBuffer());
     const hex = Array.from(new Uint8Array(digest))
       .map((value) => value.toString(16).padStart(2, "0"))
       .join("");
@@ -188,9 +197,9 @@ export function ActionCard({
 
   useEffect(() => {
     if (txStep === "success") {
-      resetEvidenceDraft();
+      closeEvidenceForm();
     }
-  }, [txStep]);
+  }, [txStep, closeEvidenceForm]);
 
   return (
     <Card
@@ -226,7 +235,14 @@ export function ActionCard({
           <Box sx={{ mb: 2.5 }}>
             <Button
               variant="text"
-              onClick={() => setShowEvidenceForm((value) => !value)}
+              onClick={() => {
+                if (showEvidenceForm) {
+                  closeEvidenceForm();
+                  return;
+                }
+                setEvidenceError(null);
+                setShowEvidenceForm(true);
+              }}
               sx={{
                 px: 0,
                 minWidth: 0,
@@ -295,6 +311,16 @@ export function ActionCard({
                       hidden
                       onChange={(event) => {
                         const file = event.target.files?.[0] ?? null;
+                        if (file && file.size > MAX_EVIDENCE_PHOTO_BYTES) {
+                          setEvidencePhoto(null);
+                          setEvidenceError(
+                            isJapanese
+                              ? "写真は 8MB 以下にしてください。"
+                              : "Photos must be 8MB or smaller.",
+                          );
+                          return;
+                        }
+                        setEvidenceError(null);
                         setEvidencePhoto(file);
                       }}
                     />
