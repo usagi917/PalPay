@@ -790,7 +790,7 @@ export async function POST(request: NextRequest) {
       return jsonError("Invalid JSON", 400);
     }
     const { message, sessionId, locale, userAddress, auth } = body;
-    const wantsStream = (body as unknown as Record<string, unknown>).stream === true;
+    const wantsStream = body.stream === true;
     const normalizedMessage = typeof message === "string" ? message.trim() : "";
 
     if (typeof sessionId !== "string" || !sessionId || !normalizedMessage || !isLocale(locale)) {
@@ -973,7 +973,9 @@ export async function POST(request: NextRequest) {
 
     // Process function calls (tool use)
     let functionCalls = response.functionCalls;
-    while (functionCalls && functionCalls.length > 0) {
+    let toolRound = 0;
+    while (functionCalls && functionCalls.length > 0 && toolRound < MAX_TOOL_ROUNDS) {
+      toolRound++;
       const functionResponses: Array<{ id: string; name: string; response: Record<string, unknown> }> = [];
 
       for (const fc of functionCalls) {

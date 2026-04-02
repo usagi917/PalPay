@@ -15,12 +15,11 @@ export type AgentState =
 export type UserRole = "producer" | "buyer" | "none";
 
 // Category types matching contract
-export type CategoryType = "wagyu" | "sake" | "craft" | "other";
+export type CategoryType = "wagyu" | "sake" | "craft";
 export const CATEGORY_TYPE_MAP: Record<CategoryType, number> = {
   wagyu: 0,
   sake: 1,
   craft: 2,
-  other: 3,
 };
 
 // Milestone preview for draft
@@ -93,6 +92,7 @@ export interface ChatRequest {
   message: string;
   sessionId: string;
   locale: Locale;
+  stream?: boolean;
   userAddress?: string;
   auth?: {
     address: string;

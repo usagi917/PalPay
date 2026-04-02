@@ -23,14 +23,14 @@ const CATEGORY_ALIASES: Record<string, CategoryType> = {
   crafts: "craft",
   "工芸": "craft",
   "工芸品": "craft",
-  other: "other",
-  "その他": "other",
 };
 
-function normalizeCategory(category?: string): CategoryType {
-  if (!category) return "other";
+const VALID_CATEGORIES = Object.keys(CATEGORY_ALIASES);
+
+function normalizeCategory(category?: string): CategoryType | null {
+  if (!category) return null;
   const normalized = category.trim().toLowerCase();
-  return CATEGORY_ALIASES[normalized] ?? "other";
+  return CATEGORY_ALIASES[normalized] ?? null;
 }
 
 // Read escrow contract data and map to ListingSummaryForAgent
@@ -190,8 +190,12 @@ export async function getListingDetail(params: {
 export function getMilestonesForCategory(params: {
   category: string;
 }): MilestonePreview[] {
-  const categoryType = CATEGORY_TYPE_MAP[normalizeCategory(params.category)];
-  const names = MILESTONE_NAMES[categoryType] || MILESTONE_NAMES[3];
+  const cat = normalizeCategory(params.category);
+  if (!cat) {
+    throw new Error(`無効なカテゴリ: "${params.category}"。対応カテゴリ: ${VALID_CATEGORIES.join(", ")}`);
+  }
+  const categoryType = CATEGORY_TYPE_MAP[cat];
+  const names = MILESTONE_NAMES[categoryType] || [];
 
   // Default BPS distribution (basis points, total = 10000)
   // Must match ListingFactoryV6.sol constructor values
@@ -199,10 +203,9 @@ export function getMilestonesForCategory(params: {
     0: [200, 300, 400, 500, 600, 650, 700, 750, 900, 5000], // wagyu: 10 milestones
     1: [1000, 1500, 1500, 2000, 4000], // sake: 5 milestones
     2: [1000, 2000, 2500, 4500], // craft: 4 milestones
-    3: [10000], // other: 1 milestone
   };
 
-  const bps = bpsDistributions[categoryType] || bpsDistributions[3];
+  const bps = bpsDistributions[categoryType] || [];
 
   return names.map((name, index) => ({
     name,
@@ -219,6 +222,9 @@ export function prepareListingDraft(params: {
   imageURI?: string;
 }): ListingDraft {
   const category = normalizeCategory(params.category);
+  if (!category) {
+    throw new Error(`無効なカテゴリ: "${params.category}"。対応カテゴリ: ${VALID_CATEGORIES.join(", ")}`);
+  }
   const milestones = getMilestonesForCategory({ category });
 
   return {
@@ -265,6 +271,9 @@ export function prepareTransaction(params: {
     case "createListing":
       if (params.draft) {
         const category = normalizeCategory(params.draft.category);
+        if (!category) {
+          throw new Error(`無効なカテゴリ: "${params.draft.category}"。対応カテゴリ: ${VALID_CATEGORIES.join(", ")}`);
+        }
         result.params = {
           categoryType: CATEGORY_TYPE_MAP[category],
           title: params.draft.title,
