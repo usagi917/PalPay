@@ -1,6 +1,5 @@
 import { formatUnits, parseUnits } from "viem";
-
-const JPYC_DECIMALS = 18;
+import { JPYC_DECIMALS } from "@/lib/constants";
 
 export function formatJpycAmount(amount: string | bigint, locale: "ja" | "en"): string {
   const localeCode = locale === "ja" ? "ja-JP" : "en-US";
