@@ -633,7 +633,9 @@ export default function ListingDetailPage() {
                         onApprove={approve}
                         onActivateAfterTimeout={activateAfterTimeout}
                         onCancel={() => setCancelDialogOpen(true)}
-                        onRequestFinalDelivery={requestFinalDelivery}
+                        onRequestFinalDelivery={(evidenceHash) => {
+                          void requestFinalDelivery(evidenceHash);
+                        }}
                         onConfirmDelivery={confirmDelivery}
                         onFinalizeAfterTimeout={finalizeAfterTimeout}
                       />

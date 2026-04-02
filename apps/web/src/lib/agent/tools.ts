@@ -1,7 +1,7 @@
 import { type Address, formatUnits } from "viem";
 import { FACTORY_ABI, ESCROW_ABI } from "@/lib/abi";
 import type { EscrowStatus } from "@/lib/types";
-import { MILESTONE_NAMES } from "@/lib/constants";
+import { MILESTONE_NAMES, JPYC_DECIMALS } from "@/lib/constants";
 import { createClient } from "@/lib/config";
 import {
   CATEGORY_TYPE_MAP,
@@ -14,6 +14,8 @@ import {
 
 const TOOL_TIMEOUT_MS = 8_000;
 const MAX_LISTINGS_FETCH = 50;
+const VALID_CATEGORIES = ["wagyu", "sake", "craft"] as const;
+
 const CATEGORY_ALIASES: Record<string, CategoryType> = {
   wagyu: "wagyu",
   "和牛": "wagyu",
@@ -24,8 +26,6 @@ const CATEGORY_ALIASES: Record<string, CategoryType> = {
   "工芸": "craft",
   "工芸品": "craft",
 };
-
-const VALID_CATEGORIES = Object.keys(CATEGORY_ALIASES);
 
 function normalizeCategory(category?: string): CategoryType | null {
   if (!category) return null;
@@ -65,7 +65,7 @@ async function readEscrowSummary(
     tokenId: tokenId.toString(),
     producer,
     buyer,
-    totalAmount: formatUnits(totalAmount, 18),
+    totalAmount: formatUnits(totalAmount, JPYC_DECIMALS),
     status: statusStr.toLowerCase() as EscrowStatus,
     cancelCount: Number(cancelCount),
     category: category.toLowerCase(),
@@ -197,8 +197,6 @@ export function getMilestonesForCategory(params: {
   const categoryType = CATEGORY_TYPE_MAP[cat];
   const names = MILESTONE_NAMES[categoryType] || [];
 
-  // Default BPS distribution (basis points, total = 10000)
-  // Must match ListingFactoryV6.sol constructor values
   const bpsDistributions: Record<number, number[]> = {
     0: [200, 300, 400, 500, 600, 650, 700, 750, 900, 5000], // wagyu: 10 milestones
     1: [1000, 1500, 1500, 2000, 4000], // sake: 5 milestones

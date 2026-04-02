@@ -138,7 +138,7 @@ export function categoryToType(category: string): number {
     case "wagyu": return 0;
     case "sake": return 1;
     case "craft": return 2;
-    default: return 3;
+    default: throw new Error(`無効なカテゴリ: "${category}"。wagyu, sake, craft のみ対応しています。`);
   }
 }
 

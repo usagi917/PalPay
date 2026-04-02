@@ -11,6 +11,7 @@ import { AgentChat } from "@/components/agent";
 import { I18nContext, type Locale, type TranslationKey, translations } from "@/lib/i18n";
 import { createClient, createWallet, config, ensureWalletChain, getMetaMaskProvider } from "@/lib/config";
 import { FACTORY_ABI, ERC20_ABI, ESCROW_ABI } from "@/lib/abi";
+import { JPYC_DECIMALS } from "@/lib/constants";
 import { formatTxError, writeContractWithGasFallback } from "@/lib/tx";
 
 const AGENT_TX_FALLBACK_GAS = {
@@ -49,8 +50,8 @@ function normalizeJpycAmountInput(input: string): string {
   for (const [suffix, multiplier] of Object.entries(UNIT_MULTIPLIERS)) {
     if (!value.endsWith(suffix)) continue;
     const base = value.slice(0, -suffix.length);
-    const wei = parseUnits(base, 18) * multiplier;
-    return formatUnits(wei, 18);
+    const wei = parseUnits(base, JPYC_DECIMALS) * multiplier;
+    return formatUnits(wei, JPYC_DECIMALS);
   }
 
   return value;
@@ -234,7 +235,7 @@ function AgentPageContent() {
 
             let amountWei: bigint;
             try {
-              amountWei = parseUnits(normalizeJpycAmountInput(amountInput), 18);
+              amountWei = parseUnits(normalizeJpycAmountInput(amountInput), JPYC_DECIMALS);
             } catch {
               throw new Error(t("agentInvalidAmountFormat"));
             }
@@ -269,7 +270,7 @@ function AgentPageContent() {
             let amountWei: bigint;
 
             if (typeof params?.amount === "string" && params.amount.trim()) {
-              amountWei = parseUnits(params.amount, 18);
+              amountWei = parseUnits(params.amount, JPYC_DECIMALS);
             } else {
               const core = await client.readContract({
                 address: escrowAddress,
