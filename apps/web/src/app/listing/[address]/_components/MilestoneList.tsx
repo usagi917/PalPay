@@ -28,6 +28,8 @@ export function MilestoneList({
   decimals,
   symbol,
 }: MilestoneListProps) {
+  const isJapanese = locale === "ja";
+
   return (
     <Card
       sx={{
@@ -42,7 +44,7 @@ export function MilestoneList({
           variant="h6"
           sx={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--color-text)", mb: 3 }}
         >
-          {locale === "ja" ? "マイルストーン" : "Milestones"}
+          {isJapanese ? "育成・受け渡しの流れ" : "Progress steps"}
         </Typography>
 
         <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -74,7 +76,6 @@ export function MilestoneList({
                     opacity: isFuture ? 0.6 : 1,
                   }}
                 >
-                  {/* Icon */}
                   <Box sx={{ pt: 0.5 }}>
                     {milestone.completed ? (
                       <CheckCircleIcon sx={{ color: "var(--status-success)" }} />
@@ -87,7 +88,6 @@ export function MilestoneList({
                     )}
                   </Box>
 
-                  {/* Content */}
                   <Box sx={{ flex: 1 }}>
                     <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
                       <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -111,7 +111,19 @@ export function MilestoneList({
                               fontSize: "0.7rem",
                             }}
                           >
-                            {locale === "ja" ? "順番待ち" : "Waiting"}
+                            {isJapanese ? "このあと" : "Later"}
+                          </Typography>
+                        )}
+                        {isNext && (
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              color: "var(--color-primary)",
+                              fontSize: "0.7rem",
+                              fontWeight: 600,
+                            }}
+                          >
+                            {isJapanese ? "いま記録する" : "Record now"}
                           </Typography>
                         )}
                       </Box>
@@ -126,10 +138,7 @@ export function MilestoneList({
                         {formatAmount(amount, decimals, symbol)}
                       </Typography>
                     </Box>
-                    <Typography
-                      variant="caption"
-                      sx={{ color: "var(--color-text-muted)" }}
-                    >
+                    <Typography variant="caption" sx={{ color: "var(--color-text-muted)" }}>
                       {Number(milestone.bps) / 100}%
                     </Typography>
                   </Box>
