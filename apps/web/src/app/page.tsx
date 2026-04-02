@@ -65,9 +65,6 @@ export default function Home() {
   const nextProducerListing =
     producerInProgress[0] ?? producerNeedsReview[0] ?? producerWaitingForBuyer[0] ?? null;
 
-  const heroDescription = isJapanese
-    ? "スマホで今日の工程を記録すると、相手に進み具合が伝わり、次の支払い準備までこの画面で確認できます。"
-    : "Record today's progress from a phone, show the counterpart what changed, and keep the next payout step visible in the same place.";
   const starterChecklist = isJapanese
     ? [
         "最初にログインして、自分の担当案件を開く",
@@ -191,7 +188,7 @@ export default function Home() {
                     lineHeight: 1.7,
                   }}
                 >
-                  {heroDescription}
+                  {t("heroSubtitle")}
                 </Typography>
               </motion.div>
             </Box>
