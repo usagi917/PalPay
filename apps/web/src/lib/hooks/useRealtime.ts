@@ -6,7 +6,7 @@ import { useEscrowInfo, useEscrowEvents } from "./useEscrow";
 import { useMilestones } from "./useEscrow";
 import { useListingSummaries } from "./useFactory";
 
-export function useRealtimeEscrow(
+function useRealtimeEscrow(
   escrowAddress: Address | null,
   options: { interval?: number; enabled?: boolean } = {}
 ) {
@@ -50,7 +50,7 @@ export function useRealtimeEscrow(
 }
 
 // Real-time listing summaries with polling
-export function useRealtimeListingSummaries(options: { interval?: number; enabled?: boolean } = {}) {
+function useRealtimeListingSummaries(options: { interval?: number; enabled?: boolean } = {}) {
   const { interval = 15000, enabled = true } = options;
   const { summaries, isLoading, error, refetch } = useListingSummaries();
   const inFlightRef = useRef(false);

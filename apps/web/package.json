@@ -12,7 +12,6 @@
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
-    "@google/genai": "^1.40.0",
     "@mui/icons-material": "^7.3.6",
     "@mui/material": "^7.3.6",
     "@xmtp/browser-sdk": "^5.3.0",
@@ -24,7 +23,6 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",
-    "@eslint/js": "^9.39.2",
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",

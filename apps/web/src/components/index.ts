@@ -1,6 +1,5 @@
 export { Header } from "./Header";
 export { ConnectWallet } from "./ConnectWallet";
-export { NFTCard } from "./NFTCard";
 export { HeroNFT } from "./HeroNFT";
 // v2 components
 export { ListingCard } from "./ListingCard";

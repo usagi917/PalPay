@@ -33,7 +33,7 @@ export const config = {
   blockExplorerTxBase: process.env.NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE || "",
 };
 
-export const getChain = (): Chain => {
+const getChain = (): Chain => {
   // Ensure config.chainId is of a valid type and guard against type errors
   const chainId = config.chainId as keyof typeof SUPPORTED_CHAINS;
   return SUPPORTED_CHAINS[chainId] || avalancheFuji;

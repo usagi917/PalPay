@@ -7,7 +7,7 @@ import { FACTORY_ABI, ESCROW_ABI } from "../abi";
 import { formatTxError } from "../tx";
 import type { EscrowStatus, ListingSummary } from "../types";
 
-export function useListings() {
+function useListings() {
   const [listings, setListings] = useState<Address[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -142,8 +142,6 @@ export function categoryToType(category: string): number {
   }
 }
 
-// getMilestoneName is now imported from ./constants
-export { getMilestoneName } from "../constants";
 
 export function useCreateListing(onSuccess?: () => void) {
   const [isLoading, setIsLoading] = useState(false);

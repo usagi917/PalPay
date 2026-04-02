@@ -508,5 +508,3 @@ export const wagyuTheme = createTheme({
   },
 });
 
-// Export colors for use in components
-export { zenColors, statusColors };

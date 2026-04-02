@@ -44,7 +44,7 @@ export function useTokenInfo() {
   return { symbol, decimals, isLoading };
 }
 
-export function useTokenBalance(address: Address | null) {
+function useTokenBalance(address: Address | null) {
   const [balance, setBalance] = useState<bigint>(0n);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -78,7 +78,7 @@ export function useTokenBalance(address: Address | null) {
   return { balance, isLoading, refetch: fetchBalance };
 }
 
-export function useTokenAllowance(owner: Address | null, spender: Address | null) {
+function useTokenAllowance(owner: Address | null, spender: Address | null) {
   const [allowance, setAllowance] = useState<bigint>(0n);
   const [isLoading, setIsLoading] = useState(false);
 
