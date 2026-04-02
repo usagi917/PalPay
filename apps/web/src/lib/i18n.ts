@@ -8,26 +8,26 @@ export type { Locale };
 export const translations = {
   ja: {
     // Header
-    appTitle: "Milestone Escrow",
-    appSubtitle: "B2B Payment Infrastructure",
+    appTitle: "palpay",
 
     // Hero
-    heroEyebrow: "Proof of Trust",
-    heroTitle: "刻む。証す。解放する。",
+    heroEyebrow: "palpay",
+    heroTitle: "育成の記録が、そのまま信頼になる。",
+    heroSubtitle: "スマホで進み具合を残すだけで、相手への説明と次の支払い準備まで一本化します。",
 
 
     // Wallet
-    wallet: "アカウント",
-    connectWallet: "ログイン",
+    wallet: "ログイン状況",
+    connectWallet: "ログインして始める",
     connecting: "ログイン中...",
     disconnect: "ログアウト",
     noMetaMask: "MetaMaskアプリが必要です",
 
     // Roles
-    buyer: "バイヤー",
+    buyer: "卸・買い手",
     producer: "生産者",
     admin: "管理者",
-    observer: "オブザーバー",
+    observer: "閲覧のみ",
 
     // Contract Summary
     contractSummary: "取引概要",
@@ -209,28 +209,27 @@ export const translations = {
   },
   en: {
     // Header
-    appTitle: "Milestone Escrow",
-    appSubtitle: "B2B Payment Infrastructure",
+    appTitle: "palpay",
 
     // Hero
-    heroEyebrow: "Proof of Trust",
-    heroTitle: "Record. Prove. Release.",
-    heroSubtitle: "Bind time and agreement into a single ledger. Transparent evidence guides the release of value, quietly and precisely.",
+    heroEyebrow: "palpay",
+    heroTitle: "Progress records become shared trust.",
+    heroSubtitle: "Capture work from a phone, show the counterpart what changed, and keep the next payout decision in one place.",
     heroPillTrust: "Trust",
     heroPillEvidence: "Evidence",
 
     // Wallet
-    wallet: "Account",
-    connectWallet: "Log in",
+    wallet: "Account access",
+    connectWallet: "Log in to start",
     connecting: "Logging in...",
     disconnect: "Log out",
     noMetaMask: "MetaMask app is required",
 
     // Roles
-    buyer: "Buyer",
+    buyer: "Buyer / wholesaler",
     producer: "Producer",
     admin: "Admin",
-    observer: "Observer",
+    observer: "Viewer",
 
     // Contract Summary
     contractSummary: "Transaction Summary",

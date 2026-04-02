@@ -80,19 +80,6 @@ export function Header({ onLocaleChange }: HeaderProps) {
                   >
                     {t("appTitle")}
                   </Typography>
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      fontSize: '0.6875rem',
-                      color: 'var(--color-primary)',
-                      letterSpacing: '0.12em',
-                      textTransform: 'uppercase',
-                      fontWeight: 600,
-                      display: { xs: 'none', sm: 'block' },
-                    }}
-                  >
-                    {t("appSubtitle")}
-                  </Typography>
                 </Box>
               </Box>
             </Link>

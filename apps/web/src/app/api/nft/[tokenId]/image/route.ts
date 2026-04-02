@@ -175,7 +175,7 @@ function generateSVG(
 
   <!-- Footer -->
   <text x="210" y="${svgHeight - 15}" font-family="Arial, sans-serif" font-size="8" fill="${mutedColor}40" text-anchor="middle">
-    Proof of Trust v2 - Dynamic NFT
+    palpay v2 - Dynamic NFT
   </text>
 </svg>
   `.trim();

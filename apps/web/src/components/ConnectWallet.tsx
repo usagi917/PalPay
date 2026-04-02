@@ -76,7 +76,7 @@ export function ConnectWallet({
   onConnect,
   onDisconnect,
 }: ConnectWalletProps) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
 
   const identiconCells = useMemo(
     () => (address ? buildIdenticonCells(address) : []),
@@ -94,6 +94,7 @@ export function ConnectWallet({
 
   const roleLabel = roleConfig[userRole];
   const colors = roleColors[userRole];
+  const isJapanese = locale === "ja";
 
   return (
     <motion.div
@@ -146,6 +147,23 @@ export function ConnectWallet({
               {t("wallet")}
             </Typography>
           </Box>
+
+          <Typography
+            sx={{
+              fontSize: "0.9rem",
+              color: "var(--color-text-secondary)",
+              lineHeight: 1.7,
+              mb: 2.5,
+            }}
+          >
+            {address
+              ? isJapanese
+                ? "このアカウントで進捗記録、確認、受け取り状況をまとめて管理できます。"
+                : "Use this account to record progress, review updates, and track payout status."
+              : isJapanese
+              ? "初回設定は付き添いで進められます。ログインすると、そのまま担当案件の記録と確認に進めます。"
+              : "First-time setup can be assisted. After login, you can go straight into recording and reviewing assigned work."}
+          </Typography>
 
           {/* Error */}
           <AnimatePresence>
@@ -256,7 +274,7 @@ export function ConnectWallet({
                         mb: 0.5,
                       }}
                     >
-                      ID: {shortenAddress(address)}
+                      {isJapanese ? "アカウントID" : "Account ID"}: {shortenAddress(address)}
                     </Typography>
                     <Chip
                       label={roleLabel}
@@ -275,6 +293,20 @@ export function ConnectWallet({
                     />
                   </Box>
                 </Box>
+
+                <Typography
+                  variant="caption"
+                  sx={{
+                    display: "block",
+                    color: "var(--color-text-muted)",
+                    mb: 2,
+                    lineHeight: 1.6,
+                  }}
+                >
+                  {isJapanese
+                    ? "現地サポートと一緒に使う前提でも問題ありません。普段どおりの業務を止めずに記録できます。"
+                    : "It is fine to use this with on-site support. The goal is to keep everyday operations moving without extra friction."}
+                </Typography>
 
                 {/* Disconnect Button */}
                 <Button
@@ -338,6 +370,20 @@ export function ConnectWallet({
                 >
                   {isConnecting ? t("connecting") : t("connectWallet")}
                 </Button>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    display: "block",
+                    mt: 1.5,
+                    textAlign: "center",
+                    color: "var(--color-text-muted)",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  {isJapanese
+                    ? "ウォレット接続が難しい場合でも、初回だけ一緒に設定すれば次回からはそのまま使えます。"
+                    : "If wallet setup feels unfamiliar, assist the first login once and the same flow should work afterward."}
+                </Typography>
               </motion.div>
             )}
           </AnimatePresence>
