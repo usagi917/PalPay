@@ -55,7 +55,7 @@ const hasErrorCode = (error: unknown, targetCode: number): boolean => {
   return false;
 };
 
-export const getErrorText = (error: unknown): string => {
+const getErrorText = (error: unknown): string => {
   if (error instanceof Error && error.message.trim()) {
     return error.message;
   }
@@ -71,12 +71,12 @@ export const getErrorText = (error: unknown): string => {
   return String(error);
 };
 
-export const isGasEstimationError = (error: unknown): boolean => {
+const isGasEstimationError = (error: unknown): boolean => {
   const text = extractErrorText(error);
   return GAS_ESTIMATION_ERROR_PATTERNS.some((pattern) => text.includes(pattern));
 };
 
-export const isUserRejectedError = (error: unknown): boolean => {
+const isUserRejectedError = (error: unknown): boolean => {
   if (hasErrorCode(error, 4001)) return true;
   const text = extractErrorText(error);
   return USER_REJECTED_ERROR_PATTERNS.some((pattern) => text.includes(pattern));

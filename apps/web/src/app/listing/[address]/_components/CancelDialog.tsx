@@ -31,13 +31,13 @@ export function CancelDialog({ open, locale, onClose, onConfirm }: CancelDialogP
       }}
     >
       <DialogTitle sx={{ color: "var(--color-text)" }}>
-        {locale === "ja" ? "購入をキャンセルしますか？" : "Cancel this purchase?"}
+        {locale === "ja" ? "今回は見送りますか？" : "Stop this listing for now?"}
       </DialogTitle>
       <DialogContent>
         <DialogContentText sx={{ color: "var(--color-text-secondary)" }}>
           {locale === "ja"
-            ? "キャンセルすると全額返金され、NFTは出品者に戻ります。"
-            : "Cancelling will refund the full amount and return the NFT to the producer."}
+            ? "キャンセルすると全額返金され、この案件は生産者側に戻ります。"
+            : "Cancelling will refund the full amount and move the listing back to the producer side."}
         </DialogContentText>
       </DialogContent>
       <DialogActions sx={{ p: 2 }}>
@@ -58,7 +58,7 @@ export function CancelDialog({ open, locale, onClose, onConfirm }: CancelDialogP
             },
           }}
         >
-          {locale === "ja" ? "キャンセルして返金" : "Yes, Cancel & Refund"}
+          {locale === "ja" ? "返金して終了" : "Refund and stop"}
         </Button>
       </DialogActions>
     </Dialog>

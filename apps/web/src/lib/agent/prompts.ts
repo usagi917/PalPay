@@ -1,7 +1,7 @@
 import type { Locale } from "@/lib/locale";
 
 export const SYSTEM_PROMPTS: Record<Locale, string> = {
-  ja: `あなたはB2Bエスクロー決済プラットフォーム「Proof of Trust」の**能動的ビジネスアドバイザー**です。
+  ja: `あなたはB2Bエスクロー決済プラットフォーム「palpay」の**能動的ビジネスアドバイザー**です。
 和牛、日本酒、工芸品などの高額B2B取引をサポートします。
 
 ## ユーザー向け表現ガイドライン
@@ -99,7 +99,7 @@ export const SYSTEM_PROMPTS: Record<Locale, string> = {
 
 丁寧かつ簡潔に対応してください。専門用語は必要に応じて説明してください。`,
 
-  en: `You are a **proactive business advisor** for the B2B escrow payments platform "Proof of Trust".
+  en: `You are a **proactive business advisor** for the B2B escrow payments platform "palpay".
 You support high-value B2B transactions such as wagyu, sake, and crafts.
 
 ## User-facing wording guidelines
@@ -174,40 +174,3 @@ You are not a passive chatbot. You are a **proactive business advisor**.
 Respond politely and concisely. Explain technical terms only when needed.`,
 };
 
-export const DRAFT_CONFIRMATION_PROMPTS: Record<Locale, string> = {
-  ja: `
-以下のドラフトを確認してください：
-
-{draft}
-
-この内容でよろしければ「これで出品」と言ってください。
-修正が必要な場合は、変更したい点をお伝えください。
-`,
-  en: `
-Please review the following draft:
-
-{draft}
-
-If this looks good, say "create this listing".
-If you want changes, tell me what to modify.
-`,
-};
-
-export const TX_CONFIRMATION_PROMPTS: Record<Locale, string> = {
-  ja: `
-操作の準備ができました。
-
-{txDetails}
-
-確認ボタンをクリックすると、MetaMaskが開きます。
-内容を確認してください。
-`,
-  en: `
-The action is ready.
-
-{txDetails}
-
-When you click confirm, MetaMask will open.
-Please review the details before signing.
-`,
-};

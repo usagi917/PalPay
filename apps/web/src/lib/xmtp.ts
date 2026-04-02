@@ -159,7 +159,7 @@ export async function createXmtpClient(
 /**
  * Clear XMTP client cache for a wallet (used after installation revoke)
  */
-export function clearXmtpClientCache(walletAddress: string): void {
+function clearXmtpClientCache(walletAddress: string): void {
   clientCache.delete(getClientCacheKey(walletAddress));
 }
 
@@ -184,7 +184,7 @@ export function formatXmtpError(error: unknown): string {
 /**
  * Resolve inbox state for an Ethereum address using XMTP network
  */
-export async function getInboxStateByAddress(
+async function getInboxStateByAddress(
   walletAddress: string
 ): Promise<SafeInboxState | null> {
   const identifier = toAccountIdentifier(walletAddress);

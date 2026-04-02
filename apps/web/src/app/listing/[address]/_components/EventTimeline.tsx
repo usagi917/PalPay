@@ -23,6 +23,18 @@ export function EventTimeline({
 }: EventTimelineProps) {
   if (events.length === 0) return null;
 
+  const isJapanese = locale === "ja";
+  const zeroHash = "0x0000000000000000000000000000000000000000000000000000000000000000";
+  const dateTimeFormatter = new Intl.DateTimeFormat(isJapanese ? "ja-JP" : "en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const formatEventDateTime = (timestampSec: number | bigint) =>
+    dateTimeFormatter.format(new Date(Number(timestampSec) * 1000));
+
   return (
     <Card
       sx={{
@@ -38,7 +50,7 @@ export function EventTimeline({
           variant="h6"
           sx={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--color-text)", mb: 3 }}
         >
-          {locale === "ja" ? "取引履歴" : "Transaction History"}
+          {isJapanese ? "記録と確認の履歴" : "Proof history"}
         </Typography>
 
         <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -51,26 +63,28 @@ export function EventTimeline({
             const getEventLabel = () => {
               switch (event.type) {
                 case "Locked":
-                  return locale === "ja" ? "お支払い" : "Payment";
+                  return isJapanese ? "支払い準備が完了" : "Payment secured";
                 case "Approved":
-                  return locale === "ja" ? "取引開始" : "Transaction Started";
+                  return isJapanese ? "取引開始" : "Work started";
                 case "Cancelled":
-                  return locale === "ja" ? "キャンセル・返金" : "Cancelled & Refunded";
+                  return isJapanese ? "キャンセルと返金" : "Cancelled and refunded";
                 case "ActivatedAfterTimeout":
-                  return locale === "ja" ? "期限後に取引開始" : "Activated After Timeout";
+                  return isJapanese ? "期限後に取引開始" : "Started after timeout";
                 case "FinalDeliveryRequested":
-                  return locale === "ja" ? "最終納品申請" : "Final Delivery Requested";
+                  return isJapanese ? "受け渡し完了の連絡" : "Final handoff requested";
                 case "DeliveryConfirmed":
-                  return locale === "ja" ? "受取確認・取引完了" : "Receipt Confirmed";
+                  return isJapanese ? "受け取り確認" : "Receipt confirmed";
                 case "FinalizedAfterTimeout":
-                  return locale === "ja" ? "期限後に最終確定" : "Finalized After Timeout";
+                  return isJapanese ? "期限後に完了" : "Completed after timeout";
                 case "Completed":
-                  return milestoneName ||
-                    (event.index !== undefined
-                      ? `Milestone #${event.index}`
-                      : locale === "ja"
-                        ? "マイルストーン"
-                        : "Milestone");
+                  if (milestoneName) {
+                    return isJapanese ? `${milestoneName} を記録` : `${milestoneName} recorded`;
+                  }
+                  return event.index !== undefined
+                    ? `Milestone #${event.index}`
+                    : isJapanese
+                    ? "工程を記録"
+                    : "Progress recorded";
                 default:
                   return event.type;
               }
@@ -83,6 +97,7 @@ export function EventTimeline({
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
+                  gap: 2,
                   p: 1.5,
                   borderRadius: 2,
                   background: "rgba(247, 243, 235, 0.02)",
@@ -98,11 +113,28 @@ export function EventTimeline({
                       {formatAmount(event.amount, decimals, symbol)}
                     </Typography>
                   )}
+                  {event.evidenceHash && event.evidenceHash !== zeroHash && (
+                    <Typography
+                      variant="caption"
+                      sx={{ display: "block", color: "var(--color-text-muted)" }}
+                    >
+                      {isJapanese ? "補足あり" : "Supporting proof attached"}:{" "}
+                      {`${event.evidenceHash.slice(0, 10)}...${event.evidenceHash.slice(-6)}`}
+                    </Typography>
+                  )}
+                  {event.timestamp && (
+                    <Typography
+                      variant="caption"
+                      sx={{ display: "block", color: "var(--color-text-muted)" }}
+                    >
+                      {formatEventDateTime(event.timestamp)}
+                    </Typography>
+                  )}
                   {event.deadline && (
                     <Typography variant="caption" sx={{ display: "block", color: "var(--color-text-muted)" }}>
-                      {locale === "ja"
-                        ? `期限: ${new Date(Number(event.deadline) * 1000).toLocaleString("ja-JP")}`
-                        : `Deadline: ${new Date(Number(event.deadline) * 1000).toLocaleString("en-US")}`}
+                      {isJapanese
+                        ? `期限: ${formatEventDateTime(event.deadline)}`
+                        : `Deadline: ${formatEventDateTime(event.deadline)}`}
                     </Typography>
                   )}
                 </Box>
@@ -112,7 +144,7 @@ export function EventTimeline({
                   rel="noopener noreferrer"
                   style={{ color: "var(--color-primary)", fontSize: "0.85rem" }}
                 >
-                  {locale === "ja" ? "詳細" : "Details"}
+                  {isJapanese ? "チェーン記録" : "On-chain record"}
                 </a>
               </Box>
             );

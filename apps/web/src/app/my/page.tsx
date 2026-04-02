@@ -15,11 +15,13 @@ import {
   Chip,
   CircularProgress,
   Alert,
+  Button,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import StorefrontIcon from "@mui/icons-material/Storefront";
 import ShoppingBagIcon from "@mui/icons-material/ShoppingBag";
 import { Header, ConnectWallet, ListingCard } from "@/components";
+import { Footer } from "@/components/Footer";
 import {
   useWallet,
   useMyListings,
@@ -48,15 +50,14 @@ export default function MyPage() {
   const wallet = useWallet();
   const { asProducer, asBuyer, stats, isLoading, error } = useMyListings(wallet.address);
   const { symbol, decimals } = useTokenInfo();
+  const isJapanese = locale === "ja";
 
-  // Filter listings based on tab and status
   const filteredListings = useMemo(() => {
     const listings = activeTab === "producer" ? asProducer : asBuyer;
     if (statusFilter === "all") return listings;
-    return listings.filter((l) => l.status === statusFilter);
+    return listings.filter((listing) => listing.status === statusFilter);
   }, [activeTab, asProducer, asBuyer, statusFilter]);
 
-  // Available status filters per tab (V6: added locked)
   const availableFilters = useMemo(() => {
     if (activeTab === "producer") {
       return [
@@ -67,6 +68,7 @@ export default function MyPage() {
         { value: "completed" as StatusFilter, count: stats.producerCompleted },
       ];
     }
+
     return [
       { value: "all" as StatusFilter, count: asBuyer.length },
       { value: "locked" as StatusFilter, count: stats.buyerLocked },
@@ -75,13 +77,76 @@ export default function MyPage() {
     ];
   }, [activeTab, asProducer.length, asBuyer.length, stats]);
 
-  const filterLabels: Record<StatusFilter, { ja: string; en: string }> = {
+  const producerFilterLabels: Record<StatusFilter, { ja: string; en: string }> = {
     all: { ja: "すべて", en: "All" },
-    open: { ja: "購入受付中", en: "Available" },
-    locked: { ja: "条件確認中", en: "Under Review" },
-    active: { ja: "進行中", en: "In Progress" },
-    completed: { ja: "取引完了", en: "Completed" },
+    open: { ja: "支払い待ち", en: "Awaiting payment" },
+    locked: { ja: "確認待ち", en: "Waiting for review" },
+    active: { ja: "記録する", en: "Ready to record" },
+    completed: { ja: "完了", en: "Completed" },
   };
+
+  const buyerFilterLabels: Record<StatusFilter, { ja: string; en: string }> = {
+    all: { ja: "すべて", en: "All" },
+    open: { ja: "対象外", en: "N/A" },
+    locked: { ja: "開始前", en: "Before start" },
+    active: { ja: "確認中", en: "In progress" },
+    completed: { ja: "完了", en: "Completed" },
+  };
+
+  const filterLabels = activeTab === "producer" ? producerFilterLabels : buyerFilterLabels;
+  const nextProducerListing =
+    asProducer.find((listing) => listing.status === "active") ??
+    asProducer.find((listing) => listing.status === "locked") ??
+    asProducer.find((listing) => listing.status === "open") ??
+    null;
+
+  const producerNeedsAttention = stats.producerActive + stats.producerLocked;
+  const producerWaiting = stats.producerOpen;
+  const producerDone = stats.producerCompleted;
+  const buyerPending = stats.buyerLocked + stats.buyerActive;
+
+  const producerSummary = nextProducerListing
+    ? nextProducerListing.status === "active"
+      ? {
+          title: isJapanese ? "今日記録する案件があります" : "A listing is ready to record today",
+          body: isJapanese
+            ? "担当画面を開いて、今日終わった工程をその場で記録してください。"
+            : "Open the assigned listing and record the step that finished today.",
+        }
+      : nextProducerListing.status === "locked"
+      ? {
+          title: isJapanese ? "買い手の確認待ちがあります" : "A buyer review is waiting",
+          body: isJapanese
+            ? "条件確認が終わると進行中に変わります。必要ならチャットで補足できます。"
+            : "The listing will move into active progress after buyer review. Add context in chat if needed.",
+        }
+      : {
+          title: isJapanese ? "支払い準備待ちの案件があります" : "A listing is waiting for payment setup",
+          body: isJapanese
+            ? "買い手が支払い準備を進めると、記録する画面に切り替わります。"
+            : "Once the buyer secures payment, the listing will switch into the progress workspace.",
+        }
+    : {
+        title: isJapanese ? "いま優先する案件はありません" : "There is no urgent producer task right now",
+        body: isJapanese
+          ? "まずは完了済みや待機中の案件を見返せば十分です。"
+          : "Review completed or waiting listings first if you want to check the current state.",
+      };
+
+  const summaryCards = [
+    {
+      label: isJapanese ? "要対応" : "Needs attention",
+      value: producerNeedsAttention,
+    },
+    {
+      label: isJapanese ? "支払い待ち" : "Waiting for payment",
+      value: producerWaiting,
+    },
+    {
+      label: isJapanese ? "完了済み" : "Completed",
+      value: producerDone,
+    },
+  ];
 
   return (
     <I18nContext.Provider value={i18nValue}>
@@ -94,7 +159,6 @@ export default function MyPage() {
           sx={{ flex: 1, py: { xs: 3, sm: 4 } }}
         >
           <Container maxWidth="lg">
-            {/* Back button */}
             <Box sx={{ mb: 3 }}>
               <Link href="/" style={{ textDecoration: "none" }}>
                 <Box
@@ -112,25 +176,35 @@ export default function MyPage() {
                   }}
                 >
                   <ArrowBackIcon fontSize="small" />
-                  {locale === "ja" ? "一覧に戻る" : "Back to Listings"}
+                  {isJapanese ? "一覧に戻る" : "Back to listings"}
                 </Box>
               </Link>
             </Box>
 
-            {/* Page Title */}
             <Typography
               variant="h4"
               sx={{
                 fontFamily: "var(--font-display)",
                 fontWeight: 700,
                 color: "var(--color-text)",
-                mb: 3,
+                mb: 1,
               }}
             >
-              {locale === "ja" ? "マイページ" : "My Page"}
+              {isJapanese ? "担当一覧" : "My workspace"}
+            </Typography>
+            <Typography
+              sx={{
+                color: "var(--color-text-secondary)",
+                lineHeight: 1.7,
+                mb: 3,
+                maxWidth: 720,
+              }}
+            >
+              {isJapanese
+                ? "生産者として今やることを先頭に出しています。買い手としての確認は必要な時だけ軽く見られる構成です。"
+                : "This page prioritizes the producer's next action. Buyer-side review stays available as a lighter secondary view."}
             </Typography>
 
-            {/* Wallet */}
             <Box sx={{ mb: 4 }}>
               <ConnectWallet
                 address={wallet.address}
@@ -142,7 +216,6 @@ export default function MyPage() {
               />
             </Box>
 
-            {/* Not connected state */}
             {!wallet.address && (
               <Card
                 sx={{
@@ -155,131 +228,215 @@ export default function MyPage() {
               >
                 <CardContent>
                   <Typography sx={{ color: "var(--color-text-muted)" }}>
-                    {locale === "ja"
-                      ? "ログインしてマイページを表示"
-                      : "Log in to view your page"}
+                    {isJapanese
+                      ? "ログインすると、要対応の案件と次に開く案件がここに並びます。"
+                      : "Log in to see pending listings and the next workspace to open."}
                   </Typography>
                 </CardContent>
               </Card>
             )}
 
-            {/* Connected state */}
             {wallet.address && (
               <>
-                {/* Stats Cards */}
                 <Grid container spacing={3} sx={{ mb: 4 }}>
-                  {/* Producer Stats */}
-                  <Grid size={{ xs: 12, md: 6 }}>
+                  <Grid size={{ xs: 12, lg: 8 }}>
                     <Card
                       sx={{
                         background: "var(--color-surface)",
                         border: "1px solid var(--color-border)",
                         borderRadius: 3,
+                        height: "100%",
                       }}
                     >
                       <CardContent sx={{ p: 3 }}>
-                        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 2 }}>
-                          <StorefrontIcon sx={{ color: "var(--color-primary)" }} />
-                          <Typography
-                            variant="h6"
-                            sx={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--color-text)" }}
-                          >
-                            {locale === "ja" ? "出品" : "As Producer"}
-                          </Typography>
-                        </Box>
-                        <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-                          <Typography sx={{ color: "var(--color-text-muted)" }}>
-                            {locale === "ja" ? "総出品数" : "Total Listings"}
-                          </Typography>
-                          <Typography sx={{ color: "var(--color-text)", fontWeight: 600 }}>
-                            {stats.totalProduced}
-                          </Typography>
-                        </Box>
-                        <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-                          <Typography sx={{ color: "var(--color-text-muted)" }}>
-                            {locale === "ja" ? "条件確認中" : "Under Review"}
-                          </Typography>
-                          <Typography sx={{ color: "var(--status-warning)", fontWeight: 500 }}>
-                            {stats.producerLocked}
-                          </Typography>
-                        </Box>
-                        <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-                          <Typography sx={{ color: "var(--color-text-muted)" }}>
-                            {locale === "ja" ? "進行中" : "Active"}
-                          </Typography>
-                          <Typography sx={{ color: "var(--status-info)", fontWeight: 500 }}>
-                            {stats.producerActive}
-                          </Typography>
-                        </Box>
-                        <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                          <Typography sx={{ color: "var(--color-text-muted)" }}>
-                            {locale === "ja" ? "総収益" : "Total Earned"}
-                          </Typography>
-                          <Typography sx={{ color: "var(--status-success)", fontWeight: 600 }}>
-                            {formatAmount(stats.totalEarned, decimals, symbol)}
-                          </Typography>
+                        <Typography
+                          sx={{
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                            letterSpacing: "0.12em",
+                            textTransform: "uppercase",
+                            color: "var(--color-primary)",
+                            mb: 1.25,
+                          }}
+                        >
+                          {isJapanese ? "生産者としての優先事項" : "Producer priority"}
+                        </Typography>
+                        <Typography
+                          variant="h5"
+                          sx={{
+                            fontFamily: "var(--font-display)",
+                            fontWeight: 700,
+                            color: "var(--color-text)",
+                            mb: 1.5,
+                            lineHeight: 1.25,
+                          }}
+                        >
+                          {producerSummary.title}
+                        </Typography>
+                        <Typography
+                          sx={{
+                            color: "var(--color-text-secondary)",
+                            lineHeight: 1.8,
+                            mb: 3,
+                          }}
+                        >
+                          {producerSummary.body}
+                        </Typography>
+
+                        <Grid container spacing={2} sx={{ mb: 3 }}>
+                          {summaryCards.map((card) => (
+                            <Grid size={{ xs: 12, sm: 4 }} key={card.label}>
+                              <Box
+                                sx={{
+                                  p: 2,
+                                  borderRadius: 2,
+                                  background: "var(--color-bg-elevated)",
+                                  border: "1px solid var(--color-border)",
+                                }}
+                              >
+                                <Typography
+                                  sx={{ fontSize: "0.75rem", color: "var(--color-text-muted)", mb: 0.75 }}
+                                >
+                                  {card.label}
+                                </Typography>
+                                <Typography
+                                  sx={{
+                                    fontFamily: "var(--font-display)",
+                                    fontWeight: 700,
+                                    fontSize: "1.6rem",
+                                    color: "var(--color-text)",
+                                  }}
+                                >
+                                  {card.value}
+                                </Typography>
+                              </Box>
+                            </Grid>
+                          ))}
+                        </Grid>
+
+                        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1.5 }}>
+                          {nextProducerListing && (
+                            <Link
+                              href={`/listing/${nextProducerListing.escrowAddress}`}
+                              style={{ textDecoration: "none" }}
+                            >
+                              <Button
+                                variant="contained"
+                                sx={{
+                                  background: "linear-gradient(135deg, var(--color-primary) 0%, var(--copper-rich) 100%)",
+                                  color: "var(--sumi-black)",
+                                  fontWeight: 600,
+                                  borderRadius: 2,
+                                  boxShadow: "var(--shadow-subtle), var(--shadow-copper)",
+                                }}
+                              >
+                                {isJapanese ? "次の案件を開く" : "Open next listing"}
+                              </Button>
+                            </Link>
+                          )}
+                          <Link href="/" style={{ textDecoration: "none" }}>
+                            <Button
+                              variant="outlined"
+                              sx={{
+                                borderColor: "var(--color-border-strong)",
+                                color: "var(--color-text-secondary)",
+                                borderRadius: 2,
+                              }}
+                            >
+                              {isJapanese ? "一覧を見る" : "Back to listings"}
+                            </Button>
+                          </Link>
                         </Box>
                       </CardContent>
                     </Card>
                   </Grid>
 
-                  {/* Buyer Stats */}
-                  <Grid size={{ xs: 12, md: 6 }}>
+                  <Grid size={{ xs: 12, lg: 4 }}>
                     <Card
                       sx={{
                         background: "var(--color-surface)",
                         border: "1px solid var(--color-border)",
                         borderRadius: 3,
+                        height: "100%",
                       }}
                     >
                       <CardContent sx={{ p: 3 }}>
-                        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 2 }}>
-                          <ShoppingBagIcon sx={{ color: "var(--copper-rich)" }} />
+                        <Typography
+                          sx={{
+                            fontFamily: "var(--font-display)",
+                            fontWeight: 600,
+                            color: "var(--color-text)",
+                            mb: 1,
+                          }}
+                        >
+                          {isJapanese ? "買い手としての軽い確認" : "Light buyer review"}
+                        </Typography>
+                        <Typography
+                          sx={{
+                            color: "var(--color-text-secondary)",
+                            lineHeight: 1.7,
+                            mb: 2.5,
+                          }}
+                        >
+                          {isJapanese
+                            ? "買い手側で確認が必要な案件だけを後から見返せます。生産者の導線が主役です。"
+                            : "Buyer-side checks stay available for the few listings that need them. The producer flow remains primary."}
+                        </Typography>
+                        <Box
+                          sx={{
+                            p: 2,
+                            borderRadius: 2,
+                            background: "var(--color-bg-elevated)",
+                            border: "1px solid var(--color-border)",
+                            mb: 2,
+                          }}
+                        >
                           <Typography
-                            variant="h6"
-                            sx={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--color-text)" }}
+                            sx={{ fontSize: "0.75rem", color: "var(--color-text-muted)", mb: 0.75 }}
                           >
-                            {locale === "ja" ? "購入" : "As Buyer"}
+                            {isJapanese ? "買い手として要確認" : "Buyer reviews pending"}
+                          </Typography>
+                          <Typography
+                            sx={{
+                              fontFamily: "var(--font-display)",
+                              fontWeight: 700,
+                              fontSize: "1.6rem",
+                              color: "var(--color-text)",
+                            }}
+                          >
+                            {buyerPending}
                           </Typography>
                         </Box>
-                        <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-                          <Typography sx={{ color: "var(--color-text-muted)" }}>
-                            {locale === "ja" ? "総購入数" : "Total Purchases"}
-                          </Typography>
-                          <Typography sx={{ color: "var(--color-text)", fontWeight: 600 }}>
-                            {stats.totalBought}
-                          </Typography>
-                        </Box>
-                        <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-                          <Typography sx={{ color: "var(--color-text-muted)" }}>
-                            {locale === "ja" ? "条件確認中" : "Under Review"}
-                          </Typography>
-                          <Typography sx={{ color: "var(--status-warning)", fontWeight: 500 }}>
-                            {stats.buyerLocked}
-                          </Typography>
-                        </Box>
-                        <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-                          <Typography sx={{ color: "var(--color-text-muted)" }}>
-                            {locale === "ja" ? "進行中" : "Active"}
-                          </Typography>
-                          <Typography sx={{ color: "var(--status-info)", fontWeight: 500 }}>
-                            {stats.buyerActive}
-                          </Typography>
-                        </Box>
-                        <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                          <Typography sx={{ color: "var(--color-text-muted)" }}>
-                            {locale === "ja" ? "総支払額" : "Total Spent"}
-                          </Typography>
-                          <Typography sx={{ color: "var(--color-text)", fontWeight: 600 }}>
-                            {formatAmount(stats.totalSpent, decimals, symbol)}
-                          </Typography>
-                        </Box>
+                        <Typography sx={{ color: "var(--color-text-muted)", mb: 1 }}>
+                          {isJapanese ? "受け取り済み" : "Completed as buyer"}
+                        </Typography>
+                        <Typography
+                          sx={{
+                            fontFamily: "var(--font-display)",
+                            fontWeight: 600,
+                            color: "var(--color-text)",
+                            mb: 2.5,
+                          }}
+                        >
+                          {stats.buyerCompleted}
+                        </Typography>
+                        <Typography sx={{ color: "var(--color-text-muted)", mb: 0.5 }}>
+                          {isJapanese ? "総支払額" : "Total spent"}
+                        </Typography>
+                        <Typography
+                          sx={{
+                            fontFamily: "var(--font-display)",
+                            fontWeight: 600,
+                            color: "var(--color-primary)",
+                          }}
+                        >
+                          {formatAmount(stats.totalSpent, decimals, symbol)}
+                        </Typography>
                       </CardContent>
                     </Card>
                   </Grid>
                 </Grid>
 
-                {/* Tabs */}
                 <Card
                   sx={{
                     background: "var(--color-surface)",
@@ -290,8 +447,8 @@ export default function MyPage() {
                   <Box sx={{ borderBottom: "1px solid var(--color-border)" }}>
                     <Tabs
                       value={activeTab}
-                      onChange={(_, v) => {
-                        setActiveTab(v);
+                      onChange={(_, value) => {
+                        setActiveTab(value);
                         setStatusFilter("all");
                       }}
                       sx={{
@@ -310,7 +467,7 @@ export default function MyPage() {
                         iconPosition="start"
                         label={
                           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                            {locale === "ja" ? "出品した商品" : "My Listings"}
+                            {isJapanese ? "生産者として使う" : "Producer view"}
                             <Chip
                               label={asProducer.length}
                               size="small"
@@ -330,7 +487,7 @@ export default function MyPage() {
                         iconPosition="start"
                         label={
                           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                            {locale === "ja" ? "購入した商品" : "My Purchases"}
+                            {isJapanese ? "買い手として確認する" : "Buyer review"}
                             <Chip
                               label={asBuyer.length}
                               size="small"
@@ -348,7 +505,6 @@ export default function MyPage() {
                   </Box>
 
                   <CardContent sx={{ p: 3 }}>
-                    {/* Status Filters */}
                     <Box sx={{ display: "flex", gap: 1, mb: 3, flexWrap: "wrap" }}>
                       {availableFilters.map((filter) => (
                         <Chip
@@ -377,21 +533,18 @@ export default function MyPage() {
                       ))}
                     </Box>
 
-                    {/* Loading */}
                     {isLoading && (
                       <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
                         <CircularProgress sx={{ color: "var(--color-primary)" }} />
                       </Box>
                     )}
 
-                    {/* Error */}
                     {error && (
                       <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
                         {error}
                       </Alert>
                     )}
 
-                    {/* Listings Grid */}
                     {!isLoading && filteredListings.length > 0 && (
                       <Grid container spacing={3}>
                         {filteredListings.map((listing, index) => (
@@ -412,7 +565,6 @@ export default function MyPage() {
                       </Grid>
                     )}
 
-                    {/* Empty State */}
                     {!isLoading && filteredListings.length === 0 && (
                       <Box
                         sx={{
@@ -421,32 +573,50 @@ export default function MyPage() {
                           color: "var(--color-text-muted)",
                         }}
                       >
-                        <Typography variant="h6" sx={{ mb: 1 }}>
+                        <Typography variant="h6" sx={{ mb: 1, color: "var(--color-text-secondary)" }}>
                           {activeTab === "producer"
-                            ? locale === "ja"
-                              ? "出品がありません"
-                              : "No listings yet"
-                            : locale === "ja"
-                            ? "購入履歴がありません"
-                            : "No purchases yet"}
+                            ? isJapanese
+                              ? "この条件に合う担当案件はありません"
+                              : "No producer listings match this filter"
+                            : isJapanese
+                            ? "この条件に合う買い手側案件はありません"
+                            : "No buyer listings match this filter"}
                         </Typography>
                         <Typography variant="body2">
                           {activeTab === "producer"
-                            ? locale === "ja"
-                              ? "新規出品を作成してみましょう"
-                              : "Create a new listing to get started"
-                            : locale === "ja"
-                            ? "商品を購入すると履歴が表示されます"
-                            : "Your purchases will appear here"}
+                            ? isJapanese
+                              ? "支払い待ち、確認待ち、記録する案件を切り替えて確認できます。"
+                              : "Switch between payment waiting, review waiting, and ready-to-record filters."
+                            : isJapanese
+                            ? "必要な確認が発生したときだけ、ここを見返せば十分です。"
+                            : "Come back here only when a buyer-side confirmation is needed."}
                         </Typography>
                       </Box>
                     )}
                   </CardContent>
                 </Card>
+
+                <Box sx={{ mt: 3 }}>
+                  <Typography sx={{ color: "var(--color-text-muted)", mb: 0.5 }}>
+                    {isJapanese ? "生産者としての受取総額" : "Total received as producer"}
+                  </Typography>
+                  <Typography
+                    sx={{
+                      fontFamily: "var(--font-display)",
+                      fontWeight: 700,
+                      fontSize: "1.5rem",
+                      color: "var(--color-primary)",
+                    }}
+                  >
+                    {formatAmount(stats.totalEarned, decimals, symbol)}
+                  </Typography>
+                </Box>
               </>
             )}
           </Container>
         </Box>
+
+        <Footer />
       </div>
     </I18nContext.Provider>
   );

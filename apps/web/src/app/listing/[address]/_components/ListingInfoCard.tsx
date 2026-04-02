@@ -41,9 +41,11 @@ export function ListingInfoCard({
   progressPercent,
   escrowAddress,
 }: ListingInfoCardProps) {
+  const isJapanese = locale === "ja";
+
   const formatDeadline = (deadline: bigint | null) => {
     if (deadline === null) return null;
-    return new Intl.DateTimeFormat(locale === "ja" ? "ja-JP" : "en-US", {
+    return new Intl.DateTimeFormat(isJapanese ? "ja-JP" : "en-US", {
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -57,7 +59,6 @@ export function ListingInfoCard({
 
   return (
     <>
-      {/* Dynamic NFT */}
       <Card
         sx={{
           background: "var(--color-surface)",
@@ -69,9 +70,20 @@ export function ListingInfoCard({
         <CardContent sx={{ p: 3 }}>
           <Typography
             variant="h6"
-            sx={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--color-text)", mb: 2 }}
+            sx={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--color-text)", mb: 1.25 }}
           >
-            {locale === "ja" ? "取引証明書" : "Digital Certificate"}
+            {isJapanese ? "成長の証明ページ" : "Digital proof page"}
+          </Typography>
+          <Typography
+            sx={{
+              color: "var(--color-text-secondary)",
+              lineHeight: 1.7,
+              mb: 2.5,
+            }}
+          >
+            {isJapanese
+              ? "育成の進み具合と受け渡しの状態を、そのまま相手に見せるための証明です。"
+              : "This proof view shows the counterpart how the work has progressed and where the handoff stands."}
           </Typography>
           <Box sx={{ display: "flex", justifyContent: "center" }}>
             <div className="hero-nft-shell">
@@ -81,7 +93,6 @@ export function ListingInfoCard({
         </CardContent>
       </Card>
 
-      {/* Main Card */}
       <Card
         sx={{
           background: "var(--color-surface)",
@@ -90,7 +101,6 @@ export function ListingInfoCard({
           borderRadius: 3,
         }}
       >
-        {/* Image */}
         {info.imageURI && (
           <Box
             sx={{
@@ -114,7 +124,6 @@ export function ListingInfoCard({
         )}
 
         <CardContent sx={{ p: 3 }}>
-          {/* Category & Status */}
           <Box sx={{ display: "flex", gap: 1, mb: 2 }}>
             <Chip
               label={CATEGORY_LABELS[info.category]?.[locale] || info.category}
@@ -134,20 +143,18 @@ export function ListingInfoCard({
             />
           </Box>
 
-          {/* Title */}
           <Typography
             variant="h4"
             sx={{
               fontFamily: "var(--font-display)",
               fontWeight: 700,
               color: "var(--color-text)",
-              mb: 2,
+              mb: 1.25,
             }}
           >
             {info.title}
           </Typography>
 
-          {/* Description */}
           <Typography
             variant="body1"
             sx={{
@@ -161,10 +168,9 @@ export function ListingInfoCard({
 
           <Divider sx={{ borderColor: "var(--color-border)", mb: 3 }} />
 
-          {/* Price */}
           <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
             <Typography sx={{ color: "var(--color-text-muted)" }}>
-              {locale === "ja" ? "価格" : "Price"}
+              {isJapanese ? "合計予定額" : "Planned total"}
             </Typography>
             <Typography
               sx={{
@@ -178,10 +184,9 @@ export function ListingInfoCard({
             </Typography>
           </Box>
 
-          {/* Released */}
           <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
             <Typography sx={{ color: "var(--color-text-muted)" }}>
-              {locale === "ja" ? "支払済み" : "Released"}
+              {isJapanese ? "受け取り済み" : "Paid already"}
             </Typography>
             <Typography sx={{ color: "var(--color-text-secondary)" }}>
               {formatAmount(info.releasedAmount, decimals, symbol)}
@@ -191,7 +196,7 @@ export function ListingInfoCard({
           {lockDeadlineLabel && info.status === "locked" && (
             <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
               <Typography sx={{ color: "var(--color-text-muted)" }}>
-                {locale === "ja" ? "開始確認期限" : "Review Deadline"}
+                {isJapanese ? "開始確認の期限" : "Start review deadline"}
               </Typography>
               <Typography sx={{ color: "var(--color-text-secondary)" }}>
                 {lockDeadlineLabel}
@@ -202,7 +207,7 @@ export function ListingInfoCard({
           {finalDeadlineLabel && info.status === "active" && (
             <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
               <Typography sx={{ color: "var(--color-text-muted)" }}>
-                {locale === "ja" ? "最終確認期限" : "Final Confirmation Deadline"}
+                {isJapanese ? "最終確認の期限" : "Final confirmation deadline"}
               </Typography>
               <Typography sx={{ color: "var(--color-text-secondary)" }}>
                 {finalDeadlineLabel}
@@ -213,7 +218,7 @@ export function ListingInfoCard({
           {info.cancelCount > 0n && (
             <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
               <Typography sx={{ color: "var(--color-text-muted)" }}>
-                {locale === "ja" ? "キャンセル履歴" : "Cancel History"}
+                {isJapanese ? "キャンセル履歴" : "Cancel history"}
               </Typography>
               <Typography sx={{ color: "var(--color-text-secondary)" }}>
                 {info.cancelCount.toString()}
@@ -221,11 +226,10 @@ export function ListingInfoCard({
             </Box>
           )}
 
-          {/* Progress */}
           <Box sx={{ mb: 3 }}>
             <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
               <Typography sx={{ color: "var(--color-text-muted)" }}>
-                {locale === "ja" ? "進捗" : "Progress"}
+                {isJapanese ? "記録の進み具合" : "Recorded progress"}
               </Typography>
               <Typography sx={{ color: "var(--color-text-secondary)" }}>
                 {completedCount}/{totalCount}
@@ -248,7 +252,6 @@ export function ListingInfoCard({
 
           <Divider sx={{ borderColor: "var(--color-border)", mb: 3 }} />
 
-          {/* Addresses - Progressive Disclosure */}
           <Accordion
             sx={{
               background: "transparent",
@@ -267,14 +270,14 @@ export function ListingInfoCard({
               }}
             >
               <Typography variant="caption" sx={{ color: "var(--color-text-muted)", fontWeight: 500 }}>
-                {locale === "ja" ? "技術詳細" : "Technical Details"}
+                {isJapanese ? "取引IDと参加者" : "IDs and participants"}
               </Typography>
             </AccordionSummary>
             <AccordionDetails sx={{ pt: 0 }}>
               <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
                 <Box sx={{ display: "flex", justifyContent: "space-between" }}>
                   <Typography variant="caption" sx={{ color: "var(--color-text-muted)" }}>
-                    {locale === "ja" ? "生産者" : "Producer"}
+                    {isJapanese ? "生産者" : "Producer"}
                   </Typography>
                   <a
                     href={getAddressUrl(info.producer)}
@@ -288,7 +291,7 @@ export function ListingInfoCard({
                 {info.locked && (
                   <Box sx={{ display: "flex", justifyContent: "space-between" }}>
                     <Typography variant="caption" sx={{ color: "var(--color-text-muted)" }}>
-                      {locale === "ja" ? "購入者" : "Buyer"}
+                      {isJapanese ? "買い手" : "Buyer"}
                     </Typography>
                     <a
                       href={getAddressUrl(info.buyer)}
@@ -302,7 +305,7 @@ export function ListingInfoCard({
                 )}
                 <Box sx={{ display: "flex", justifyContent: "space-between" }}>
                   <Typography variant="caption" sx={{ color: "var(--color-text-muted)" }}>
-                    {locale === "ja" ? "取引管理" : "Transaction"}
+                    {isJapanese ? "取引ID" : "Transaction ID"}
                   </Typography>
                   <a
                     href={getAddressUrl(escrowAddress)}

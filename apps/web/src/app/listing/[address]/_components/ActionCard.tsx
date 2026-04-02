@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Box,
   Typography,
@@ -9,6 +9,8 @@ import {
   Button,
   CircularProgress,
   Alert,
+  TextField,
+  Collapse,
 } from "@mui/material";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import PaymentIcon from "@mui/icons-material/Payment";
@@ -39,11 +41,11 @@ export interface ActionCardProps {
   milestonesLoading: boolean;
   nextMilestoneIndex: number;
   onLock: () => void;
-  onSubmit: (index: number) => void;
+  onSubmit: (index: number, evidenceHash?: string) => void | Promise<void>;
   onApprove: () => void;
   onActivateAfterTimeout: () => void;
   onCancel: () => void;
-  onRequestFinalDelivery: () => void;
+  onRequestFinalDelivery: (evidenceHash?: string) => void | Promise<void>;
   onConfirmDelivery: () => void;
   onFinalizeAfterTimeout: () => void;
 }
@@ -72,9 +74,14 @@ export function ActionCard({
   onConfirmDelivery,
   onFinalizeAfterTimeout,
 }: ActionCardProps) {
-  // Guard: if nextMilestoneIndex is out of bounds, treat active state sections as inactive
+  const isJapanese = locale === "ja";
   const milestoneInBounds = nextMilestoneIndex >= 0 && nextMilestoneIndex < milestones.length;
   const [nowSec, setNowSec] = useState(() => BigInt(Math.floor(Date.now() / 1000)));
+  const [showEvidenceForm, setShowEvidenceForm] = useState(false);
+  const [evidenceNote, setEvidenceNote] = useState("");
+  const [evidencePhoto, setEvidencePhoto] = useState<File | null>(null);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  const [isPreparingEvidence, setIsPreparingEvidence] = useState(false);
   const lastMilestoneIndex = milestones.length - 1;
   const atFinalMilestone = milestoneInBounds && nextMilestoneIndex === lastMilestoneIndex;
   const lockExpired = info.lockDeadline !== null && nowSec >= info.lockDeadline;
@@ -89,22 +96,101 @@ export function ActionCard({
     return () => clearInterval(timer);
   }, []);
 
-  const formatDeadline = useMemo(
-    () => (deadline: bigint | null) =>
-      deadline === null
-        ? null
-        : new Intl.DateTimeFormat(locale === "ja" ? "ja-JP" : "en-US", {
-            year: "numeric",
-            month: "short",
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          }).format(new Date(Number(deadline) * 1000)),
-    [locale]
-  );
+  const formatDeadline = (deadline: bigint | null) =>
+    deadline === null
+      ? null
+      : new Intl.DateTimeFormat(isJapanese ? "ja-JP" : "en-US", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        }).format(new Date(Number(deadline) * 1000));
 
   const lockDeadlineLabel = formatDeadline(info.lockDeadline);
   const finalDeadlineLabel = formatDeadline(info.finalConfirmationDeadline);
+  const canRecordNextMilestone =
+    info.status === "active" &&
+    userRole === "producer" &&
+    milestoneInBounds &&
+    nextMilestoneIndex < milestones.length - 1 &&
+    txStep !== "success" &&
+    !milestonesLoading;
+  const canRequestFinalHandoff =
+    info.status === "active" &&
+    userRole === "producer" &&
+    atFinalMilestone &&
+    !finalRequested &&
+    txStep !== "success" &&
+    !milestonesLoading;
+
+  const resetEvidenceDraft = () => {
+    setShowEvidenceForm(false);
+    setEvidenceNote("");
+    setEvidencePhoto(null);
+    setEvidenceError(null);
+  };
+
+  const buildEvidenceHash = async (): Promise<`0x${string}` | undefined> => {
+    const trimmedNote = evidenceNote.trim();
+    if (!trimmedNote && !evidencePhoto) {
+      return undefined;
+    }
+
+    const encoder = new TextEncoder();
+    const chunks: Uint8Array[] = [];
+    chunks.push(encoder.encode(`note:${trimmedNote}`));
+
+    if (evidencePhoto) {
+      const fileBytes = new Uint8Array(await evidencePhoto.arrayBuffer());
+      chunks.push(encoder.encode(`file:${evidencePhoto.name}:${evidencePhoto.type}:${evidencePhoto.size}`));
+      chunks.push(fileBytes);
+    }
+
+    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const merged = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    const digest = await crypto.subtle.digest("SHA-256", merged);
+    const hex = Array.from(new Uint8Array(digest))
+      .map((value) => value.toString(16).padStart(2, "0"))
+      .join("");
+
+    return `0x${hex}` as `0x${string}`;
+  };
+
+  const runWithOptionalEvidence = async (
+    action: (evidenceHash?: string) => void | Promise<void>,
+  ) => {
+    setEvidenceError(null);
+    try {
+      setIsPreparingEvidence(true);
+      const evidenceHash = await buildEvidenceHash();
+      await action(evidenceHash);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setEvidenceError(
+        isJapanese
+          ? `補足情報の準備に失敗しました: ${message}`
+          : `Failed to prepare supporting proof: ${message}`,
+      );
+    } finally {
+      setIsPreparingEvidence(false);
+    }
+  };
+
+  const isBusy = actionLoading || isPreparingEvidence;
+  const canAttachEvidence = canRecordNextMilestone || canRequestFinalHandoff;
+
+  useEffect(() => {
+    if (txStep === "success") {
+      resetEvidenceDraft();
+    }
+  }, [txStep]);
 
   return (
     <Card
@@ -120,10 +206,9 @@ export function ActionCard({
           variant="h6"
           sx={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--color-text)", mb: 2 }}
         >
-          {locale === "ja" ? "お手続き" : "Actions"}
+          {isJapanese ? "今やること" : "Next step"}
         </Typography>
 
-        {/* Transaction Progress */}
         <TxProgress
           step={txStep}
           txHash={txHash}
@@ -131,10 +216,102 @@ export function ActionCard({
           onClose={resetState}
         />
 
-        {/* Balance/Allowance Info (for potential buyers) */}
+        {evidenceError && (
+          <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+            {evidenceError}
+          </Alert>
+        )}
+
+        {canAttachEvidence && (
+          <Box sx={{ mb: 2.5 }}>
+            <Button
+              variant="text"
+              onClick={() => setShowEvidenceForm((value) => !value)}
+              sx={{
+                px: 0,
+                minWidth: 0,
+                color: "var(--color-primary)",
+                fontWeight: 600,
+                "&:hover": { background: "transparent" },
+              }}
+            >
+              {showEvidenceForm
+                ? isJapanese
+                  ? "補足を閉じる"
+                  : "Hide supporting proof"
+                : isJapanese
+                ? "補足のメモ・写真を付ける"
+                : "Add optional note or photo"}
+            </Button>
+            <Collapse in={showEvidenceForm}>
+              <Box
+                sx={{
+                  mt: 1.5,
+                  p: 2,
+                  borderRadius: 2,
+                  background: "var(--color-bg-elevated)",
+                  border: "1px solid var(--color-border)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 1.5,
+                }}
+              >
+                <Typography sx={{ color: "var(--color-text-secondary)", lineHeight: 1.7 }}>
+                  {isJapanese
+                    ? "任意の補足です。ここで入力した内容はハッシュ化した証跡 ID として記録されます。写真の原本共有は今までどおり現場運用のままです。"
+                    : "This is optional. The note/photo is reduced to a hashed proof ID on-chain. Keep sharing the original photo through your existing field workflow."}
+                </Typography>
+                <TextField
+                  multiline
+                  minRows={3}
+                  value={evidenceNote}
+                  onChange={(event) => setEvidenceNote(event.target.value)}
+                  placeholder={
+                    isJapanese
+                      ? "例: 体重測定を完了。飼料の切り替えも実施。"
+                      : "Example: Weight check completed. Feed change was also applied."
+                  }
+                  sx={{
+                    "& .MuiOutlinedInput-root": {
+                      color: "var(--color-text)",
+                      background: "var(--color-surface)",
+                      "& fieldset": { borderColor: "var(--color-border)" },
+                    },
+                  }}
+                />
+                <Box>
+                  <Button
+                    component="label"
+                    variant="outlined"
+                    sx={{
+                      borderColor: "var(--color-border-strong)",
+                      color: "var(--color-text-secondary)",
+                    }}
+                  >
+                    {isJapanese ? "写真を選ぶ" : "Choose photo"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] ?? null;
+                        setEvidencePhoto(file);
+                      }}
+                    />
+                  </Button>
+                  {evidencePhoto && (
+                    <Typography sx={{ mt: 1, color: "var(--color-text-muted)" }}>
+                      {isJapanese ? "選択中" : "Selected"}: {evidencePhoto.name}
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+            </Collapse>
+          </Box>
+        )}
+
         {info.status === "open" && userRole !== "producer" && (
           <Box sx={{ mb: 2 }}>
-            {/* Balance Display */}
             <Box
               sx={{
                 display: "flex",
@@ -154,7 +331,7 @@ export function ActionCard({
               }}
             >
               <Typography variant="body2" sx={{ color: "var(--color-text-secondary)" }}>
-                {locale === "ja" ? "お支払い可能額" : "Available Funds"}
+                {isJapanese ? "支払いに使える残高" : "Available payment balance"}
               </Typography>
               <Typography
                 variant="body2"
@@ -169,7 +346,6 @@ export function ActionCard({
               </Typography>
             </Box>
 
-            {/* Insufficient Balance Warning */}
             {!purchaseValidation.hasEnoughBalance && (
               <Alert
                 severity="warning"
@@ -181,22 +357,21 @@ export function ActionCard({
                   border: "1px solid rgba(232, 197, 71, 0.25)",
                 }}
               >
-                {locale === "ja"
-                  ? `お支払い額が${formatAmount(info.totalAmount - purchaseValidation.balance, decimals, symbol)}不足しています`
+                {isJapanese
+                  ? `必要額まで ${formatAmount(info.totalAmount - purchaseValidation.balance, decimals, symbol)} 足りません`
                   : `Insufficient funds by ${formatAmount(info.totalAmount - purchaseValidation.balance, decimals, symbol)}`}
               </Alert>
             )}
           </Box>
         )}
 
-        {/* Lock Button (for non-producer, when open) */}
         {info.status === "open" && userRole !== "producer" && txStep !== "success" && (
           <Button
             variant="contained"
             fullWidth
-            startIcon={actionLoading ? <CircularProgress size={20} /> : <PaymentIcon />}
+            startIcon={isBusy ? <CircularProgress size={20} /> : <PaymentIcon />}
             onClick={onLock}
-            disabled={actionLoading || !purchaseValidation.hasEnoughBalance}
+            disabled={isBusy || !purchaseValidation.hasEnoughBalance}
             sx={{
               background: "linear-gradient(135deg, var(--color-primary) 0%, var(--copper-rich) 100%)",
               color: "var(--sumi-black)",
@@ -216,46 +391,44 @@ export function ActionCard({
               },
             }}
           >
-            {actionLoading
-              ? locale === "ja"
-                ? "処理中..."
+              {isBusy
+                ? isJapanese
+                  ? "処理中..."
                 : "Processing..."
-              : locale === "ja"
-              ? `支払いを確定する (${formatAmount(info.totalAmount, decimals, symbol)})`
-              : `Confirm Payment (${formatAmount(info.totalAmount, decimals, symbol)})`}
+              : isJapanese
+              ? `この条件で支払い準備を進める (${formatAmount(info.totalAmount, decimals, symbol)})`
+              : `Secure payment for this plan (${formatAmount(info.totalAmount, decimals, symbol)})`}
           </Button>
         )}
 
-        {/* Producer's own listing - waiting message */}
         {info.status === "open" && userRole === "producer" && txStep !== "success" && (
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <Typography sx={{ color: "var(--color-text-muted)", textAlign: "center" }}>
               {relistReady
-                ? locale === "ja"
-                  ? "キャンセル後の再販待ちです。現在は生産者がNFTを保有しています。"
-                  : "Relisting is available after cancellation. The producer currently holds the NFT."
-                : locale === "ja"
-                ? "購入者を待っています..."
-                : "Waiting for buyer..."}
+                ? isJapanese
+                  ? "再開準備ができています。次の買い手が支払い準備を進めると、この画面から続けられます。"
+                  : "This listing is ready to restart. Once the next buyer secures payment, you can continue from here."
+                : isJapanese
+                ? "いまは買い手の支払い準備待ちです。連絡が入ったらこの画面から続けられます。"
+                : "Waiting for the buyer to secure payment. Once that is done, the next action will appear here."}
             </Typography>
           </Box>
         )}
 
-        {/* LOCKED state - Buyer needs to approve or cancel */}
         {info.status === "locked" && userRole === "buyer" && txStep !== "success" && (
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <Alert severity="info" sx={{ borderRadius: 2 }}>
               {lockExpired
-                ? locale === "ja"
-                  ? "開始待ち期限を過ぎました。キャンセルはできません。取引を進める場合はタイムアウト開始を実行してください。"
-                  : "The review window has expired. Cancellation is no longer available. Activate the transaction after timeout to proceed."
-                : locale === "ja"
-                ? "出品者とチャットで条件を確認してください。問題なければ取引を開始してください。"
-                : "Chat with the producer to confirm conditions. Start the transaction when ready."}
+                ? isJapanese
+                  ? "開始確認の期限を過ぎました。今回は返金ではなく、取引を進める操作だけが残っています。"
+                  : "The review window has expired. Cancellation is no longer available. Only the start action remains."
+                : isJapanese
+                ? "内容を確認して問題なければ開始してください。見送る場合は返金できます。"
+                : "Review the details. Start when ready, or refund if you decide not to proceed."}
             </Alert>
             {lockDeadlineLabel && (
               <Typography variant="caption" sx={{ color: "var(--color-text-muted)", textAlign: "center" }}>
-                {locale === "ja" ? `確認期限: ${lockDeadlineLabel}` : `Review deadline: ${lockDeadlineLabel}`}
+                {isJapanese ? `開始確認の期限: ${lockDeadlineLabel}` : `Start review deadline: ${lockDeadlineLabel}`}
               </Typography>
             )}
             {!lockExpired ? (
@@ -263,9 +436,9 @@ export function ActionCard({
                 <Button
                   variant="contained"
                   fullWidth
-                  startIcon={actionLoading ? <CircularProgress size={20} /> : <ThumbUpIcon />}
+                  startIcon={isBusy ? <CircularProgress size={20} /> : <ThumbUpIcon />}
                   onClick={onApprove}
-                  disabled={actionLoading}
+                  disabled={isBusy}
                   sx={{
                     background: "linear-gradient(135deg, var(--status-success) 0%, #5A9E73 100%)",
                     color: "var(--sumi-black)",
@@ -278,20 +451,20 @@ export function ActionCard({
                     },
                   }}
                 >
-                  {actionLoading
-                    ? locale === "ja"
+                  {isBusy
+                    ? isJapanese
                       ? "処理中..."
                       : "Processing..."
-                    : locale === "ja"
-                    ? "取引を開始する"
-                    : "Start Transaction"}
+                    : isJapanese
+                    ? "内容確認を終えて開始する"
+                    : "Approve and start"}
                 </Button>
                 <Button
                   variant="outlined"
                   fullWidth
-                  startIcon={actionLoading ? <CircularProgress size={20} /> : <CancelIcon />}
+                  startIcon={isBusy ? <CircularProgress size={20} /> : <CancelIcon />}
                   onClick={onCancel}
-                  disabled={actionLoading}
+                  disabled={isBusy}
                   sx={{
                     borderColor: "var(--status-error)",
                     color: "var(--status-error)",
@@ -301,22 +474,22 @@ export function ActionCard({
                     },
                   }}
                 >
-                  {actionLoading
-                    ? locale === "ja"
+                  {isBusy
+                    ? isJapanese
                       ? "処理中..."
                       : "Processing..."
-                    : locale === "ja"
-                    ? "キャンセルして返金"
-                    : "Cancel & Refund"}
+                    : isJapanese
+                    ? "今回は見送って返金する"
+                    : "Refund and stop"}
                 </Button>
               </>
             ) : (
               <Button
                 variant="contained"
                 fullWidth
-                startIcon={actionLoading ? <CircularProgress size={20} /> : <ThumbUpIcon />}
+                startIcon={isBusy ? <CircularProgress size={20} /> : <ThumbUpIcon />}
                 onClick={onActivateAfterTimeout}
-                disabled={actionLoading}
+                disabled={isBusy}
                 sx={{
                   background: "linear-gradient(135deg, var(--color-primary) 0%, var(--copper-rich) 100%)",
                   color: "var(--sumi-black)",
@@ -325,42 +498,41 @@ export function ActionCard({
                   borderRadius: 2,
                 }}
               >
-                {actionLoading
-                  ? locale === "ja"
+                {isBusy
+                  ? isJapanese
                     ? "処理中..."
                     : "Processing..."
-                  : locale === "ja"
-                  ? "期限後に取引開始"
-                  : "Activate After Timeout"}
+                  : isJapanese
+                  ? "期限後に進行を再開する"
+                  : "Start after timeout"}
               </Button>
             )}
           </Box>
         )}
 
-        {/* LOCKED state - Producer waiting for approval */}
         {info.status === "locked" && userRole === "producer" && txStep !== "success" && (
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <Alert severity="info" sx={{ borderRadius: 2 }}>
               {lockExpired
-                ? locale === "ja"
-                  ? "開始待ち期限を過ぎました。誰でも取引開始へ進められます。"
-                  : "The review window has expired. Anyone can activate the transaction now."
-                : locale === "ja"
-                ? "購入者が条件を確認中です。確認後、取引が開始します。"
-                : "Buyer is reviewing conditions. Transaction will start after confirmation."}
+                ? isJapanese
+                  ? "開始確認の期限を過ぎました。次の操作をすると進行中に変わります。"
+                  : "The review window has expired. The next action will move the listing into active progress."
+                : isJapanese
+                ? "買い手が内容を確認中です。確認が終わると取引が動き出します。"
+                : "The buyer is reviewing the details. The flow will start after confirmation."}
             </Alert>
             {lockDeadlineLabel && (
               <Typography variant="caption" sx={{ color: "var(--color-text-muted)", textAlign: "center" }}>
-                {locale === "ja" ? `確認期限: ${lockDeadlineLabel}` : `Review deadline: ${lockDeadlineLabel}`}
+                {isJapanese ? `開始確認の期限: ${lockDeadlineLabel}` : `Start review deadline: ${lockDeadlineLabel}`}
               </Typography>
             )}
             {lockExpired ? (
               <Button
                 variant="contained"
                 fullWidth
-                startIcon={actionLoading ? <CircularProgress size={20} /> : <ThumbUpIcon />}
+                startIcon={isBusy ? <CircularProgress size={20} /> : <ThumbUpIcon />}
                 onClick={onActivateAfterTimeout}
-                disabled={actionLoading}
+                disabled={isBusy}
                 sx={{
                   background: "linear-gradient(135deg, var(--color-primary) 0%, var(--copper-rich) 100%)",
                   color: "var(--sumi-black)",
@@ -369,73 +541,81 @@ export function ActionCard({
                   borderRadius: 2,
                 }}
               >
-                {actionLoading
-                  ? locale === "ja"
+                {isBusy
+                  ? isJapanese
                     ? "処理中..."
                     : "Processing..."
-                  : locale === "ja"
-                  ? "期限後に取引開始"
-                  : "Activate After Timeout"}
+                  : isJapanese
+                  ? "期限後に進行を再開する"
+                  : "Start after timeout"}
               </Button>
             ) : (
               <Typography sx={{ color: "var(--color-text-muted)", textAlign: "center" }}>
-                {locale === "ja" ? "購入者の確認待ち..." : "Waiting for buyer confirmation..."}
+                {isJapanese ? "買い手の開始確認待ちです。" : "Waiting for buyer confirmation."}
               </Typography>
             )}
           </Box>
         )}
 
-        {/* Loading state while milestones refresh */}
         {info.status === "active" && userRole === "producer" && milestonesLoading && txStep === "idle" && (
           <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
             <CircularProgress size={24} sx={{ color: "var(--color-primary)" }} />
           </Box>
         )}
 
-        {/* Submit Button (for producer, when active) - excludes final milestone */}
-        {info.status === "active" && userRole === "producer" && milestoneInBounds && nextMilestoneIndex < milestones.length - 1 && txStep !== "success" && !milestonesLoading && (
-          <Button
-            variant="contained"
-            fullWidth
-            startIcon={actionLoading ? <CircularProgress size={20} /> : <SendIcon />}
-            onClick={() => onSubmit(nextMilestoneIndex)}
-            disabled={actionLoading}
-            sx={{
-              background: "linear-gradient(135deg, var(--status-success) 0%, #5A9E73 100%)",
-              color: "var(--sumi-black)",
-              fontWeight: 600,
-              py: 1.5,
-              borderRadius: 2,
-              "&:hover": {
-                transform: "translateY(-2px)",
-                boxShadow: "var(--shadow-medium), 0 0 30px rgba(110, 191, 139, 0.3)",
-              },
-            }}
-          >
-            {actionLoading
-              ? locale === "ja"
-                ? "処理中..."
-                : "Processing..."
-              : locale === "ja"
-              ? `「${milestones[nextMilestoneIndex].name}」を完了報告`
-              : `Report "${milestones[nextMilestoneIndex].name}" Complete`}
-          </Button>
-        )}
-
-        {/* Producer requests final delivery */}
-        {info.status === "active" && userRole === "producer" && atFinalMilestone && !finalRequested && txStep !== "success" && !milestonesLoading && (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        {canRecordNextMilestone && (
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
             <Alert severity="info" sx={{ borderRadius: 2 }}>
-              {locale === "ja"
-                ? "最終納品が完了したら、購入者の最終確認リクエストを送ってください。"
-                : "Once final delivery is ready, request buyer confirmation to unlock the last payment."}
+              {isJapanese
+                ? "まずは今日終わった工程を記録してください。写真やメモは任意なので、1回で完了できます。"
+                : "Record the step that finished today. Photos and notes stay optional, so the default path is a single action."}
             </Alert>
             <Button
               variant="contained"
               fullWidth
-              startIcon={actionLoading ? <CircularProgress size={20} /> : <SendIcon />}
-              onClick={onRequestFinalDelivery}
-              disabled={actionLoading}
+              startIcon={isBusy ? <CircularProgress size={20} /> : <SendIcon />}
+              onClick={() => {
+                void runWithOptionalEvidence((evidenceHash) => onSubmit(nextMilestoneIndex, evidenceHash));
+              }}
+              disabled={isBusy}
+              sx={{
+                background: "linear-gradient(135deg, var(--status-success) 0%, #5A9E73 100%)",
+                color: "var(--sumi-black)",
+                fontWeight: 600,
+                py: 1.5,
+                borderRadius: 2,
+                "&:hover": {
+                  transform: "translateY(-2px)",
+                  boxShadow: "var(--shadow-medium), 0 0 30px rgba(110, 191, 139, 0.3)",
+                },
+              }}
+            >
+              {isBusy
+                ? isJapanese
+                  ? "処理中..."
+                  : "Processing..."
+                : isJapanese
+                ? `「${milestones[nextMilestoneIndex].name}」を記録して次へ進む`
+                : `Record "${milestones[nextMilestoneIndex].name}" and continue`}
+            </Button>
+          </Box>
+        )}
+
+        {canRequestFinalHandoff && (
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <Alert severity="info" sx={{ borderRadius: 2 }}>
+              {isJapanese
+                ? "受け渡しが終わったら、買い手へ最終確認の連絡を送ってください。"
+                : "Once the handoff is done, notify the buyer for final confirmation."}
+            </Alert>
+            <Button
+              variant="contained"
+              fullWidth
+              startIcon={isBusy ? <CircularProgress size={20} /> : <SendIcon />}
+              onClick={() => {
+                void runWithOptionalEvidence((evidenceHash) => onRequestFinalDelivery(evidenceHash));
+              }}
+              disabled={isBusy}
               sx={{
                 background: "linear-gradient(135deg, var(--status-success) 0%, #5A9E73 100%)",
                 color: "var(--sumi-black)",
@@ -444,164 +624,192 @@ export function ActionCard({
                 borderRadius: 2,
               }}
             >
-              {actionLoading
-                ? locale === "ja"
+              {isBusy
+                ? isJapanese
                   ? "処理中..."
                   : "Processing..."
-                : locale === "ja"
-                ? "最終納品を申請する"
-                : "Request Final Delivery"}
+                : isJapanese
+                ? "受け渡し完了を伝える"
+                : "Notify final handoff"}
             </Button>
           </Box>
         )}
 
-        {/* Producer waiting for buyer to confirm final delivery */}
-        {info.status === "active" && userRole === "producer" && atFinalMilestone && finalRequested && !finalExpired && txStep !== "success" && !milestonesLoading && (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <Alert severity="info" sx={{ borderRadius: 2 }}>
-              {locale === "ja"
-                ? "購入者の受取確認待ちです。期限を過ぎると誰でも最終確定できます。"
-                : "Waiting for buyer confirmation. Anyone can finalize after the deadline."}
-            </Alert>
-            {finalDeadlineLabel && (
-              <Typography sx={{ color: "var(--color-text-muted)", textAlign: "center" }}>
-                {locale === "ja" ? `最終確認期限: ${finalDeadlineLabel}` : `Final confirmation deadline: ${finalDeadlineLabel}`}
-              </Typography>
-            )}
-          </Box>
-        )}
+        {info.status === "active" &&
+          userRole === "producer" &&
+          atFinalMilestone &&
+          finalRequested &&
+          !finalExpired &&
+          txStep !== "success" &&
+          !milestonesLoading && (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <Alert severity="info" sx={{ borderRadius: 2 }}>
+                {isJapanese
+                  ? "買い手の受け取り確認待ちです。期限を過ぎると最終確定に進めます。"
+                  : "Waiting for the buyer's receipt confirmation. After the deadline, the flow can be finalized."}
+              </Alert>
+              {finalDeadlineLabel && (
+                <Typography sx={{ color: "var(--color-text-muted)", textAlign: "center" }}>
+                  {isJapanese ? `最終確認の期限: ${finalDeadlineLabel}` : `Final confirmation deadline: ${finalDeadlineLabel}`}
+                </Typography>
+              )}
+            </Box>
+          )}
 
-        {info.status === "active" && userRole === "producer" && atFinalMilestone && finalRequested && finalExpired && txStep !== "success" && !milestonesLoading && (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <Alert severity="warning" sx={{ borderRadius: 2 }}>
-              {locale === "ja"
-                ? "最終確認期限を過ぎました。最終確定で残額を受け取れます。"
-                : "The final confirmation deadline has passed. Finalize to release the remaining amount."}
-            </Alert>
-            <Button
-              variant="contained"
-              fullWidth
-              startIcon={actionLoading ? <CircularProgress size={20} /> : <CheckCircleIcon />}
-              onClick={onFinalizeAfterTimeout}
-              disabled={actionLoading}
-              sx={{
-                background: "linear-gradient(135deg, var(--color-primary) 0%, var(--copper-rich) 100%)",
-                color: "var(--sumi-black)",
-                fontWeight: 600,
-                py: 1.5,
-                borderRadius: 2,
-              }}
-            >
-              {actionLoading
-                ? locale === "ja"
-                  ? "処理中..."
-                  : "Processing..."
-                : locale === "ja"
-                ? "期限後に最終確定"
-                : "Finalize After Timeout"}
-            </Button>
-          </Box>
-        )}
+        {info.status === "active" &&
+          userRole === "producer" &&
+          atFinalMilestone &&
+          finalRequested &&
+          finalExpired &&
+          txStep !== "success" &&
+          !milestonesLoading && (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <Alert severity="warning" sx={{ borderRadius: 2 }}>
+                {isJapanese
+                  ? "最終確認の期限を過ぎました。最終確定すると残りを受け取れます。"
+                  : "The final confirmation deadline has passed. Finalize to release the remaining amount."}
+              </Alert>
+              <Button
+                variant="contained"
+                fullWidth
+                startIcon={isBusy ? <CircularProgress size={20} /> : <CheckCircleIcon />}
+                onClick={onFinalizeAfterTimeout}
+                disabled={isBusy}
+                sx={{
+                  background: "linear-gradient(135deg, var(--color-primary) 0%, var(--copper-rich) 100%)",
+                  color: "var(--sumi-black)",
+                  fontWeight: 600,
+                  py: 1.5,
+                  borderRadius: 2,
+                }}
+              >
+                {isBusy
+                  ? isJapanese
+                    ? "処理中..."
+                    : "Processing..."
+                  : isJapanese
+                  ? "期限後に残額を受け取る"
+                  : "Finalize remaining payout"}
+              </Button>
+            </Box>
+          )}
 
-        {/* Buyer tracking progress - not final milestone */}
-        {info.status === "active" && userRole === "buyer" && milestoneInBounds && nextMilestoneIndex < milestones.length - 1 && txStep !== "success" && (
-          <Typography sx={{ color: "var(--color-text-muted)", textAlign: "center" }}>
-            {locale === "ja" ? "進捗を追跡中..." : "Tracking progress..."}
-          </Typography>
-        )}
+        {info.status === "active" &&
+          userRole === "buyer" &&
+          milestoneInBounds &&
+          nextMilestoneIndex < milestones.length - 1 &&
+          txStep !== "success" && (
+            <Typography sx={{ color: "var(--color-text-muted)", textAlign: "center" }}>
+              {isJapanese
+                ? "生産者の記録待ちです。更新が入るとここで確認できます。"
+                : "Waiting for the producer's next record. Updates will appear here."}
+            </Typography>
+          )}
 
-        {info.status === "active" && userRole === "buyer" && atFinalMilestone && !finalRequested && txStep !== "success" && (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <Alert severity="info" sx={{ borderRadius: 2 }}>
-              {locale === "ja"
-                ? "最終納品申請を待っています。申請後に受取確認または期限後の最終確定が可能になります。"
-                : "Waiting for the producer's final delivery request. You can confirm receipt or finalize after timeout once requested."}
-            </Alert>
-          </Box>
-        )}
+        {info.status === "active" &&
+          userRole === "buyer" &&
+          atFinalMilestone &&
+          !finalRequested &&
+          txStep !== "success" && (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <Alert severity="info" sx={{ borderRadius: 2 }}>
+                {isJapanese
+                  ? "生産者から受け渡し完了の連絡が入ると、ここで受け取り確認できます。"
+                  : "Once the producer notifies final handoff, receipt confirmation will appear here."}
+              </Alert>
+            </Box>
+          )}
 
-        {/* Confirm Delivery Button (for buyer, when active, final milestone) */}
-        {info.status === "active" && userRole === "buyer" && atFinalMilestone && finalRequested && !finalExpired && txStep !== "success" && (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <Alert severity="success" sx={{ borderRadius: 2 }}>
-              {locale === "ja"
-                ? "商品の受取りを確認してください。確認すると残りの支払いが完了します。"
-                : "Please confirm receipt. This will complete the remaining payment."}
-            </Alert>
-            {finalDeadlineLabel && (
-              <Typography variant="caption" sx={{ color: "var(--color-text-muted)", textAlign: "center" }}>
-                {locale === "ja" ? `最終確認期限: ${finalDeadlineLabel}` : `Final confirmation deadline: ${finalDeadlineLabel}`}
-              </Typography>
-            )}
-            <Button
-              variant="contained"
-              fullWidth
-              startIcon={actionLoading ? <CircularProgress size={20} /> : <LocalShippingIcon />}
-              onClick={onConfirmDelivery}
-              disabled={actionLoading}
-              sx={{
-                background: "linear-gradient(135deg, var(--color-primary) 0%, var(--copper-rich) 100%)",
-                color: "var(--sumi-black)",
-                fontWeight: 600,
-                py: 1.5,
-                borderRadius: 2,
-                boxShadow: "var(--shadow-subtle), var(--shadow-copper)",
-                "&:hover": {
-                  background: "linear-gradient(135deg, var(--color-primary) 0%, var(--copper-deep) 100%)",
-                  transform: "translateY(-2px)",
-                  boxShadow: "var(--shadow-medium), 0 0 40px var(--copper-glow)",
-                },
-              }}
-            >
-              {actionLoading
-                ? locale === "ja"
-                  ? "処理中..."
-                  : "Processing..."
-                : locale === "ja"
-                ? "受取りを確認する"
-                : "Confirm Receipt"}
-            </Button>
-          </Box>
-        )}
+        {info.status === "active" &&
+          userRole === "buyer" &&
+          atFinalMilestone &&
+          finalRequested &&
+          !finalExpired &&
+          txStep !== "success" && (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <Alert severity="success" sx={{ borderRadius: 2 }}>
+                {isJapanese
+                  ? "受け取りが問題なければ確認してください。確認すると残りの支払いが完了します。"
+                  : "Confirm receipt if the handoff looks good. This completes the remaining payment."}
+              </Alert>
+              {finalDeadlineLabel && (
+                <Typography variant="caption" sx={{ color: "var(--color-text-muted)", textAlign: "center" }}>
+                  {isJapanese ? `最終確認の期限: ${finalDeadlineLabel}` : `Final confirmation deadline: ${finalDeadlineLabel}`}
+                </Typography>
+              )}
+              <Button
+                variant="contained"
+                fullWidth
+                startIcon={isBusy ? <CircularProgress size={20} /> : <LocalShippingIcon />}
+                onClick={onConfirmDelivery}
+                disabled={isBusy}
+                sx={{
+                  background: "linear-gradient(135deg, var(--color-primary) 0%, var(--copper-rich) 100%)",
+                  color: "var(--sumi-black)",
+                  fontWeight: 600,
+                  py: 1.5,
+                  borderRadius: 2,
+                  boxShadow: "var(--shadow-subtle), var(--shadow-copper)",
+                  "&:hover": {
+                    background: "linear-gradient(135deg, var(--color-primary) 0%, var(--copper-deep) 100%)",
+                    transform: "translateY(-2px)",
+                    boxShadow: "var(--shadow-medium), 0 0 40px var(--copper-glow)",
+                  },
+                }}
+              >
+                {isBusy
+                  ? isJapanese
+                    ? "処理中..."
+                    : "Processing..."
+                  : isJapanese
+                  ? "受け取りを確認する"
+                  : "Confirm receipt"}
+              </Button>
+            </Box>
+          )}
 
-        {info.status === "active" && userRole === "buyer" && atFinalMilestone && finalRequested && finalExpired && txStep !== "success" && (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <Alert severity="warning" sx={{ borderRadius: 2 }}>
-              {locale === "ja"
-                ? "最終確認期限を過ぎました。最終確定に進むと残額支払いが完了します。"
-                : "The final confirmation deadline has passed. Finalize to complete the remaining payment."}
-            </Alert>
-            <Button
-              variant="contained"
-              fullWidth
-              startIcon={actionLoading ? <CircularProgress size={20} /> : <CheckCircleIcon />}
-              onClick={onFinalizeAfterTimeout}
-              disabled={actionLoading}
-              sx={{
-                background: "linear-gradient(135deg, var(--color-primary) 0%, var(--copper-rich) 100%)",
-                color: "var(--sumi-black)",
-                fontWeight: 600,
-                py: 1.5,
-                borderRadius: 2,
-              }}
-            >
-              {actionLoading
-                ? locale === "ja"
-                  ? "処理中..."
-                  : "Processing..."
-                : locale === "ja"
-                ? "期限後に最終確定"
-                : "Finalize After Timeout"}
-            </Button>
-          </Box>
-        )}
+        {info.status === "active" &&
+          userRole === "buyer" &&
+          atFinalMilestone &&
+          finalRequested &&
+          finalExpired &&
+          txStep !== "success" && (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <Alert severity="warning" sx={{ borderRadius: 2 }}>
+                {isJapanese
+                  ? "最終確認の期限を過ぎました。このまま完了処理に進めます。"
+                  : "The final confirmation deadline has passed. You can finalize the flow now."}
+              </Alert>
+              <Button
+                variant="contained"
+                fullWidth
+                startIcon={isBusy ? <CircularProgress size={20} /> : <CheckCircleIcon />}
+                onClick={onFinalizeAfterTimeout}
+                disabled={isBusy}
+                sx={{
+                  background: "linear-gradient(135deg, var(--color-primary) 0%, var(--copper-rich) 100%)",
+                  color: "var(--sumi-black)",
+                  fontWeight: 600,
+                  py: 1.5,
+                  borderRadius: 2,
+                }}
+              >
+                {isBusy
+                  ? isJapanese
+                    ? "処理中..."
+                    : "Processing..."
+                  : isJapanese
+                  ? "期限後に完了処理へ進む"
+                  : "Finalize after timeout"}
+              </Button>
+            </Box>
+          )}
 
-        {/* Completed message */}
         {info.status === "completed" && (
           <Box sx={{ textAlign: "center", py: 2 }}>
             <CheckCircleIcon sx={{ fontSize: 48, color: "var(--status-success)", mb: 1 }} />
             <Typography sx={{ color: "var(--color-text)" }}>
-              {locale === "ja" ? "全工程完了" : "All milestones completed"}
+              {isJapanese ? "この案件は完了しました" : "This listing is complete"}
             </Typography>
           </Box>
         )}
