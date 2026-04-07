@@ -55,3 +55,11 @@
 - **手を抜かない**：根本原因を見つける。一時的な修正は避ける。シニアエンジニアの水準を保つ。
 - **影響を最小化する**：変更は必要な箇所のみにとどめる。バグを新たに引き込まない。
 
+---
+
+## Health Stack
+
+- typecheck: cd apps/web && tsc --noEmit
+- lint: cd apps/web && eslint .
+- test: forge test
+

@@ -6,15 +6,20 @@ import { useEscrowInfo, useEscrowEvents } from "./useEscrow";
 import { useMilestones } from "./useEscrow";
 import { useListingSummaries } from "./useFactory";
 
-function useRealtimeEscrow(
+/**
+ * Polls escrow info, milestones, and events at a fixed interval.
+ * @warning Mount once per escrow address. Mounting per-row in a list will fan out
+ * into N * 3 concurrent RPC calls per tick, hitting provider rate limits quickly.
+ */
+export function useRealtimeEscrow(
   escrowAddress: Address | null,
   options: { interval?: number; enabled?: boolean } = {}
 ) {
   const { interval = 10000, enabled = true } = options;
 
   const { info, isLoading: infoLoading, error: infoError, refetch: refetchInfo } = useEscrowInfo(escrowAddress);
-  const { milestones, isLoading: milestonesLoading, refetch: refetchMilestones } = useMilestones(escrowAddress);
-  const { events, refetch: refetchEvents } = useEscrowEvents(escrowAddress);
+  const { milestones, isLoading: milestonesLoading, error: milestonesError, refetch: refetchMilestones } = useMilestones(escrowAddress);
+  const { events, isLoading: eventsLoading, error: eventsError, refetch: refetchEvents } = useEscrowEvents(escrowAddress);
   const inFlightRef = useRef(false);
 
   const refetchAll = useCallback(async () => {
@@ -43,14 +48,18 @@ function useRealtimeEscrow(
     info,
     milestones,
     events,
-    isLoading: infoLoading || milestonesLoading,
-    error: infoError,
+    isLoading: infoLoading || milestonesLoading || eventsLoading,
+    error: infoError ?? milestonesError ?? eventsError,
     refetch: refetchAll,
   };
 }
 
-// Real-time listing summaries with polling
-function useRealtimeListingSummaries(options: { interval?: number; enabled?: boolean } = {}) {
+/**
+ * Polls all listing summaries at a fixed interval.
+ * @warning Mount a single instance at the page/layout level. Each additional mount
+ * starts an independent poller doing 3 contract reads per listing per tick.
+ */
+export function useRealtimeListingSummaries(options: { interval?: number; enabled?: boolean } = {}) {
   const { interval = 15000, enabled = true } = options;
   const { summaries, isLoading, error, refetch } = useListingSummaries();
   const inFlightRef = useRef(false);
@@ -110,7 +119,7 @@ export function useMyListings(address: Address | null) {
       buyerCompleted: buyer.filter((s) => s.status === "completed").length,
       totalEarned: producer
         .reduce((sum, s) => sum + s.releasedAmount, 0n),
-      totalSpent: buyer.reduce((sum, s) => sum + s.totalAmount, 0n),
+      totalSpent: buyer.reduce((sum, s) => sum + s.releasedAmount, 0n),
     };
   }, [myListings]);
 
