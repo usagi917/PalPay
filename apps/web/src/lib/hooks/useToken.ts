@@ -7,9 +7,52 @@ import { ERC20_ABI } from "../abi";
 
 type TokenReadError = "missing-token-contract" | "read-failed";
 
-const getTokenReadError = (error: unknown): TokenReadError => {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.toLowerCase().includes("does not have any code")
+const missingTokenContractIndicators = [
+  "contractfunctionzerodataerror",
+  "does not have any code",
+  "returned no data",
+  "address is not a contract",
+];
+
+const collectErrorDetails = (error: unknown, seen = new Set<unknown>()): string[] => {
+  if (!error || (typeof error !== "object" && typeof error !== "function")) {
+    return [String(error)];
+  }
+
+  if (seen.has(error)) {
+    return [];
+  }
+  seen.add(error);
+
+  const errorLike = error as {
+    name?: unknown;
+    message?: unknown;
+    shortMessage?: unknown;
+    details?: unknown;
+    cause?: unknown;
+    walk?: () => unknown;
+  };
+  const details = [errorLike.name, errorLike.message, errorLike.shortMessage, errorLike.details]
+    .filter((value): value is string => typeof value === "string");
+
+  if (errorLike.cause) {
+    details.push(...collectErrorDetails(errorLike.cause, seen));
+  }
+
+  if (typeof errorLike.walk === "function") {
+    try {
+      details.push(...collectErrorDetails(errorLike.walk(), seen));
+    } catch {
+      // Some error helpers expose walk with a narrower signature; best effort is enough here.
+    }
+  }
+
+  return details;
+};
+
+export const getTokenReadError = (error: unknown): TokenReadError => {
+  const details = collectErrorDetails(error).join("\n").toLowerCase();
+  return missingTokenContractIndicators.some((indicator) => details.includes(indicator))
     ? "missing-token-contract"
     : "read-failed";
 };
