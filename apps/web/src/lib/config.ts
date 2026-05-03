@@ -1,5 +1,5 @@
 import { http, createPublicClient, createWalletClient, custom, type Address, type Chain } from "viem";
-import { baseSepolia, sepolia } from "viem/chains";
+import { baseSepolia, polygonAmoy, sepolia } from "viem/chains";
 
 export type StablecoinSymbol = "JPYC" | "USDC";
 
@@ -20,6 +20,8 @@ export type StablecoinConfig = {
 };
 
 const emptyAddress = "" as Address;
+const defaultSepoliaJpycTokenAddress = "0x431D5dfF03120AFA4bDf332c61A6e1766eF37BDB" as Address;
+const defaultSepoliaUsdcTokenAddress = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" as Address;
 
 const isEthereumProvider = (value: unknown): value is EthereumProvider => {
   if (!value || typeof value !== "object") return false;
@@ -29,15 +31,21 @@ const isEthereumProvider = (value: unknown): value is EthereumProvider => {
 export const SUPPORTED_CHAINS = Object.freeze({
   [sepolia.id]: sepolia as Chain,
   [baseSepolia.id]: baseSepolia as Chain,
+  [polygonAmoy.id]: polygonAmoy as Chain,
 });
 
 export const config = {
   rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || "",
   chainId: parseInt(
-    process.env.NEXT_PUBLIC_CHAIN_ID || process.env.CHAIN_ID || String(baseSepolia.id),
+    process.env.NEXT_PUBLIC_CHAIN_ID || process.env.CHAIN_ID || String(sepolia.id),
     10,
   ),
   blockExplorerTxBase: process.env.NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE || "",
+};
+
+const defaultTokenAddressForCurrentChain = (token: StablecoinSymbol): Address => {
+  if (config.chainId !== sepolia.id) return emptyAddress;
+  return token === "JPYC" ? defaultSepoliaJpycTokenAddress : defaultSepoliaUsdcTokenAddress;
 };
 
 export const STABLECOINS = Object.freeze({
@@ -45,14 +53,14 @@ export const STABLECOINS = Object.freeze({
     currency: "JPYC",
     symbol: "JPYC",
     decimals: 18,
-    tokenAddress: (process.env.NEXT_PUBLIC_JPYC_TOKEN_ADDRESS || "") as Address,
+    tokenAddress: (process.env.NEXT_PUBLIC_JPYC_TOKEN_ADDRESS || defaultTokenAddressForCurrentChain("JPYC")) as Address,
     factoryAddress: (process.env.NEXT_PUBLIC_JPYC_FACTORY_ADDRESS || "") as Address,
   },
   USDC: {
     currency: "USDC",
     symbol: "USDC",
     decimals: 6,
-    tokenAddress: (process.env.NEXT_PUBLIC_USDC_TOKEN_ADDRESS || "") as Address,
+    tokenAddress: (process.env.NEXT_PUBLIC_USDC_TOKEN_ADDRESS || defaultTokenAddressForCurrentChain("USDC")) as Address,
     factoryAddress: (process.env.NEXT_PUBLIC_USDC_FACTORY_ADDRESS || "") as Address,
   },
 } satisfies Record<StablecoinSymbol, StablecoinConfig>);
@@ -92,7 +100,7 @@ export const getDefaultStablecoin = (): StablecoinConfig =>
 export const getChain = (): Chain => {
   const chain = SUPPORTED_CHAINS[config.chainId as keyof typeof SUPPORTED_CHAINS];
   if (!chain) {
-    throw new Error(`Unsupported testnet chain ID ${config.chainId}. Use Sepolia or Base Sepolia.`);
+    throw new Error(`Unsupported testnet chain ID ${config.chainId}. Use Sepolia, Base Sepolia, or Polygon Amoy.`);
   }
   return chain;
 };

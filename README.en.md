@@ -5,112 +5,172 @@
 [![Solidity 0.8.24](https://img.shields.io/badge/Solidity-0.8.24-363636?logo=solidity)](foundry.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> A milestone-based escrow DApp for high-value B2B trade, combining staged payouts, dynamic NFTs, and party-to-party encrypted chat.
+> A milestone escrow DApp for high-value B2B trade, combining staged payouts, dynamic NFTs, and party-to-party chat.
 
-## Overview
+`Proof of Trust` targets long production-cycle trades such as wagyu, where buyers and producers can run into prepayment risk, poor progress visibility, and delayed delivery confirmation. The buyer deposits ERC-20 funds into escrow, the producer receives payouts as milestones complete, and the NFT acts as a stateful ownership certificate for the transaction.
 
-`Proof of Trust` is designed for long production-cycle wagyu transactions, where prepayment risk and progress visibility are major concerns.
+## What It Does
 
-- Web app: Next.js 15 + React 19 + viem
-- Contracts: `ListingFactoryV6` / `MilestoneEscrowV6` (Solidity 0.8.24)
-- Settlement: JPYC / USDC testnet ERC-20
-- Ownership proof: ERC-721 (dynamic metadata / SVG)
-- Chat: XMTP (E2E encrypted)
+- Creates a dedicated escrow per listing using JPYC / USDC testnet ERC-20
+- Lets the buyer lock the full amount, then start the milestone flow after review
+- Lets the producer complete 9 intermediate milestones with `submit()`, then finish the final delivery through buyer confirmation or timeout
+- Mints an ERC-721 NFT per listing and serves dynamic metadata plus SVG image APIs
+- Provides listing, workspace, detail, and on-chain event timeline screens
+- Provides XMTP chat for the producer and current NFT holder
+- Uses Foundry tests for relisting, deadlines, final delivery, and fee-token rejection
 
-## Main Transaction Sequence (Mermaid)
+## Architecture
+
+```mermaid
+flowchart LR
+    Buyer[Buyer<br/>MetaMask] --> Web[Next.js Web App<br/>apps/web]
+    Producer[Producer<br/>MetaMask] --> Web
+
+    subgraph Frontend["apps/web"]
+        Pages[App Router pages<br/>/ /my /listing/:address]
+        Components[MUI components<br/>forms, cards, timeline, chat]
+        Hooks[React hooks<br/>wallet, factory, escrow, token, realtime]
+        Api[NFT API routes<br/>/api/nft/:tokenId]
+        Xmtp[XMTP browser client]
+    end
+
+    Web --> Pages --> Components --> Hooks
+    Components --> Xmtp
+    Api --> Chain
+    Hooks --> Chain[(Sepolia / Base Sepolia)]
+    Xmtp --> XmtpNetwork[XMTP network]
+
+    subgraph Contracts["contracts"]
+        Factory[ListingFactoryV6<br/>ERC-721 + listing registry]
+        Deployer[EscrowDeployerV6]
+        Escrow[MilestoneEscrowV6<br/>per-listing escrow]
+        Token[JPYC / USDC ERC-20]
+    end
+
+    Chain --> Factory
+    Factory --> Deployer --> Escrow
+    Escrow --> Token
+    Factory --> Escrow
+```
+
+## Transaction Flow
 
 ```mermaid
 sequenceDiagram
-    participant S as Seller
+    participant S as Producer
     participant B as Buyer
     participant W as Web App
     participant F as ListingFactoryV6
     participant E as MilestoneEscrowV6
     participant T as ERC-20
 
-    S->>W: 1. Create listing
-    W->>F: createListing(...)
-    Note over F,E: Mint NFT (held by Escrow)
-    F-->>W: escrowAddress / tokenId
+    S->>W: Enter listing data
+    W->>F: createListing(title, desc, amount, imageURI)
+    F->>E: EscrowDeployerV6.deployEscrow(...)
+    F-->>E: Mint NFT to Escrow custody
+    F-->>W: escrow address / tokenId
 
-    B->>W: 2. Lock purchase
+    B->>W: Start purchase
     W->>T: approve(escrow, totalAmount)
     W->>E: lock()
-    T-->>E: ERC-20 (full amount)
-    E-->>B: Transfer NFT
-    Note right of E: open → locked
+    T-->>E: Deposit full ERC-20 amount
+    E-->>B: Transfer NFT to buyer
 
-    B->>W: 3. Approve transaction start
+    B->>W: Approve terms
     W->>E: approve()
-    Note right of E: locked → active
 
-    loop Intermediate milestones (except final)
-        S->>W: 4. Report milestone completion
+    loop Intermediate milestones 0-8
+        S->>W: Record completed work
         W->>E: submit(index, evidenceHash)
-        E-->>S: Partial payout (ERC-20)
+        E-->>S: Pay milestone BPS amount
     end
 
-    S->>W: 5. Request final delivery
+    S->>W: Request final delivery
     W->>E: requestFinalDelivery(evidenceHash)
-    B->>W: 6. Confirm final delivery
+    B->>W: Confirm receipt
     W->>E: confirmDelivery()
-    E-->>S: Remaining payout (ERC-20)
-    Note right of E: active → completed
+    E-->>S: Pay remaining amount
 ```
 
-Notes:
-- `cancel()` is buyer-only in `locked`, refunds the full amount, returns the NFT to escrow custody, and reopens the listing.
-- After 14 days in `locked`, anyone can call `activateAfterTimeout()` to move the listing to `active`.
-- After 14 days from `requestFinalDelivery()`, anyone can call `finalizeAfterTimeout()` to release the remaining payout.
+## State Machine
 
-## Key Features
+```mermaid
+stateDiagram-v2
+    [*] --> OPEN: createListing()
+    OPEN --> LOCKED: lock()
+    LOCKED --> OPEN: cancel() within 14 days
+    LOCKED --> ACTIVE: approve() within 14 days
+    LOCKED --> ACTIVE: activateAfterTimeout() after 14 days
+    ACTIVE --> ACTIVE: submit(0..8)
+    ACTIVE --> ACTIVE: requestFinalDelivery()
+    ACTIVE --> COMPLETED: confirmDelivery() within 14 days
+    ACTIVE --> COMPLETED: finalizeAfterTimeout() after 14 days
+```
 
-- Deploys a dedicated `MilestoneEscrowV6` per listing and mints a linked NFT
-- State transitions
-  - `open -> locked -> active -> completed`
-  - `locked -> open` (via `cancel()`, ready for relisting)
-- Buyer deposits ERC-20 via `lock()`, then starts milestone flow with `approve()` or `activateAfterTimeout()`
-- Producer reports intermediate milestones via `submit()`; the final step uses `requestFinalDelivery()` -> `confirmDelivery()` / `finalizeAfterTimeout()`
-- Listing detail page renders on-chain event timeline
-- NFT APIs
-  - `GET /api/nft/:tokenId` (metadata)
-  - `GET /api/nft/:tokenId/image` (dynamic SVG)
-- XMTP chat (shown only to producer and current NFT holder)
+State meanings:
+
+| State | UI label | Meaning |
+| --- | --- | --- |
+| `open` | Available | The NFT is held by escrow and no buyer is committed yet |
+| `locked` | Under Review | The buyer has deposited the full amount and holds the NFT |
+| `active` | In Progress | Milestone payouts can be released to the producer |
+| `completed` | Completed | All payouts are complete |
+
+## Code Reading Path
+
+```mermaid
+flowchart TD
+    A[apps/web/src/app/page.tsx<br/>listing feed and create form] --> B[apps/web/src/lib/hooks/useFactory.ts<br/>Factory reads and createListing]
+    B --> C[contracts/ListingFactoryV6.sol<br/>listing registry and NFT mint]
+    C --> D[contracts/EscrowDeployerV6.sol<br/>Escrow creation]
+    D --> E[contracts/MilestoneEscrowV6.sol<br/>lock/approve/submit/finalize]
+    E --> F["apps/web/src/app/listing/[address]/page.tsx<br/>detail page and action paths"]
+    F --> G["apps/web/src/lib/hooks/useEscrow.ts<br/>Escrow reads and writes"]
+    F --> H["apps/web/src/components/chat<br/>XMTP chat UI"]
+    E --> I["apps/web/src/app/api/nft/[tokenId]<br/>NFT metadata / image"]
+```
 
 ## Repository Structure
 
 ```text
-apps/web/    Next.js 15 frontend + API routes
-contracts/   Solidity contracts (Factory/Escrow/MockERC20)
-docs/        Architecture, demo script, and demo assets
-lib/         Foundry libraries (OpenZeppelin submodule)
+.
+├── apps/web/                 Next.js 15 + React 19 DApp
+│   ├── src/app/              App Router pages and NFT API routes
+│   ├── src/components/       UI parts, transaction actions, chat UI
+│   ├── src/hooks/            XMTP chat hook
+│   └── src/lib/              ABI, config, viem hooks, tx utilities
+├── contracts/                Solidity contracts
+│   ├── ListingFactoryV6.sol  ERC-721 NFT + listing registry
+│   ├── EscrowDeployerV6.sol  Escrow creation helper
+│   ├── MilestoneEscrowV6.sol Per-listing escrow core
+│   └── MockERC20.sol         ERC-20 for Foundry tests
+├── script/                   Foundry deploy script
+├── test/                     Foundry tests
+├── lib/                      OpenZeppelin submodule
+└── foundry.toml              Foundry config
 ```
 
 ## Prerequisites
 
 - Node.js 20+
 - `pnpm`
+- Foundry, if you build or test contracts
 - MetaMask
-- RPC URL for your target chain
-- Deployed contract addresses
-  - `ListingFactoryV6`
-  - settlement ERC-20 token
+- RPC URL for Sepolia or Base Sepolia
+- JPYC / USDC-compatible ERC-20 addresses
 
-Supported chains (`apps/web/src/lib/config.ts`):
+Supported chains are defined in `apps/web/src/lib/config.ts`.
 
-- Sepolia (`11155111`)
-- Base Sepolia (`84532`)
-
-If you build contracts with Foundry, initialize submodules first.
-
-```bash
-git submodule update --init --recursive
-```
+| Chain | Chain ID |
+| --- | --- |
+| Sepolia | `11155111` |
+| Base Sepolia | `84532` |
 
 ## Installation
 
 ```bash
 pnpm --dir apps/web install
+git submodule update --init --recursive
 ```
 
 ## Quick Start
@@ -122,80 +182,79 @@ pnpm --dir apps/web dev
 
 Open `http://localhost:3000`.
 
-## Configuration (`.env.local`)
+## Configuration
 
-Config file: `apps/web/.env.local`
+The app reads `apps/web/.env.local`. Use `apps/web/.env.example` as the template.
 
-### Required (Core DApp)
-
-| Variable | Description |
-| --- | --- |
-| `NEXT_PUBLIC_RPC_URL` | Target RPC URL |
-| `NEXT_PUBLIC_CHAIN_ID` | Chain ID |
-| `NEXT_PUBLIC_JPYC_FACTORY_ADDRESS` | JPYC `ListingFactoryV6` address |
-| `NEXT_PUBLIC_JPYC_TOKEN_ADDRESS` | JPYC ERC-20 address |
-| `NEXT_PUBLIC_USDC_FACTORY_ADDRESS` | USDC `ListingFactoryV6` address |
-| `NEXT_PUBLIC_USDC_TOKEN_ADDRESS` | USDC ERC-20 address |
-
-### Optional (Display / Runtime)
-
-| Variable | Description |
-| --- | --- |
-| `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE` | Base URL for tx links |
-| `CHAIN_ID` | API-side chain override |
-| `NEXT_PUBLIC_XMTP_ENV` | `dev` or `production` |
-
-## Smart Contract Design (V6)
-
-### Factory
-
-- `ListingFactoryV6.createListing(...)` deploys a new escrow
-- NFT is initially owned by escrow
-- Secondary transfer is restricted to escrow-driven flows
-
-### Escrow
-
-- `lock()`
-  - Buyer deposits ERC-20
-  - NFT moves to buyer
-  - `open -> locked`
-- `approve()`
-  - Buyer starts the transaction within the review window
-  - `locked -> active`
-- `activateAfterTimeout()`
-  - Callable by anyone after 14 days in `locked`
-  - `locked -> active`
-- `submit(index, evidenceHash)`
-  - Producer reports intermediate milestone completion
-- `requestFinalDelivery(evidenceHash)`
-  - Producer starts the buyer confirmation window for the final delivery
-- `confirmDelivery()`
-  - Buyer confirms final receipt before the deadline
-  - `active -> completed`
-- `finalizeAfterTimeout()`
-  - Callable by anyone after the final confirmation deadline
-  - `active -> completed`
-- `cancel()`
-  - Buyer-only in `locked`
-  - Returns NFT to escrow custody and refunds full amount
-  - `locked -> open`
-
-### Milestone Distribution (BPS, total = 10000)
-
-| Category | Steps | BPS array |
+| Variable | Required | Description |
 | --- | --- | --- |
-| wagyu | 10 | `200,300,400,500,600,650,700,750,900,5000` |
+| `NEXT_PUBLIC_RPC_URL` | Yes | Target RPC URL |
+| `NEXT_PUBLIC_CHAIN_ID` | Yes | `11155111` or `84532` |
+| `NEXT_PUBLIC_JPYC_FACTORY_ADDRESS` | Yes | JPYC `ListingFactoryV6` |
+| `NEXT_PUBLIC_JPYC_TOKEN_ADDRESS` | Yes | JPYC ERC-20 |
+| `NEXT_PUBLIC_USDC_FACTORY_ADDRESS` | Yes | USDC `ListingFactoryV6` |
+| `NEXT_PUBLIC_USDC_TOKEN_ADDRESS` | Yes | USDC ERC-20 |
+| `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE` | No | Base URL for transaction links |
+| `NEXT_PUBLIC_XMTP_ENV` | No | `dev` or `production` |
+| `CHAIN_ID` | No | Chain override for API routes |
 
-## API
+## Smart Contracts
 
-### NFT API
+### `ListingFactoryV6`
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/nft/:tokenId` | NFT metadata JSON |
-| `GET` | `/api/nft/:tokenId/image` | Dynamic SVG image |
+- Uses a `1 factory = 1 stablecoin` model
+- Verifies that `tokenAddress` is one of the JPYC / USDC allowlisted tokens
+- Creates an escrow and mints the NFT to escrow custody in `createListing()`
+- Returns `/api/nft/:tokenId?factoryAddress=...` from `tokenURI()`
+- Restricts normal secondary transfer and allows only escrow-driven NFT transfers
 
-You can explicitly target a factory via the `factoryAddress` query parameter.
+### `MilestoneEscrowV6`
+
+- `lock()` deposits the buyer's full ERC-20 amount and transfers the NFT to the buyer
+- `approve()` or `activateAfterTimeout()` starts the active transaction
+- `submit(index, evidenceHash)` completes intermediate milestones in order
+- `requestFinalDelivery()` starts the final confirmation window
+- `confirmDelivery()` or `finalizeAfterTimeout()` releases the remaining amount
+- `cancel()` is only available in `locked` within 14 days, refunds the buyer, and reopens the listing
+- Token transfers verify exact received/spent amounts, rejecting fee-on-transfer behavior
+
+### Milestone Distribution
+
+`MilestoneEscrowV6` and `apps/web/src/lib/constants.ts` currently model a 10-step wagyu transaction.
+
+| Index | Milestone | BPS | Payout |
+| --- | --- | ---: | ---: |
+| 0 | Calf purchase | 200 | 2.0% |
+| 1 | Feeding start | 300 | 3.0% |
+| 2 | Weight 100kg | 400 | 4.0% |
+| 3 | Weight 200kg | 500 | 5.0% |
+| 4 | Weight 300kg | 600 | 6.0% |
+| 5 | Weight 400kg | 650 | 6.5% |
+| 6 | Weight 500kg | 700 | 7.0% |
+| 7 | Shipment prep | 750 | 7.5% |
+| 8 | Shipment | 900 | 9.0% |
+| 9 | Delivery complete | 5000 | 50.0% |
+
+## Web App
+
+| Path | Purpose |
+| --- | --- |
+| `/` | Listing feed, listing creation, producer task summary |
+| `/my` | Producer/buyer workspace list |
+| `/listing/:address` | Escrow detail, payment actions, milestone recording, event timeline, chat |
+| `/api/nft/:tokenId` | NFT metadata JSON |
+| `/api/nft/:tokenId/image` | Dynamic SVG image |
+
+Core hooks:
+
+| File | Purpose |
+| --- | --- |
+| `apps/web/src/lib/hooks/useWallet.ts` | MetaMask connection and account state |
+| `apps/web/src/lib/hooks/useFactory.ts` | Factory reads and listing creation |
+| `apps/web/src/lib/hooks/useEscrow.ts` | Escrow reads, writes, and event history |
+| `apps/web/src/lib/hooks/useToken.ts` | ERC-20 balance and allowance checks |
+| `apps/web/src/lib/hooks/useRealtime.ts` | Refetch helpers for workspace and escrow state |
+| `apps/web/src/hooks/useXmtpChat.ts` | XMTP connection, conversation loading, sending, and recovery |
 
 ## Development
 
@@ -205,19 +264,19 @@ pnpm --dir apps/web dev:turbo
 pnpm --dir apps/web build
 pnpm --dir apps/web start
 pnpm --dir apps/web lint
+pnpm --dir apps/web test
 ```
 
-Contracts (optional):
+Contracts:
 
 ```bash
 forge build
+forge test
 ```
 
 ## Testnet Deployment
 
-`ListingFactoryV6` is `1 factory = 1 stablecoin`. Deploy one factory for JPYC and one factory for USDC on the same testnet.
-
-The constructor takes `tokenAddress`, `baseURI`, `jpycTokenAddress`, and `usdcTokenAddress`, and rejects any token outside the JPYC/USDC allowlist.
+`ListingFactoryV6` follows `1 factory = 1 stablecoin`. Deploy one factory for JPYC and one factory for USDC on the same testnet.
 
 1. Set environment variables
 
@@ -247,35 +306,35 @@ forge script script/DeployListingFactoryV6.s.sol:DeployListingFactoryV6 \
   --broadcast
 ```
 
-4. Update the web app env
+4. Configure deployed addresses in `apps/web/.env.local`
 
 ```bash
-cat > apps/web/.env.local <<'EOF'
 NEXT_PUBLIC_RPC_URL=https://your-testnet-rpc
 NEXT_PUBLIC_CHAIN_ID=84532
 NEXT_PUBLIC_JPYC_FACTORY_ADDRESS=0xYourJpycFactoryAddress
 NEXT_PUBLIC_JPYC_TOKEN_ADDRESS=0xYourJpycTokenAddress
 NEXT_PUBLIC_USDC_FACTORY_ADDRESS=0xYourUsdcFactoryAddress
 NEXT_PUBLIC_USDC_TOKEN_ADDRESS=0xYourUsdcTokenAddress
-EOF
+NEXT_PUBLIC_XMTP_ENV=dev
 ```
 
-5. Start the app and verify the flow
+## Test Coverage
 
-```bash
-pnpm --dir apps/web dev
-```
+- NFT is minted to escrow custody when the factory creates a listing
+- Unsupported stablecoin configuration is rejected
+- `cancel()` reopens the listing, refunds the buyer, and returns NFT custody to escrow
+- Producer self-purchase is rejected
+- The 14-day `locked` deadline and timeout activation paths work
+- The final delivery 14-day confirmation window and timeout completion paths work
+- Fee-on-transfer and sender-paid-fee ERC-20 behavior is rejected
+- `formatAmount()` formats JPYC/USDC decimal display correctly
 
-Notes:
-- The deployed addresses are available in the `broadcast/` output or directly in the `forge script` logs.
-- `MockERC20` is kept for Foundry tests and is no longer exposed through a deploy script.
+## Related Files
 
-## Related Docs
-
-- `docs/architecture.mmd`
-- `docs/demo-script.md`
-- `docs/demo-video/README.md`
-- `docs/zenn-article-draft.md`
+- `docs/planidea.md`
+- `TODOS.md`
+- `apps/web/.env.example`
+- `script/DeployListingFactoryV6.s.sol`
 
 ## License
 
