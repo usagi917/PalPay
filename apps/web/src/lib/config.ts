@@ -20,8 +20,6 @@ export type StablecoinConfig = {
 };
 
 const emptyAddress = "" as Address;
-const defaultSepoliaRpcUrl = "https://ethereum-sepolia-rpc.publicnode.com";
-const defaultSepoliaBlockExplorerTxBase = "https://sepolia.etherscan.io/tx/";
 const defaultSepoliaJpycTokenAddress = "0x431D5dfF03120AFA4bDf332c61A6e1766eF37BDB" as Address;
 const defaultSepoliaUsdcTokenAddress = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" as Address;
 
@@ -37,12 +35,12 @@ export const SUPPORTED_CHAINS = Object.freeze({
 });
 
 export const config = {
-  rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || defaultSepoliaRpcUrl,
+  rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || "",
   chainId: parseInt(
     process.env.NEXT_PUBLIC_CHAIN_ID || process.env.CHAIN_ID || String(sepolia.id),
     10,
   ),
-  blockExplorerTxBase: process.env.NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE || defaultSepoliaBlockExplorerTxBase,
+  blockExplorerTxBase: process.env.NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE || "",
 };
 
 const defaultTokenAddressForCurrentChain = (token: StablecoinSymbol): Address => {
