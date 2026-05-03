@@ -13,7 +13,7 @@ import {
   type StablecoinSymbol,
 } from "../config";
 import { FACTORY_ABI, ESCROW_ABI } from "../abi";
-import { formatTxError } from "../tx";
+import { formatTxError, getRecommendedGasFees, writeContractWithGasFallback } from "../tx";
 import type { EscrowStatus, ListingSummary } from "../types";
 
 type ListingPointer = {
@@ -189,12 +189,14 @@ export function useCreateListing(onSuccess?: () => void) {
           throw new Error(`${currency} Factory address not configured`);
         }
 
-        const hash = await wallet.writeContract({
+        const gasFees = await getRecommendedGasFees(client);
+        const hash = await writeContractWithGasFallback(wallet, {
           address: stablecoin.factoryAddress,
           abi: FACTORY_ABI,
           functionName: "createListing",
           args: [title, description, totalAmount, imageURI],
           account,
+          ...gasFees,
         });
 
         const receipt = await client.waitForTransactionReceipt({ hash });
