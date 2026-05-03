@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { type Address, type Hash } from "viem";
-import { createClient, createWallet, config, ensureWalletChain, getMetaMaskProvider } from "../config";
+import { createClient, createWallet, ensureWalletChain, getMetaMaskProvider, getStablecoinByToken } from "../config";
 import { ESCROW_ABI, ERC20_ABI } from "../abi";
 import { getMilestoneName } from "../constants";
 import { formatTxError, writeContractWithGasFallback } from "../tx";
@@ -75,7 +75,7 @@ export function useEscrowInfo(escrowAddress: Address | null) {
         }),
       ]) as [
         [Address, Address, Address, Address, bigint, bigint, bigint, number, bigint],
-        [string, string, string, string, string],
+        [string, string, string, string],
         bigint,
         bigint,
         `0x${string}`,
@@ -94,7 +94,8 @@ export function useEscrowInfo(escrowAddress: Address | null) {
         statusEnum,
         cancelCount,
       ] = core;
-      const [category, title, description, imageURI, status] = meta;
+      const [title, description, imageURI, status] = meta;
+      const stablecoin = getStablecoinByToken(tokenAddress);
       const lockDeadline = lockedAt > 0n ? lockedAt + lockTimeout : null;
       const finalConfirmationDeadline = finalRequestedAt > 0n ? finalRequestedAt + finalConfirmTimeout : null;
 
@@ -117,8 +118,10 @@ export function useEscrowInfo(escrowAddress: Address | null) {
         finalConfirmTimeout,
         lockDeadline,
         finalConfirmationDeadline,
+        currency: stablecoin?.currency ?? "JPYC",
+        symbol: stablecoin?.symbol ?? "JPYC",
+        decimals: stablecoin?.decimals ?? 18,
         locked: statusEnum >= 1,
-        category,
         title,
         description,
         imageURI,
@@ -143,7 +146,7 @@ export function useEscrowInfo(escrowAddress: Address | null) {
   return { info, isLoading, error, refetch: fetchInfo };
 }
 
-export function useMilestones(escrowAddress: Address | null, categoryType?: number) {
+export function useMilestones(escrowAddress: Address | null) {
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -164,17 +167,6 @@ export function useMilestones(escrowAddress: Address | null, categoryType?: numb
 
     try {
       const client = createClient();
-
-      // Get categoryType if not provided
-      let catType = categoryType;
-      if (catType === undefined) {
-        catType = await client.readContract({
-          address: escrowAddress,
-          abi: ESCROW_ABI,
-          functionName: "categoryType",
-        }) as number;
-      }
-
       const result = await client.readContract({
         address: escrowAddress,
         abi: ESCROW_ABI,
@@ -190,7 +182,7 @@ export function useMilestones(escrowAddress: Address | null, categoryType?: numb
           code: index,
           bps: typeof m.bps === "bigint" ? m.bps : BigInt(m.bps),
           completed: m.completed,
-          name: getMilestoneName(catType!, index),
+          name: getMilestoneName(index),
         }))
       );
     } catch (err) {
@@ -203,7 +195,7 @@ export function useMilestones(escrowAddress: Address | null, categoryType?: numb
         setIsLoading(false);
       }
     }
-  }, [escrowAddress, categoryType]);
+  }, [escrowAddress]);
 
   useEffect(() => {
     fetchMilestones();
@@ -266,10 +258,16 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
         if (!wallet) throw new Error("ログインが必要です");
 
         const [account] = await wallet.getAddresses();
+        const core = await client.readContract({
+          address: escrowAddress,
+          abi: ESCROW_ABI,
+          functionName: "getCore",
+        }) as [Address, Address, Address, Address, bigint, bigint, bigint, number, bigint];
+        const tokenAddress = core[1];
 
         // Check balance first
         const balance = await client.readContract({
-          address: config.tokenAddress,
+          address: tokenAddress,
           abi: ERC20_ABI,
           functionName: "balanceOf",
           args: [account],
@@ -283,7 +281,7 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
         let needsApproval = true;
         if (!skipApprovalCheck) {
           const currentAllowance = await client.readContract({
-            address: config.tokenAddress,
+            address: tokenAddress,
             abi: ERC20_ABI,
             functionName: "allowance",
             args: [account, escrowAddress],
@@ -296,7 +294,7 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
           const hash1 = await writeContractWithGasFallback(
             wallet,
             {
-              address: config.tokenAddress,
+              address: tokenAddress,
               abi: ERC20_ABI,
               functionName: "approve",
               args: [escrowAddress, totalAmount],
@@ -547,7 +545,6 @@ export function useEscrowEvents(escrowAddress: Address | null) {
                 { name: "tokenId", type: "uint256", indexed: true },
                 { name: "escrow", type: "address", indexed: true },
                 { name: "producer", type: "address", indexed: true },
-                { name: "categoryType", type: "uint8", indexed: false },
                 { name: "totalAmount", type: "uint256", indexed: false },
               ],
             },

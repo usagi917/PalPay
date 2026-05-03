@@ -24,7 +24,6 @@ import {
   useMilestones,
   useEscrowActions,
   useEscrowEvents,
-  useTokenInfo,
   usePurchaseValidation,
   useNftOwner,
   getUserRole,
@@ -67,12 +66,14 @@ export default function ListingDetailPage() {
   const { info, isLoading: infoLoading, error: infoError, refetch: refetchInfo } = useEscrowInfo(escrowAddress);
   const { milestones, isLoading: milestonesLoading, refetch: refetchMilestones } = useMilestones(escrowAddress);
   const { events, refetch: refetchEvents } = useEscrowEvents(escrowAddress);
-  const { symbol, decimals } = useTokenInfo();
+  const symbol = info?.symbol ?? "JPYC";
+  const decimals = info?.decimals ?? 18;
   const { owner: nftOwner } = useNftOwner(info?.tokenId ?? null, info?.factory ?? null);
 
   const purchaseValidation = usePurchaseValidation(
     wallet.address,
     escrowAddress,
+    info?.tokenAddress ?? null,
     info?.totalAmount ?? 0n
   );
 

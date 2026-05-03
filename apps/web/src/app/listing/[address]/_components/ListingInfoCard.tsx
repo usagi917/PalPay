@@ -15,7 +15,7 @@ import {
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { HeroNFT } from "@/components";
 import { formatAmount, shortenAddress } from "@/lib/hooks";
-import { getAddressUrl, CATEGORY_LABELS, STATUS_LABELS } from "@/lib/config";
+import { getAddressUrl, STATUS_LABELS } from "@/lib/config";
 import type { Locale } from "@/lib/i18n";
 import type { EscrowInfo } from "@/lib/types";
 import type { Address } from "viem";
@@ -126,7 +126,7 @@ export function ListingInfoCard({
         <CardContent sx={{ p: 3 }}>
           <Box sx={{ display: "flex", gap: 1, mb: 2 }}>
             <Chip
-              label={CATEGORY_LABELS[info.category]?.[locale] || info.category}
+              label={locale === "ja" ? "和牛" : "Wagyu"}
               size="small"
               sx={{
                 background: "var(--color-primary-surface)",

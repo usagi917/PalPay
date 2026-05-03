@@ -1,16 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createPublicClient, http, isAddress, type Address } from "viem";
-import { avalancheFuji } from "viem/chains";
 import { FACTORY_ABI, ESCROW_ABI, ERC20_ABI } from "@/lib/abi";
-import { SUPPORTED_CHAINS, CATEGORY_LABELS } from "@/lib/config";
-
-const resolveChain = () => {
-  const chainId = Number(
-    process.env.NEXT_PUBLIC_CHAIN_ID || process.env.CHAIN_ID || avalancheFuji.id
-  );
-  const chainKey = chainId as keyof typeof SUPPORTED_CHAINS;
-  return SUPPORTED_CHAINS[chainKey] ?? avalancheFuji;
-};
+import { getChain } from "@/lib/config";
 
 const normalizeDecimals = (decimals: bigint | number): number =>
   typeof decimals === "bigint" ? Number(decimals) : decimals;
@@ -35,17 +26,20 @@ export async function GET(
 
     const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL;
     const factoryAddressParam = request.nextUrl.searchParams.get("factoryAddress");
-    if (factoryAddressParam && !isAddress(factoryAddressParam)) {
+    if (!factoryAddressParam) {
+      return NextResponse.json({ error: "factoryAddress is required" }, { status: 400 });
+    }
+    if (!isAddress(factoryAddressParam)) {
       return NextResponse.json({ error: "Invalid factoryAddress" }, { status: 400 });
     }
-    const factoryAddress = (factoryAddressParam || process.env.NEXT_PUBLIC_FACTORY_ADDRESS || "") as Address;
+    const factoryAddress = factoryAddressParam as Address;
 
     if (!rpcUrl || !factoryAddress) {
       return NextResponse.json({ error: "Missing configuration" }, { status: 500 });
     }
 
     const client = createPublicClient({
-      chain: resolveChain(),
+      chain: getChain(),
       transport: http(rpcUrl),
     });
 
@@ -80,12 +74,12 @@ export async function GET(
       }),
     ]) as [
       [Address, Address, Address, Address, bigint, bigint, bigint, number, bigint],
-      [string, string, string, string, string],
+      [string, string, string, string],
       [bigint, bigint]
     ];
 
     const [, tokenAddress, producer, buyer, , totalAmount, releasedAmount, statusEnum] = core;
-    const [category, title, description, imageURI, status] = meta;
+    const [title, description, imageURI, status] = meta;
     const [completedCount, totalCount] = progress;
     const progressPercent = totalCount > 0n
       ? Number((completedCount * 100n) / totalCount)
@@ -114,8 +108,7 @@ export async function GET(
     };
     const statusLabel = statusLabels[status] || status;
 
-    // Category label
-    const categoryLabel = CATEGORY_LABELS[category]?.en || category;
+    const categoryLabel = "Wagyu";
 
     // Build attributes
     const attributes = [

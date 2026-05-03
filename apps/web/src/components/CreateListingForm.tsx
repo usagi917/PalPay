@@ -19,24 +19,19 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import { motion, AnimatePresence } from "framer-motion";
 import { useI18n } from "@/lib/i18n";
-import { useCreateListing, useTokenInfo, categoryToType } from "@/lib/hooks";
-import { getTxUrl } from "@/lib/config";
+import { useCreateListing, useTokenInfo } from "@/lib/hooks";
+import { getConfiguredStablecoins, getTxUrl, type StablecoinSymbol } from "@/lib/config";
 interface CreateListingFormProps {
   onSuccess?: () => void;
 }
 
-const CATEGORIES = [
-  { value: "wagyu", labelJa: "和牛", labelEn: "Wagyu Beef" },
-  { value: "sake", labelJa: "日本酒", labelEn: "Japanese Sake" },
-  { value: "craft", labelJa: "工芸品", labelEn: "Traditional Craft" },
-];
-
 export function CreateListingForm({ onSuccess }: CreateListingFormProps) {
   const { locale } = useI18n();
-  const { symbol, decimals } = useTokenInfo();
+  const stablecoins = getConfiguredStablecoins();
+  const [currency, setCurrency] = useState<StablecoinSymbol>(stablecoins[0]?.currency ?? "JPYC");
+  const { symbol, decimals } = useTokenInfo(currency);
 
   const [isOpen, setIsOpen] = useState(false);
-  const [category, setCategory] = useState("wagyu");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
@@ -95,18 +90,17 @@ export function CreateListingForm({ onSuccess }: CreateListingFormProps) {
       return;
     }
 
-    const categoryType = categoryToType(category);
-    await createListing(categoryType, trimmedTitle, trimmedDescription, amountBigInt, imageURI.trim());
+    await createListing(trimmedTitle, trimmedDescription, amountBigInt, imageURI.trim(), currency);
   };
 
   const t = {
     createListing: locale === "ja" ? "新規出品" : "Create Listing",
-    category: locale === "ja" ? "カテゴリ" : "Category",
     title: locale === "ja" ? "タイトル" : "Title",
     titlePlaceholder: locale === "ja" ? "商品名を入力" : "Enter product name",
     description: locale === "ja" ? "説明" : "Description",
     descriptionPlaceholder: locale === "ja" ? "商品の説明を入力" : "Enter product description",
     amount: locale === "ja" ? "価格" : "Price",
+    currency: locale === "ja" ? "通貨" : "Currency",
     amountPlaceholder: locale === "ja" ? "価格を入力" : "Enter price",
     imageURI: locale === "ja" ? "画像URL (任意)" : "Image URL (optional)",
     imageURIPlaceholder: locale === "ja" ? "https://example.com/image.jpg" : "https://example.com/image.jpg",
@@ -184,15 +178,14 @@ export function CreateListingForm({ onSuccess }: CreateListingFormProps) {
                 </Typography>
 
                 <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
-                  {/* Category */}
                   <FormControl fullWidth>
                     <InputLabel sx={{ color: "var(--color-text-muted)" }}>
-                      {t.category}
+                      {t.currency}
                     </InputLabel>
                     <Select
-                      value={category}
-                      onChange={(e) => setCategory(e.target.value)}
-                      label={t.category}
+                      value={currency}
+                      onChange={(e) => setCurrency(e.target.value as StablecoinSymbol)}
+                      label={t.currency}
                       sx={{
                         color: "var(--color-text)",
                         background: "var(--color-bg-elevated)",
@@ -200,17 +193,11 @@ export function CreateListingForm({ onSuccess }: CreateListingFormProps) {
                         "& .MuiOutlinedInput-notchedOutline": {
                           borderColor: "var(--color-border)",
                         },
-                        "&:hover .MuiOutlinedInput-notchedOutline": {
-                          borderColor: "var(--color-border-strong)",
-                        },
-                        "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
-                          borderColor: "var(--color-primary)",
-                        },
                       }}
                     >
-                      {CATEGORIES.map((cat) => (
-                        <MenuItem key={cat.value} value={cat.value}>
-                          {locale === "ja" ? cat.labelJa : cat.labelEn}
+                      {(stablecoins.length > 0 ? stablecoins : [{ currency: "JPYC" as const, symbol: "JPYC" as const }]).map((token) => (
+                        <MenuItem key={token.currency} value={token.currency}>
+                          {token.symbol}
                         </MenuItem>
                       ))}
                     </Select>

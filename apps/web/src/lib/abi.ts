@@ -8,7 +8,6 @@ export const FACTORY_ABI = [
       { name: "tokenId", type: "uint256", indexed: true },
       { name: "escrow", type: "address", indexed: true },
       { name: "producer", type: "address", indexed: true },
-      { name: "categoryType", type: "uint8", indexed: false },
       { name: "totalAmount", type: "uint256", indexed: false },
     ],
   },
@@ -76,7 +75,6 @@ export const FACTORY_ABI = [
     type: "function",
     name: "createListing",
     inputs: [
-      { name: "categoryType", type: "uint8" },
       { name: "title", type: "string" },
       { name: "description", type: "string" },
       { name: "totalAmount", type: "uint256" },
@@ -269,13 +267,6 @@ export const ESCROW_ABI = [
   },
   {
     type: "function",
-    name: "category",
-    inputs: [],
-    outputs: [{ name: "", type: "string" }],
-    stateMutability: "view",
-  },
-  {
-    type: "function",
     name: "title",
     inputs: [],
     outputs: [{ name: "", type: "string" }],
@@ -293,13 +284,6 @@ export const ESCROW_ABI = [
     name: "imageURI",
     inputs: [],
     outputs: [{ name: "", type: "string" }],
-    stateMutability: "view",
-  },
-  {
-    type: "function",
-    name: "categoryType",
-    inputs: [],
-    outputs: [{ name: "", type: "uint8" }],
     stateMutability: "view",
   },
   {
@@ -374,7 +358,6 @@ export const ESCROW_ABI = [
     name: "getMeta",
     inputs: [],
     outputs: [
-      { name: "category", type: "string" },
       { name: "title", type: "string" },
       { name: "description", type: "string" },
       { name: "imageURI", type: "string" },

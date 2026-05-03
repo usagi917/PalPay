@@ -8,10 +8,12 @@ contract DeployListingFactoryV6 is ScriptBase {
     function run() external returns (address factoryAddress) {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address tokenAddress = vm.envAddress("TOKEN_ADDRESS");
+        address jpycTokenAddress = vm.envAddress("JPYC_TOKEN_ADDRESS");
+        address usdcTokenAddress = vm.envAddress("USDC_TOKEN_ADDRESS");
         string memory baseUri = vm.envString("BASE_URI");
 
         vm.startBroadcast(deployerPrivateKey);
-        factoryAddress = address(new ListingFactoryV6(tokenAddress, baseUri));
+        factoryAddress = address(new ListingFactoryV6(tokenAddress, baseUri, jpycTokenAddress, usdcTokenAddress));
         vm.stopBroadcast();
     }
 }

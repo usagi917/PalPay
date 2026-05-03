@@ -2,9 +2,9 @@
 
 import { useEffect, useCallback, useMemo, useRef } from "react";
 import { type Address } from "viem";
-import { useEscrowInfo, useEscrowEvents } from "./useEscrow";
-import { useMilestones } from "./useEscrow";
+import { useEscrowInfo, useEscrowEvents, useMilestones } from "./useEscrow";
 import { useListingSummaries } from "./useFactory";
+import { type StablecoinSymbol } from "../config";
 
 /**
  * Polls escrow info, milestones, and events at a fixed interval.
@@ -107,6 +107,15 @@ export function useMyListings(address: Address | null) {
     const producer = myListings.asProducer;
     const buyer = myListings.asBuyer;
 
+    const totalByCurrency = (items: typeof summaries, field: "totalAmount" | "releasedAmount") =>
+      items.reduce(
+        (totals, listing) => {
+          totals[listing.currency] += listing[field];
+          return totals;
+        },
+        { JPYC: 0n, USDC: 0n } satisfies Record<StablecoinSymbol, bigint>,
+      );
+
     return {
       totalProduced: producer.length,
       producerOpen: producer.filter((s) => s.status === "open").length,
@@ -117,9 +126,8 @@ export function useMyListings(address: Address | null) {
       buyerLocked: buyer.filter((s) => s.status === "locked").length,
       buyerActive: buyer.filter((s) => s.status === "active").length,
       buyerCompleted: buyer.filter((s) => s.status === "completed").length,
-      totalEarned: producer
-        .reduce((sum, s) => sum + s.releasedAmount, 0n),
-      totalSpent: buyer.reduce((sum, s) => sum + s.releasedAmount, 0n),
+      totalEarnedByCurrency: totalByCurrency(producer, "releasedAmount"),
+      totalSpentByCurrency: totalByCurrency(buyer, "totalAmount"),
     };
   }, [myListings]);
 

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import "../contracts/ListingFactoryV6.sol";
+import "../contracts/MilestoneEscrowV6.sol";
 import "./utils/EscrowFixture.sol";
 
 contract MilestoneEscrowV6Test is EscrowFixture {

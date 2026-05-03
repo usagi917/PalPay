@@ -1,16 +1,17 @@
-// Milestone names by category type (matching contract: 0=wagyu, 1=sake, 2=craft)
-// Used in hooks.ts and NFT image API
-export const MILESTONE_NAMES: Record<number, string[]> = {
-  0: ["子牛購入", "飼育開始", "体重100kg", "体重200kg", "体重300kg", "体重400kg", "体重500kg", "出荷準備", "出荷", "納品完了"], // wagyu
-  1: ["仕込み", "発酵", "熟成", "瓶詰め", "出荷"], // sake
-  2: ["制作開始", "窯焼き", "絵付け", "仕上げ"], // craft
-};
+// Wagyu marketplace milestones (10 steps matching MilestoneEscrowV6 BPS allocation)
+export const WAGYU_MILESTONES: readonly string[] = [
+  "子牛購入",
+  "飼育開始",
+  "体重100kg",
+  "体重200kg",
+  "体重300kg",
+  "体重400kg",
+  "体重500kg",
+  "出荷準備",
+  "出荷",
+  "納品完了",
+];
 
-// Token decimals (JPYC is 18 on all chains)
-export const JPYC_DECIMALS = 18;
-
-// Get milestone name by category type and index
-export function getMilestoneName(categoryType: number, index: number): string {
-  const names = MILESTONE_NAMES[categoryType] || [];
-  return names[index] || `Step ${index + 1}`;
+export function getMilestoneName(index: number): string {
+  return WAGYU_MILESTONES[index] ?? `Step ${index + 1}`;
 }
