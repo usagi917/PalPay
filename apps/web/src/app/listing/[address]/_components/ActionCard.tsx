@@ -38,7 +38,13 @@ export interface ActionCardProps {
   actionLoading: boolean;
   actionError: string | null;
   resetState: () => void;
-  purchaseValidation: { balance: bigint; hasEnoughBalance: boolean };
+  purchaseValidation: {
+    balance: bigint;
+    hasEnoughBalance: boolean;
+    isLoading?: boolean;
+    balanceIsLoading?: boolean;
+    balanceError?: "missing-token-contract" | "read-failed" | null;
+  };
   milestones: Milestone[];
   milestonesLoading: boolean;
   nextMilestoneIndex: number;
@@ -90,6 +96,8 @@ export function ActionCard({
   const finalRequested = info.finalRequestedAt > 0n;
   const finalExpired = info.finalConfirmationDeadline !== null && nowSec >= info.finalConfirmationDeadline;
   const relistReady = info.status === "open" && info.cancelCount > 0n;
+  const balanceReadError = purchaseValidation.balanceError ?? null;
+  const balanceIsLoading = purchaseValidation.balanceIsLoading ?? purchaseValidation.isLoading ?? false;
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -346,11 +354,15 @@ export function ActionCard({
                 p: 1.5,
                 mb: 1,
                 borderRadius: 2,
-                background: purchaseValidation.hasEnoughBalance
+                background: balanceReadError
+                  ? "var(--status-warning-surface)"
+                  : purchaseValidation.hasEnoughBalance
                   ? "var(--status-success-surface)"
                   : "var(--status-error-surface)",
                 border: `1px solid ${
-                  purchaseValidation.hasEnoughBalance
+                  balanceReadError
+                    ? "rgba(232, 197, 71, 0.25)"
+                    : purchaseValidation.hasEnoughBalance
                     ? "rgba(110, 191, 139, 0.25)"
                     : "rgba(214, 104, 83, 0.25)"
                 }`,
@@ -363,16 +375,47 @@ export function ActionCard({
                 variant="body2"
                 sx={{
                   fontWeight: 600,
-                  color: purchaseValidation.hasEnoughBalance
+                  color: balanceReadError
+                    ? "var(--status-warning)"
+                    : purchaseValidation.hasEnoughBalance
                     ? "var(--status-success)"
                     : "var(--status-error)",
                 }}
               >
-                {formatAmount(purchaseValidation.balance, decimals, symbol)}
+                {balanceIsLoading
+                  ? isJapanese
+                    ? "確認中..."
+                    : "Checking..."
+                  : balanceReadError
+                  ? isJapanese
+                    ? "読み取り不可"
+                    : "Unreadable"
+                  : formatAmount(purchaseValidation.balance, decimals, symbol)}
               </Typography>
             </Box>
 
-            {!purchaseValidation.hasEnoughBalance && (
+            {balanceReadError && (
+              <Alert
+                severity="warning"
+                sx={{
+                  mt: 1,
+                  borderRadius: 2,
+                  background: "var(--status-warning-surface)",
+                  color: "var(--status-warning)",
+                  border: "1px solid rgba(232, 197, 71, 0.25)",
+                }}
+              >
+                {balanceReadError === "missing-token-contract"
+                  ? isJapanese
+                    ? `このネットワーク上で${symbol}コントラクトを見つけられません。アプリ設定の支払いトークンアドレスを確認してください。`
+                    : `The ${symbol} contract was not found on this network. Check the configured payment token address.`
+                  : isJapanese
+                  ? `${symbol}残高を読み込めません。ネットワーク設定とRPC接続を確認してください。`
+                  : `Could not read the ${symbol} balance. Check the network settings and RPC connection.`}
+              </Alert>
+            )}
+
+            {!balanceReadError && !balanceIsLoading && !purchaseValidation.hasEnoughBalance && (
               <Alert
                 severity="warning"
                 sx={{
@@ -397,7 +440,7 @@ export function ActionCard({
             fullWidth
             startIcon={isBusy ? <CircularProgress size={20} /> : <PaymentIcon />}
             onClick={onLock}
-            disabled={isBusy || !purchaseValidation.hasEnoughBalance}
+            disabled={isBusy || balanceIsLoading || Boolean(balanceReadError) || !purchaseValidation.hasEnoughBalance}
             sx={{
               background: "linear-gradient(135deg, var(--color-primary) 0%, var(--copper-rich) 100%)",
               color: "var(--sumi-black)",
