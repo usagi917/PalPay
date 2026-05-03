@@ -6,7 +6,7 @@ import { getTxUrl } from "@/lib/config";
 import type { Locale } from "@/lib/i18n";
 import type { Milestone, TimelineEvent } from "@/lib/types";
 
-export interface EventTimelineProps {
+interface EventTimelineProps {
   events: TimelineEvent[];
   milestones: Milestone[];
   locale: Locale;

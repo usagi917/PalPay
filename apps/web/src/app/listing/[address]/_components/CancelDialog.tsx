@@ -10,7 +10,7 @@ import {
 } from "@mui/material";
 import type { Locale } from "@/lib/i18n";
 
-export interface CancelDialogProps {
+interface CancelDialogProps {
   open: boolean;
   locale: Locale;
   onClose: () => void;

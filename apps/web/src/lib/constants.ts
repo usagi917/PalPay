@@ -1,5 +1,5 @@
 // Wagyu marketplace milestones (10 steps matching MilestoneEscrowV6 BPS allocation)
-export const WAGYU_MILESTONES: readonly string[] = [
+const WAGYU_MILESTONES: readonly string[] = [
   "子牛購入",
   "飼育開始",
   "体重100kg",

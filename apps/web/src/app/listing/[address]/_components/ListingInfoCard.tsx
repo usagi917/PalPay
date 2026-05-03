@@ -20,7 +20,7 @@ import type { Locale } from "@/lib/i18n";
 import type { EscrowInfo } from "@/lib/types";
 import type { Address } from "viem";
 
-export interface ListingInfoCardProps {
+interface ListingInfoCardProps {
   info: EscrowInfo;
   locale: Locale;
   decimals: number;

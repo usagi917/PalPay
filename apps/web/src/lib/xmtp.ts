@@ -205,7 +205,7 @@ async function getInboxStateByAddress(
   }
 }
 
-export interface RevokeInstallationsResult {
+interface RevokeInstallationsResult {
   inboxId: string;
   installationCount: number;
   revokedCount: number;
