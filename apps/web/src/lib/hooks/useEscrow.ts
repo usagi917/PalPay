@@ -5,7 +5,7 @@ import { type Address, type Hash } from "viem";
 import { createClient, createWallet, ensureWalletChain, getMetaMaskProvider, getStablecoinByToken } from "../config";
 import { ESCROW_ABI, ERC20_ABI } from "../abi";
 import { getMilestoneName } from "../constants";
-import { formatTxError, writeContractWithGasFallback } from "../tx";
+import { formatTxError, getRecommendedGasFees, writeContractWithGasFallback } from "../tx";
 import type { EscrowInfo, EscrowStatus, Milestone, TimelineEvent } from "../types";
 
 export function useEscrowInfo(escrowAddress: Address | null) {
@@ -277,6 +277,8 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
           throw new Error("お支払い可能額が不足しています");
         }
 
+        const gasFees = await getRecommendedGasFees(client);
+
         // Check allowance and skip approve if already approved
         let needsApproval = true;
         if (!skipApprovalCheck) {
@@ -299,6 +301,7 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
               functionName: "approve",
               args: [escrowAddress, totalAmount],
               account,
+              ...gasFees,
             },
             TX_FALLBACK_GAS.tokenApprove,
           );
@@ -320,6 +323,7 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
             functionName: "lock",
             args: [],
             account,
+            ...gasFees,
           },
           TX_FALLBACK_GAS.lock,
         );
@@ -366,6 +370,7 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
         if (!wallet) throw new Error("ログインが必要です");
 
         const [account] = await wallet.getAddresses();
+        const gasFees = await getRecommendedGasFees(client);
 
         // V4: Pass evidenceHash (bytes32) - use 0x0 if not provided
         const evidenceBytes32 = evidenceHash
@@ -380,6 +385,7 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
             functionName: "submit",
             args: [BigInt(index), evidenceBytes32 as `0x${string}`],
             account,
+            ...gasFees,
           },
           TX_FALLBACK_GAS.submit,
         );
@@ -430,10 +436,20 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
         const client = createClient();
         if (!wallet) throw new Error("ログインが必要です");
         const [account] = await wallet.getAddresses();
+        const gasFees = await getRecommendedGasFees(client);
         const fallbackGas = TX_FALLBACK_GAS[functionName];
-        const hash = await writeContractWithGasFallback(wallet, {
-          address: escrowAddress, abi: ESCROW_ABI, functionName, args: args as never, account,
-        }, fallbackGas);
+        const hash = await writeContractWithGasFallback(
+          wallet,
+          {
+            address: escrowAddress,
+            abi: ESCROW_ABI,
+            functionName,
+            args: args as never,
+            account,
+            ...gasFees,
+          },
+          fallbackGas,
+        );
         setTxStep("confirming"); setTxHash(hash);
         const receipt = await client.waitForTransactionReceipt({ hash });
         if (receipt.status !== "success") throw new Error(errorMsg);
