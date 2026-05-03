@@ -277,8 +277,6 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
           throw new Error("お支払い可能額が不足しています");
         }
 
-        const gasFees = await getRecommendedGasFees(client);
-
         // Check allowance and skip approve if already approved
         let needsApproval = true;
         if (!skipApprovalCheck) {
@@ -293,6 +291,7 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
 
         if (needsApproval) {
           setTxStep("approving");
+          const approveGasFees = await getRecommendedGasFees(client);
           const hash1 = await writeContractWithGasFallback(
             wallet,
             {
@@ -301,7 +300,7 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
               functionName: "approve",
               args: [escrowAddress, totalAmount],
               account,
-              ...gasFees,
+              ...approveGasFees,
             },
             TX_FALLBACK_GAS.tokenApprove,
           );
@@ -315,6 +314,7 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
 
         // Then lock
         setTxStep("signing");
+        const lockGasFees = await getRecommendedGasFees(client);
         const hash2 = await writeContractWithGasFallback(
           wallet,
           {
@@ -323,7 +323,7 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
             functionName: "lock",
             args: [],
             account,
-            ...gasFees,
+            ...lockGasFees,
           },
           TX_FALLBACK_GAS.lock,
         );
