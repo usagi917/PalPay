@@ -25,9 +25,9 @@ import { Footer } from "@/components/Footer";
 import {
   useWallet,
   useMyListings,
-  useTokenInfo,
   formatAmount,
 } from "@/lib/hooks";
+import { STABLECOINS, type StablecoinSymbol } from "@/lib/config";
 import { I18nContext, translations, type Locale, type TranslationKey } from "@/lib/i18n";
 
 type TabValue = "producer" | "buyer";
@@ -49,8 +49,12 @@ export default function MyPage() {
 
   const wallet = useWallet();
   const { asProducer, asBuyer, stats, isLoading, error } = useMyListings(wallet.address);
-  const { symbol, decimals } = useTokenInfo();
   const isJapanese = locale === "ja";
+  const formatTotals = (totals: Record<StablecoinSymbol, bigint>) =>
+    (Object.entries(totals) as Array<[StablecoinSymbol, bigint]>)
+      .filter(([, amount]) => amount > 0n)
+      .map(([currency, amount]) => formatAmount(amount, STABLECOINS[currency].decimals, STABLECOINS[currency].symbol))
+      .join(" / ") || `0 ${STABLECOINS.JPYC.symbol}`;
 
   const filteredListings = useMemo(() => {
     const listings = activeTab === "producer" ? asProducer : asBuyer;
@@ -430,7 +434,7 @@ export default function MyPage() {
                             color: "var(--color-primary)",
                           }}
                         >
-                          {formatAmount(stats.totalSpent, decimals, symbol)}
+                          {formatTotals(stats.totalSpentByCurrency)}
                         </Typography>
                       </CardContent>
                     </Card>
@@ -554,11 +558,7 @@ export default function MyPage() {
                               animate={{ opacity: 1, y: 0 }}
                               transition={{ duration: 0.3, delay: index * 0.05 }}
                             >
-                              <ListingCard
-                                listing={listing}
-                                tokenSymbol={symbol}
-                                tokenDecimals={decimals}
-                              />
+                              <ListingCard listing={listing} />
                             </motion.div>
                           </Grid>
                         ))}
@@ -608,7 +608,7 @@ export default function MyPage() {
                       color: "var(--color-primary)",
                     }}
                   >
-                    {formatAmount(stats.totalEarned, decimals, symbol)}
+                    {formatTotals(stats.totalEarnedByCurrency)}
                   </Typography>
                 </Box>
               </>

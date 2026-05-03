@@ -2,19 +2,35 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { type Address, type Hash } from "viem";
-import { createClient, createWallet, config, ensureWalletChain, getMetaMaskProvider } from "../config";
+import {
+  createClient,
+  createWallet,
+  ensureWalletChain,
+  getConfiguredStablecoins,
+  getMetaMaskProvider,
+  getStablecoinConfig,
+  type StablecoinConfig,
+  type StablecoinSymbol,
+} from "../config";
 import { FACTORY_ABI, ESCROW_ABI } from "../abi";
 import { formatTxError } from "../tx";
 import type { EscrowStatus, ListingSummary } from "../types";
 
+type ListingPointer = {
+  escrowAddress: Address;
+  stablecoin: StablecoinConfig;
+};
+
 function useListings() {
-  const [listings, setListings] = useState<Address[]>([]);
+  const [listings, setListings] = useState<ListingPointer[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchListings = useCallback(async () => {
-    if (!config.factoryAddress) {
-      setError("Factory address not configured");
+    const stablecoins = getConfiguredStablecoins();
+    if (stablecoins.length === 0) {
+      setListings([]);
+      setError("JPYC/USDC factory addresses are not configured");
       return;
     }
 
@@ -23,12 +39,18 @@ function useListings() {
 
     try {
       const client = createClient();
-      const result = await client.readContract({
-        address: config.factoryAddress,
-        abi: FACTORY_ABI,
-        functionName: "getListings",
-      });
-      setListings(result as Address[]);
+      const results = await Promise.all(
+        stablecoins.map(async (stablecoin) => {
+          const addresses = (await client.readContract({
+            address: stablecoin.factoryAddress,
+            abi: FACTORY_ABI,
+            functionName: "getListings",
+          })) as Address[];
+
+          return addresses.map((escrowAddress) => ({ escrowAddress, stablecoin }));
+        }),
+      );
+      setListings(results.flat());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch listings");
     } finally {
@@ -61,7 +83,7 @@ export function useListingSummaries() {
 
       try {
         const client = createClient();
-        const summaryPromises = listings.map(async (escrowAddress) => {
+        const summaryPromises = listings.map(async ({ escrowAddress, stablecoin }) => {
           try {
             const [core, meta, progress] = await Promise.all([
               client.readContract({
@@ -81,15 +103,20 @@ export function useListingSummaries() {
               }),
             ]) as [
               [Address, Address, Address, Address, bigint, bigint, bigint, number, bigint],
-              [string, string, string, string, string],
+              [string, string, string, string],
               [bigint, bigint]
             ];
 
             const [, , producer, buyer, tokenId, totalAmount, releasedAmount, statusEnum, cancelCount] = core;
-            const [category, title, description, imageURI, status] = meta;
+            const [title, description, imageURI, status] = meta;
 
             return {
               escrowAddress,
+              factoryAddress: stablecoin.factoryAddress,
+              currency: stablecoin.currency,
+              symbol: stablecoin.symbol,
+              decimals: stablecoin.decimals,
+              tokenAddress: stablecoin.tokenAddress,
               tokenId,
               producer,
               buyer,
@@ -97,7 +124,6 @@ export function useListingSummaries() {
               releasedAmount,
               cancelCount,
               locked: statusEnum >= 1,
-              category,
               title,
               description,
               imageURI,
@@ -132,17 +158,6 @@ export function useListingSummaries() {
   };
 }
 
-// カテゴリ名からcategoryType (uint8) への変換
-export function categoryToType(category: string): number {
-  switch (category.toLowerCase()) {
-    case "wagyu": return 0;
-    case "sake": return 1;
-    case "craft": return 2;
-    default: throw new Error(`無効なカテゴリ: "${category}"。wagyu, sake, craft のみ対応しています。`);
-  }
-}
-
-
 export function useCreateListing(onSuccess?: () => void) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -150,11 +165,11 @@ export function useCreateListing(onSuccess?: () => void) {
 
   const createListing = useCallback(
     async (
-      categoryType: number,
       title: string,
       description: string,
       totalAmount: bigint,
-      imageURI: string
+      imageURI: string,
+      currency: StablecoinSymbol,
     ) => {
       setIsLoading(true);
       setError(null);
@@ -169,12 +184,16 @@ export function useCreateListing(onSuccess?: () => void) {
         if (!wallet) throw new Error("ログインが必要です");
 
         const [account] = await wallet.getAddresses();
+        const stablecoin = getStablecoinConfig(currency);
+        if (!stablecoin.factoryAddress) {
+          throw new Error(`${currency} Factory address not configured`);
+        }
 
         const hash = await wallet.writeContract({
-          address: config.factoryAddress,
+          address: stablecoin.factoryAddress,
           abi: FACTORY_ABI,
           functionName: "createListing",
-          args: [categoryType, title, description, totalAmount, imageURI],
+          args: [title, description, totalAmount, imageURI],
           account,
         });
 

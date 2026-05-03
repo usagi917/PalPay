@@ -42,20 +42,7 @@ export function Footer() {
   const { locale } = useI18n();
   const isJapanese = locale === "ja";
 
-  const navItems: FooterNavItem[] = [
-    ...baseNavItems,
-    ...(process.env.NEXT_PUBLIC_ENABLE_AGENT === "true"
-      ? [
-          {
-            href: "/agent",
-            label: {
-              ja: "AIアシスタント",
-              en: "AI Assistant",
-            },
-          },
-        ]
-      : []),
-  ];
+  const navItems: FooterNavItem[] = baseNavItems;
 
   return (
     <Box component="footer" className="footer content-layer">

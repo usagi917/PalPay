@@ -9,11 +9,11 @@
 
 ## 概要
 
-`Proof of Trust` は、和牛・日本酒・工芸品のような長期生産型取引で発生する「前払いリスク」と「進捗可視化」の課題を解決するためのプロジェクトです。
+`Proof of Trust` は、和牛のような長期生産型取引で発生する「前払いリスク」と「進捗可視化」の課題を解決するためのプロジェクトです。
 
 - Webアプリ: Next.js 15 + React 19 + viem
 - コントラクト: `ListingFactoryV6` / `MilestoneEscrowV6`（Solidity 0.8.24）
-- 決済: ERC-20
+- 決済: JPYC / USDC（testnet の ERC-20）
 - 権利証: ERC-721（動的メタデータ / SVG画像）
 - チャット: XMTP（E2E暗号化）
 
@@ -100,9 +100,6 @@ lib/         Foundryライブラリ（OpenZeppelinサブモジュール）
 
 - Sepolia (`11155111`)
 - Base Sepolia (`84532`)
-- Base (`8453`)
-- Polygon Amoy (`80002`)
-- Avalanche Fuji (`43113`, デフォルト)
 
 Foundryでコントラクトをビルドする場合は、先にサブモジュールを初期化してください。
 
@@ -135,8 +132,10 @@ pnpm --dir apps/web dev
 | --- | --- |
 | `NEXT_PUBLIC_RPC_URL` | 接続先RPC URL |
 | `NEXT_PUBLIC_CHAIN_ID` | チェーンID |
-| `NEXT_PUBLIC_FACTORY_ADDRESS` | `ListingFactoryV6` アドレス |
-| `NEXT_PUBLIC_TOKEN_ADDRESS` | 決済用ERC-20アドレス |
+| `NEXT_PUBLIC_JPYC_FACTORY_ADDRESS` | JPYC 用 `ListingFactoryV6` アドレス |
+| `NEXT_PUBLIC_JPYC_TOKEN_ADDRESS` | JPYC ERC-20 アドレス |
+| `NEXT_PUBLIC_USDC_FACTORY_ADDRESS` | USDC 用 `ListingFactoryV6` アドレス |
+| `NEXT_PUBLIC_USDC_TOKEN_ADDRESS` | USDC ERC-20 アドレス |
 
 ### 任意（表示・運用）
 
@@ -183,11 +182,9 @@ pnpm --dir apps/web dev
 
 ### マイルストーン配分（BPS, 合計10000）
 
-| categoryType | カテゴリ | 工程数 | BPS配列 |
-| --- | --- | --- | --- |
-| `0` | wagyu | 10 | `200,300,400,500,600,650,700,750,900,5000` |
-| `1` | sake | 5 | `1000,1500,1500,2000,4000` |
-| `2` | craft | 4 | `1000,2000,2500,4500` |
+| カテゴリ | 工程数 | BPS配列 |
+| --- | --- | --- |
+| wagyu | 10 | `200,300,400,500,600,650,700,750,900,5000` |
 
 ## API
 
@@ -216,37 +213,37 @@ pnpm --dir apps/web lint
 forge build
 ```
 
-## Fuji Testnet Deploy
+## Testnet Deploy
 
-`ListingFactoryV6` の constructor は `tokenAddress` と `baseURI` の2つです。[contracts/ListingFactoryV6.sol](/Users/you/programming/hackathon/contracts/ListingFactoryV6.sol#L441)
+`ListingFactoryV6` は `1 Factory = 1 stablecoin` です。JPYC と USDC を同時に扱う場合は、同じ testnet に JPYC 用 Factory と USDC 用 Factory を別々にデプロイします。
 
-`baseURI` には、NFTメタデータAPIを配信するWebアプリの公開URLを入れてください。たとえば `https://your-app.example.com` を指定すると、`tokenURI()` は `https://your-app.example.com/api/nft/<tokenId>` を返します。[contracts/ListingFactoryV6.sol](/Users/you/programming/hackathon/contracts/ListingFactoryV6.sol#L476)
+constructor は `tokenAddress`, `baseURI`, `jpycTokenAddress`, `usdcTokenAddress` を受け取り、`tokenAddress` が JPYC/USDC allowlist 外なら revert します。
 
 1. 環境変数を設定
 
 ```bash
-export AVALANCHE_FUJI_RPC_URL="https://your-fuji-rpc"
+export TESTNET_RPC_URL="https://your-testnet-rpc"
 export PRIVATE_KEY="0x..."
+export JPYC_TOKEN_ADDRESS="0xYourJpycTokenAddress"
+export USDC_TOKEN_ADDRESS="0xYourUsdcTokenAddress"
+export BASE_URI="https://your-app.example.com"
 ```
 
-2. 決済用ERC-20が未デプロイなら、テスト用トークンを先にデプロイ
+2. JPYC Factory をデプロイ
 
 ```bash
-export TOKEN_NAME="Mock JPYC"
-export TOKEN_SYMBOL="mJPYC"
-export TOKEN_DECIMALS="18"
-forge script script/DeployMockERC20.s.sol:DeployMockERC20 \
-  --rpc-url "$AVALANCHE_FUJI_RPC_URL" \
+export TOKEN_ADDRESS="$JPYC_TOKEN_ADDRESS"
+forge script script/DeployListingFactoryV6.s.sol:DeployListingFactoryV6 \
+  --rpc-url "$TESTNET_RPC_URL" \
   --broadcast
 ```
 
-3. Factory をデプロイ
+3. USDC Factory をデプロイ
 
 ```bash
-export TOKEN_ADDRESS="0xYourTokenAddress"
-export BASE_URI="https://your-app.example.com"
+export TOKEN_ADDRESS="$USDC_TOKEN_ADDRESS"
 forge script script/DeployListingFactoryV6.s.sol:DeployListingFactoryV6 \
-  --rpc-url "$AVALANCHE_FUJI_RPC_URL" \
+  --rpc-url "$TESTNET_RPC_URL" \
   --broadcast
 ```
 
@@ -254,10 +251,12 @@ forge script script/DeployListingFactoryV6.s.sol:DeployListingFactoryV6 \
 
 ```bash
 cat > apps/web/.env.local <<'EOF'
-NEXT_PUBLIC_RPC_URL=https://your-fuji-rpc
-NEXT_PUBLIC_CHAIN_ID=43113
-NEXT_PUBLIC_FACTORY_ADDRESS=0xYourFactoryAddress
-NEXT_PUBLIC_TOKEN_ADDRESS=0xYourTokenAddress
+NEXT_PUBLIC_RPC_URL=https://your-testnet-rpc
+NEXT_PUBLIC_CHAIN_ID=84532
+NEXT_PUBLIC_JPYC_FACTORY_ADDRESS=0xYourJpycFactoryAddress
+NEXT_PUBLIC_JPYC_TOKEN_ADDRESS=0xYourJpycTokenAddress
+NEXT_PUBLIC_USDC_FACTORY_ADDRESS=0xYourUsdcFactoryAddress
+NEXT_PUBLIC_USDC_TOKEN_ADDRESS=0xYourUsdcTokenAddress
 EOF
 ```
 
@@ -269,7 +268,7 @@ pnpm --dir apps/web dev
 
 補足:
 - コントラクトのデプロイアドレスは `broadcast/` 配下の実行結果か、`forge script` の出力から確認できます。
-- `MockERC20` は `mint()` が誰でも呼べるテスト用トークンです。本番相当の検証以外では使わないでください。[contracts/MockERC20.sol](/Users/you/programming/hackathon/contracts/MockERC20.sol#L36)
+- `MockERC20` は Foundry テスト用です。デプロイスクリプトからは外しています。
 
 ## 関連ドキュメント
 

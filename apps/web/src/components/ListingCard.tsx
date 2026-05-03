@@ -6,16 +6,14 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { useI18n } from "@/lib/i18n";
 import { formatAmount, shortenAddress } from "@/lib/hooks";
-import { CATEGORY_LABELS, STATUS_LABELS } from "@/lib/config";
+import { STATUS_LABELS } from "@/lib/config";
 import type { ListingSummary } from "@/lib/types";
 
 interface ListingCardProps {
   listing: ListingSummary;
-  tokenSymbol: string;
-  tokenDecimals: number;
 }
 
-export function ListingCard({ listing, tokenSymbol, tokenDecimals }: ListingCardProps) {
+export function ListingCard({ listing }: ListingCardProps) {
   const { locale } = useI18n();
   const [imageFailed, setImageFailed] = useState(false);
 
@@ -23,7 +21,7 @@ export function ListingCard({ listing, tokenSymbol, tokenDecimals }: ListingCard
     setImageFailed(false);
   }, [listing.imageURI]);
 
-  const categoryLabel = CATEGORY_LABELS[listing.category]?.[locale] || listing.category;
+  const categoryLabel = locale === "ja" ? "和牛" : "Wagyu";
   const statusConfig = STATUS_LABELS[listing.status] || STATUS_LABELS.open;
   const statusLabel = statusConfig[locale];
 
@@ -104,7 +102,7 @@ export function ListingCard({ listing, tokenSymbol, tokenDecimals }: ListingCard
                     opacity: 0.3,
                   }}
                 >
-                  {listing.category === "wagyu" ? "牛" : listing.category === "sake" ? "酒" : "匠"}
+                  牛
                 </Typography>
               </Box>
             )}
@@ -226,7 +224,7 @@ export function ListingCard({ listing, tokenSymbol, tokenDecimals }: ListingCard
                     lineHeight: 1,
                   }}
                 >
-                  {formatAmount(listing.totalAmount, tokenDecimals, tokenSymbol)}
+                  {formatAmount(listing.totalAmount, listing.decimals, listing.symbol)}
                 </Typography>
               </Box>
 

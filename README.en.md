@@ -9,11 +9,11 @@
 
 ## Overview
 
-`Proof of Trust` is designed for long production-cycle transactions such as wagyu, sake, and crafts, where prepayment risk and progress visibility are major concerns.
+`Proof of Trust` is designed for long production-cycle wagyu transactions, where prepayment risk and progress visibility are major concerns.
 
 - Web app: Next.js 15 + React 19 + viem
 - Contracts: `ListingFactoryV6` / `MilestoneEscrowV6` (Solidity 0.8.24)
-- Settlement: ERC-20
+- Settlement: JPYC / USDC testnet ERC-20
 - Ownership proof: ERC-721 (dynamic metadata / SVG)
 - Chat: XMTP (E2E encrypted)
 
@@ -100,9 +100,6 @@ Supported chains (`apps/web/src/lib/config.ts`):
 
 - Sepolia (`11155111`)
 - Base Sepolia (`84532`)
-- Base (`8453`)
-- Polygon Amoy (`80002`)
-- Avalanche Fuji (`43113`, default)
 
 If you build contracts with Foundry, initialize submodules first.
 
@@ -135,8 +132,10 @@ Config file: `apps/web/.env.local`
 | --- | --- |
 | `NEXT_PUBLIC_RPC_URL` | Target RPC URL |
 | `NEXT_PUBLIC_CHAIN_ID` | Chain ID |
-| `NEXT_PUBLIC_FACTORY_ADDRESS` | `ListingFactoryV6` address |
-| `NEXT_PUBLIC_TOKEN_ADDRESS` | Settlement ERC-20 address |
+| `NEXT_PUBLIC_JPYC_FACTORY_ADDRESS` | JPYC `ListingFactoryV6` address |
+| `NEXT_PUBLIC_JPYC_TOKEN_ADDRESS` | JPYC ERC-20 address |
+| `NEXT_PUBLIC_USDC_FACTORY_ADDRESS` | USDC `ListingFactoryV6` address |
+| `NEXT_PUBLIC_USDC_TOKEN_ADDRESS` | USDC ERC-20 address |
 
 ### Optional (Display / Runtime)
 
@@ -183,11 +182,9 @@ Config file: `apps/web/.env.local`
 
 ### Milestone Distribution (BPS, total = 10000)
 
-| categoryType | Category | Steps | BPS array |
-| --- | --- | --- | --- |
-| `0` | wagyu | 10 | `200,300,400,500,600,650,700,750,900,5000` |
-| `1` | sake | 5 | `1000,1500,1500,2000,4000` |
-| `2` | craft | 4 | `1000,2000,2500,4500` |
+| Category | Steps | BPS array |
+| --- | --- | --- |
+| wagyu | 10 | `200,300,400,500,600,650,700,750,900,5000` |
 
 ## API
 
@@ -216,37 +213,37 @@ Contracts (optional):
 forge build
 ```
 
-## Fuji Testnet Deployment
+## Testnet Deployment
 
-`ListingFactoryV6` takes two constructor arguments: `tokenAddress` and `baseURI`.[contracts/ListingFactoryV6.sol](/Users/you/programming/hackathon/contracts/ListingFactoryV6.sol#L441)
+`ListingFactoryV6` is `1 factory = 1 stablecoin`. Deploy one factory for JPYC and one factory for USDC on the same testnet.
 
-Use the public web app URL for `baseURI`. For example, if you set `BASE_URI=https://your-app.example.com`, `tokenURI()` will resolve to `https://your-app.example.com/api/nft/<tokenId>`.[contracts/ListingFactoryV6.sol](/Users/you/programming/hackathon/contracts/ListingFactoryV6.sol#L476)
+The constructor takes `tokenAddress`, `baseURI`, `jpycTokenAddress`, and `usdcTokenAddress`, and rejects any token outside the JPYC/USDC allowlist.
 
 1. Set environment variables
 
 ```bash
-export AVALANCHE_FUJI_RPC_URL="https://your-fuji-rpc"
+export TESTNET_RPC_URL="https://your-testnet-rpc"
 export PRIVATE_KEY="0x..."
+export JPYC_TOKEN_ADDRESS="0xYourJpycTokenAddress"
+export USDC_TOKEN_ADDRESS="0xYourUsdcTokenAddress"
+export BASE_URI="https://your-app.example.com"
 ```
 
-2. If you do not already have a settlement ERC-20 on Fuji, deploy the test token first
+2. Deploy the JPYC factory
 
 ```bash
-export TOKEN_NAME="Mock JPYC"
-export TOKEN_SYMBOL="mJPYC"
-export TOKEN_DECIMALS="18"
-forge script script/DeployMockERC20.s.sol:DeployMockERC20 \
-  --rpc-url "$AVALANCHE_FUJI_RPC_URL" \
+export TOKEN_ADDRESS="$JPYC_TOKEN_ADDRESS"
+forge script script/DeployListingFactoryV6.s.sol:DeployListingFactoryV6 \
+  --rpc-url "$TESTNET_RPC_URL" \
   --broadcast
 ```
 
-3. Deploy the factory
+3. Deploy the USDC factory
 
 ```bash
-export TOKEN_ADDRESS="0xYourTokenAddress"
-export BASE_URI="https://your-app.example.com"
+export TOKEN_ADDRESS="$USDC_TOKEN_ADDRESS"
 forge script script/DeployListingFactoryV6.s.sol:DeployListingFactoryV6 \
-  --rpc-url "$AVALANCHE_FUJI_RPC_URL" \
+  --rpc-url "$TESTNET_RPC_URL" \
   --broadcast
 ```
 
@@ -254,10 +251,12 @@ forge script script/DeployListingFactoryV6.s.sol:DeployListingFactoryV6 \
 
 ```bash
 cat > apps/web/.env.local <<'EOF'
-NEXT_PUBLIC_RPC_URL=https://your-fuji-rpc
-NEXT_PUBLIC_CHAIN_ID=43113
-NEXT_PUBLIC_FACTORY_ADDRESS=0xYourFactoryAddress
-NEXT_PUBLIC_TOKEN_ADDRESS=0xYourTokenAddress
+NEXT_PUBLIC_RPC_URL=https://your-testnet-rpc
+NEXT_PUBLIC_CHAIN_ID=84532
+NEXT_PUBLIC_JPYC_FACTORY_ADDRESS=0xYourJpycFactoryAddress
+NEXT_PUBLIC_JPYC_TOKEN_ADDRESS=0xYourJpycTokenAddress
+NEXT_PUBLIC_USDC_FACTORY_ADDRESS=0xYourUsdcFactoryAddress
+NEXT_PUBLIC_USDC_TOKEN_ADDRESS=0xYourUsdcTokenAddress
 EOF
 ```
 
@@ -269,7 +268,7 @@ pnpm --dir apps/web dev
 
 Notes:
 - The deployed addresses are available in the `broadcast/` output or directly in the `forge script` logs.
-- `MockERC20` is a test token with a public `mint()` function. Do not use it for production-like validation.[contracts/MockERC20.sol](/Users/you/programming/hackathon/contracts/MockERC20.sol#L36)
+- `MockERC20` is kept for Foundry tests and is no longer exposed through a deploy script.
 
 ## Related Docs
 

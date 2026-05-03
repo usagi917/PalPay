@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createPublicClient, http, isAddress, type Address } from "viem";
-import { avalancheFuji } from "viem/chains";
 import { FACTORY_ABI, ESCROW_ABI, ERC20_ABI } from "@/lib/abi";
-import { SUPPORTED_CHAINS, CATEGORY_LABELS } from "@/lib/config";
+import { getChain } from "@/lib/config";
 import { getMilestoneName } from "@/lib/constants";
 
 interface Milestone {
@@ -10,14 +9,6 @@ interface Milestone {
   bps: bigint | number;
   completed: boolean;
 }
-
-const resolveChain = () => {
-  const chainId = Number(
-    process.env.NEXT_PUBLIC_CHAIN_ID || process.env.CHAIN_ID || avalancheFuji.id
-  );
-  const chainKey = chainId as keyof typeof SUPPORTED_CHAINS;
-  return SUPPORTED_CHAINS[chainKey] ?? avalancheFuji;
-};
 
 const HTTP_STATUS = {
   BAD_REQUEST: 400,
@@ -46,7 +37,6 @@ const escapeSvgText = (value: string): string =>
 function generateSVG(
   tokenId: string,
   title: string,
-  category: string,
   milestones: Milestone[],
   progressPercent: number,
   releasedAmount: string,
@@ -65,10 +55,9 @@ function generateSVG(
   const textColor = "#ecf0f1";
   const mutedColor = "#7f8c8d";
 
-  const categoryLabel = CATEGORY_LABELS[category]?.en || category;
-  const categoryEmoji = category === "wagyu" ? "🐂" : category === "sake" ? "🍶" : category === "craft" ? "🏺" : "📦";
+  const categoryEmoji = "🐂";
   const completedEmoji = status === "completed" ? "✨" : "";
-  const safeCategoryLabel = escapeSvgText(categoryLabel.toUpperCase());
+  const safeCategoryLabel = escapeSvgText("WAGYU");
   const safeTitle = escapeSvgText(title.length > 25 ? `${title.slice(0, 25)}...` : title);
   const safeTokenId = escapeSvgText(tokenId.padStart(3, "0"));
   const safeStatus = escapeSvgText(status.toUpperCase());
@@ -196,17 +185,20 @@ export async function GET(
 
     const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL;
     const factoryAddressParam = request.nextUrl.searchParams.get("factoryAddress");
-    if (factoryAddressParam && !isAddress(factoryAddressParam)) {
+    if (!factoryAddressParam) {
+      return new NextResponse("factoryAddress is required", { status: HTTP_STATUS.BAD_REQUEST });
+    }
+    if (!isAddress(factoryAddressParam)) {
       return new NextResponse("Invalid factoryAddress", { status: HTTP_STATUS.BAD_REQUEST });
     }
-    const factoryAddress = (factoryAddressParam || process.env.NEXT_PUBLIC_FACTORY_ADDRESS || "") as Address;
+    const factoryAddress = factoryAddressParam as Address;
 
     if (!rpcUrl || !factoryAddress) {
       return new NextResponse("Missing configuration", { status: HTTP_STATUS.INTERNAL_SERVER_ERROR });
     }
 
     const client = createPublicClient({
-      chain: resolveChain(),
+      chain: getChain(),
       transport: http(rpcUrl),
     });
 
@@ -223,7 +215,7 @@ export async function GET(
     }
 
     // Get escrow info (split into core and meta)
-    const [core, meta, milestonesResult, categoryType] = await Promise.all([
+    const [core, meta, milestonesResult] = await Promise.all([
       client.readContract({
         address: escrowAddress,
         abi: ESCROW_ABI,
@@ -239,23 +231,17 @@ export async function GET(
         abi: ESCROW_ABI,
         functionName: "getMilestones",
       }),
-      client.readContract({
-        address: escrowAddress,
-        abi: ESCROW_ABI,
-        functionName: "categoryType",
-      }),
     ]) as readonly [
       readonly [Address, Address, Address, Address, bigint, bigint, bigint, number, bigint],
-      readonly [string, string, string, string, string],
+      readonly [string, string, string, string],
       ReadonlyArray<{ bps: bigint | number; completed: boolean }>,
-      number
     ];
 
     const [, tokenAddress, , , , totalAmount, releasedAmount] = core;
-    const [category, title, , , status] = meta;
+    const [title, , , status] = meta;
 
     const milestones: Milestone[] = milestonesResult.map((m, index) => ({
-      name: getMilestoneName(categoryType, index),
+      name: getMilestoneName(index),
       bps: m.bps,
       completed: m.completed,
     }));
@@ -283,7 +269,6 @@ export async function GET(
     const svg = generateSVG(
       tokenId,
       title || `Listing #${tokenId}`,
-      category,
       milestones,
       progressPercent,
       formatTokenAmount(releasedAmount, decimals),

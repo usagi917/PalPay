@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { type Address } from "viem";
-import { createClient, config } from "../config";
+import { createClient } from "../config";
 import { FACTORY_ABI } from "../abi";
 
 /**
@@ -15,7 +15,7 @@ export function useNftOwner(tokenId: bigint | null, factoryAddress?: Address | n
   const [error, setError] = useState<string | null>(null);
 
   const fetch = useCallback(async () => {
-    const targetFactory = factoryAddress || config.factoryAddress;
+    const targetFactory = factoryAddress || null;
     if (tokenId === null || !targetFactory) {
       setOwner(null);
       return;

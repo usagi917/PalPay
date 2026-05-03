@@ -1,7 +1,6 @@
 export { useWallet } from "./useWallet";
 export {
   useListingSummaries,
-  categoryToType,
   useCreateListing,
 } from "./useFactory";
 export {

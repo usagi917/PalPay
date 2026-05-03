@@ -2,11 +2,11 @@
 pragma solidity ^0.8.24;
 
 import "../../contracts/ListingFactoryV6.sol";
+import "../../contracts/MilestoneEscrowV6.sol";
 import "../../contracts/MockERC20.sol";
 import "./TestBase.sol";
 
 abstract contract EscrowFixture is TestBase {
-    uint8 internal constant CATEGORY_CRAFT = 2;
     uint256 internal constant TOTAL_AMOUNT = 1_000 ether;
 
     address internal constant PRODUCER = address(0xA11CE);
@@ -15,6 +15,7 @@ abstract contract EscrowFixture is TestBase {
     address internal constant STRANGER = address(0xCAFE);
 
     MockERC20 internal token;
+    MockERC20 internal usdcToken;
     ListingFactoryV6 internal factory;
     MilestoneEscrowV6 internal escrow;
     address internal escrowAddress;
@@ -22,12 +23,17 @@ abstract contract EscrowFixture is TestBase {
 
     function setUp() public virtual {
         token = new MockERC20("Mock Token", "MOCK", 18);
-        factory = new ListingFactoryV6(address(token), "https://example.test");
+        usdcToken = new MockERC20("Mock USDC", "mUSDC", 6);
+        factory = _newFactory(address(token));
 
         vm.prank(PRODUCER);
         (escrowAddress, tokenId) =
-            factory.createListing(CATEGORY_CRAFT, "Craft Listing", "Fixture listing", TOTAL_AMOUNT, "ipfs://image");
+            factory.createListing("Wagyu Listing", "Fixture listing", TOTAL_AMOUNT, "ipfs://image");
         escrow = MilestoneEscrowV6(escrowAddress);
+    }
+
+    function _newFactory(address selectedToken) internal returns (ListingFactoryV6) {
+        return new ListingFactoryV6(selectedToken, "https://example.test", address(token), address(usdcToken));
     }
 
     function _mintAndApprove(address user, uint256 amount) internal {

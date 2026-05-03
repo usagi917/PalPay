@@ -2,54 +2,20 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { type Address } from "viem";
-import { createClient, config } from "../config";
+import { createClient, getDefaultStablecoin, getStablecoinConfig, type StablecoinSymbol } from "../config";
 import { ERC20_ABI } from "../abi";
 
-export function useTokenInfo() {
-  const [symbol, setSymbol] = useState<string>("");
-  const [decimals, setDecimals] = useState<number>(18);
-  const [isLoading, setIsLoading] = useState(false);
-
-  useEffect(() => {
-    const fetchTokenInfo = async () => {
-      if (!config.tokenAddress) return;
-
-      setIsLoading(true);
-      try {
-        const client = createClient();
-        const [symbolResult, decimalsResult] = await Promise.all([
-          client.readContract({
-            address: config.tokenAddress,
-            abi: ERC20_ABI,
-            functionName: "symbol",
-          }),
-          client.readContract({
-            address: config.tokenAddress,
-            abi: ERC20_ABI,
-            functionName: "decimals",
-          }),
-        ]);
-        setSymbol(symbolResult as string);
-        setDecimals(decimalsResult as number);
-      } catch {
-        // Use defaults
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchTokenInfo();
-  }, []);
-
-  return { symbol, decimals, isLoading };
+export function useTokenInfo(currency?: StablecoinSymbol) {
+  const token = currency ? getStablecoinConfig(currency) : getDefaultStablecoin();
+  return { symbol: token.symbol, decimals: token.decimals, tokenAddress: token.tokenAddress, isLoading: false };
 }
 
-function useTokenBalance(address: Address | null) {
+function useTokenBalance(address: Address | null, tokenAddress: Address | null) {
   const [balance, setBalance] = useState<bigint>(0n);
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchBalance = useCallback(async () => {
-    if (!address || !config.tokenAddress) {
+    if (!address || !tokenAddress) {
       setBalance(0n);
       return;
     }
@@ -58,7 +24,7 @@ function useTokenBalance(address: Address | null) {
     try {
       const client = createClient();
       const result = await client.readContract({
-        address: config.tokenAddress,
+        address: tokenAddress,
         abi: ERC20_ABI,
         functionName: "balanceOf",
         args: [address],
@@ -69,7 +35,7 @@ function useTokenBalance(address: Address | null) {
     } finally {
       setIsLoading(false);
     }
-  }, [address]);
+  }, [address, tokenAddress]);
 
   useEffect(() => {
     fetchBalance();
@@ -78,12 +44,12 @@ function useTokenBalance(address: Address | null) {
   return { balance, isLoading, refetch: fetchBalance };
 }
 
-function useTokenAllowance(owner: Address | null, spender: Address | null) {
+function useTokenAllowance(owner: Address | null, spender: Address | null, tokenAddress: Address | null) {
   const [allowance, setAllowance] = useState<bigint>(0n);
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchAllowance = useCallback(async () => {
-    if (!owner || !spender || !config.tokenAddress) {
+    if (!owner || !spender || !tokenAddress) {
       setAllowance(0n);
       return;
     }
@@ -92,7 +58,7 @@ function useTokenAllowance(owner: Address | null, spender: Address | null) {
     try {
       const client = createClient();
       const result = await client.readContract({
-        address: config.tokenAddress,
+        address: tokenAddress,
         abi: ERC20_ABI,
         functionName: "allowance",
         args: [owner, spender],
@@ -103,7 +69,7 @@ function useTokenAllowance(owner: Address | null, spender: Address | null) {
     } finally {
       setIsLoading(false);
     }
-  }, [owner, spender]);
+  }, [owner, spender, tokenAddress]);
 
   useEffect(() => {
     fetchAllowance();
@@ -116,10 +82,11 @@ function useTokenAllowance(owner: Address | null, spender: Address | null) {
 export function usePurchaseValidation(
   userAddress: Address | null,
   escrowAddress: Address | null,
+  tokenAddress: Address | null,
   totalAmount: bigint
 ) {
-  const { balance, refetch: refetchBalance } = useTokenBalance(userAddress);
-  const { allowance, refetch: refetchAllowance } = useTokenAllowance(userAddress, escrowAddress);
+  const { balance, refetch: refetchBalance } = useTokenBalance(userAddress, tokenAddress);
+  const { allowance, refetch: refetchAllowance } = useTokenAllowance(userAddress, escrowAddress, tokenAddress);
 
   const hasEnoughBalance = balance >= totalAmount;
   const hasEnoughAllowance = allowance >= totalAmount;

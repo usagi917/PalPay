@@ -24,7 +24,6 @@ import { Footer } from "@/components/Footer";
 import {
   useWallet,
   useListingSummaries,
-  useTokenInfo,
 } from "@/lib/hooks";
 import { I18nContext, translations, type Locale, type TranslationKey } from "@/lib/i18n";
 
@@ -39,7 +38,6 @@ export default function Home() {
 
   const wallet = useWallet();
   const { summaries, isLoading, error, refetch } = useListingSummaries();
-  const { symbol, decimals } = useTokenInfo();
 
   const handleListingCreated = useCallback(() => {
     refetch();
@@ -495,11 +493,7 @@ export default function Home() {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.4, delay: index * 0.06, ease: [0.16, 1, 0.3, 1] }}
                       >
-                        <ListingCard
-                          listing={listing}
-                          tokenSymbol={symbol}
-                          tokenDecimals={decimals}
-                        />
+                        <ListingCard listing={listing} />
                       </motion.div>
                     </Grid>
                   ))}
@@ -548,11 +542,7 @@ export default function Home() {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.4, delay: index * 0.06, ease: [0.16, 1, 0.3, 1] }}
                       >
-                        <ListingCard
-                          listing={listing}
-                          tokenSymbol={symbol}
-                          tokenDecimals={decimals}
-                        />
+                        <ListingCard listing={listing} />
                       </motion.div>
                     </Grid>
                   ))}
@@ -601,11 +591,7 @@ export default function Home() {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.4, delay: index * 0.06, ease: [0.16, 1, 0.3, 1] }}
                       >
-                        <ListingCard
-                          listing={listing}
-                          tokenSymbol={symbol}
-                          tokenDecimals={decimals}
-                        />
+                        <ListingCard listing={listing} />
                       </motion.div>
                     </Grid>
                   ))}
