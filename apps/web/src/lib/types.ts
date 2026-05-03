@@ -64,7 +64,7 @@ export interface ListingSummary {
 }
 
 // V6: Event types
-export type EventType =
+type EventType =
   | "Locked"
   | "Approved"
   | "Cancelled"

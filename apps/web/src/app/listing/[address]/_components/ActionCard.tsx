@@ -27,7 +27,7 @@ import type { Hash } from "viem";
 
 const MAX_EVIDENCE_PHOTO_BYTES = 8 * 1024 * 1024;
 
-export interface ActionCardProps {
+interface ActionCardProps {
   info: EscrowInfo;
   locale: Locale;
   decimals: number;

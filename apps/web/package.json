@@ -6,6 +6,7 @@
     "dev": "next dev",
     "dev:turbo": "next dev --turbopack",
     "build": "next build",
+    "vercel-build": "next build",
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest run"

@@ -3,7 +3,7 @@ import { baseSepolia, polygonAmoy, sepolia } from "viem/chains";
 
 export type StablecoinSymbol = "JPYC" | "USDC";
 
-export type EthereumProvider = {
+type EthereumProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
   on?: (event: string, handler: (...args: unknown[]) => void) => void;
   removeListener?: (event: string, handler: (...args: unknown[]) => void) => void;
@@ -28,13 +28,13 @@ const isEthereumProvider = (value: unknown): value is EthereumProvider => {
   return typeof (value as { request?: unknown }).request === "function";
 };
 
-export const SUPPORTED_CHAINS = Object.freeze({
+const SUPPORTED_CHAINS = Object.freeze({
   [sepolia.id]: sepolia as Chain,
   [baseSepolia.id]: baseSepolia as Chain,
   [polygonAmoy.id]: polygonAmoy as Chain,
 });
 
-export const config = {
+const config = {
   rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || "",
   chainId: parseInt(
     process.env.NEXT_PUBLIC_CHAIN_ID || process.env.CHAIN_ID || String(sepolia.id),
@@ -77,15 +77,6 @@ export const getStablecoinByToken = (tokenAddress: Address): StablecoinConfig | 
   return (
     (Object.values(STABLECOINS) as StablecoinConfig[]).find(
       (token) => token.tokenAddress && token.tokenAddress.toLowerCase() === lower,
-    ) ?? null
-  );
-};
-
-export const getStablecoinByFactory = (factoryAddress: Address): StablecoinConfig | null => {
-  const lower = factoryAddress.toLowerCase();
-  return (
-    (Object.values(STABLECOINS) as StablecoinConfig[]).find(
-      (token) => token.factoryAddress && token.factoryAddress.toLowerCase() === lower,
     ) ?? null
   );
 };

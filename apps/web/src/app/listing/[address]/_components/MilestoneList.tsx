@@ -9,7 +9,7 @@ import { formatAmount } from "@/lib/hooks";
 import type { Locale } from "@/lib/i18n";
 import type { Milestone } from "@/lib/types";
 
-export interface MilestoneListProps {
+interface MilestoneListProps {
   milestones: Milestone[];
   milestoneAmounts: bigint[];
   nextMilestoneIndex: number;
