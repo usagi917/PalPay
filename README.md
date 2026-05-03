@@ -5,112 +5,172 @@
 [![Solidity 0.8.24](https://img.shields.io/badge/Solidity-0.8.24-363636?logo=solidity)](foundry.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> 高額B2B取引向けに、工程連動の段階支払い・動的NFT・当事者間チャットを統合したエスクローDAppです。
+> 高額B2B取引向けに、工程連動の段階支払い、動的NFT、当事者間チャットをまとめて扱うエスクローDAppです。
 
-## 概要
+`Proof of Trust` は、和牛のように生産期間が長く、買い手と生産者の間で「前払いリスク」「進捗の見えづらさ」「納品確認の遅れ」が起きやすい取引を対象にしています。買い手はERC-20をエスクローへ預け、生産者は工程完了ごとに支払いを受け取り、NFTは取引の状態と進捗を表す権利証として更新されます。
 
-`Proof of Trust` は、和牛のような長期生産型取引で発生する「前払いリスク」と「進捗可視化」の課題を解決するためのプロジェクトです。
+## 何ができるか
 
-- Webアプリ: Next.js 15 + React 19 + viem
-- コントラクト: `ListingFactoryV6` / `MilestoneEscrowV6`（Solidity 0.8.24）
-- 決済: JPYC / USDC（testnet の ERC-20）
-- 権利証: ERC-721（動的メタデータ / SVG画像）
-- チャット: XMTP（E2E暗号化）
+- JPYC / USDC の testnet ERC-20 で出品ごとのエスクローを作成
+- 買い手が全額をロックし、開始承認後にマイルストーン支払いを進行
+- 生産者が9つの中間工程を `submit()` し、最終工程は買い手確認または期限経過で完了
+- 出品ごとにERC-721 NFTを発行し、NFTメタデータとSVG画像をAPIで動的生成
+- 出品一覧、担当一覧、詳細画面、オンチェーンイベントタイムラインを表示
+- 出品者と現在のNFT保有者だけが使うXMTPチャットを提供
+- Foundryテストで再出品、期限、最終納品、手数料付きトークン拒否を検証
 
-## 主要取引シーケンス
+## 全体構成
+
+```mermaid
+flowchart LR
+    Buyer[買い手<br/>MetaMask] --> Web[Next.js Web App<br/>apps/web]
+    Producer[生産者<br/>MetaMask] --> Web
+
+    subgraph Frontend["apps/web"]
+        Pages[App Router pages<br/>/ /my /listing/:address]
+        Components[MUI components<br/>forms, cards, timeline, chat]
+        Hooks[React hooks<br/>wallet, factory, escrow, token, realtime]
+        Api[NFT API routes<br/>/api/nft/:tokenId]
+        Xmtp[XMTP browser client]
+    end
+
+    Web --> Pages --> Components --> Hooks
+    Components --> Xmtp
+    Api --> Chain
+    Hooks --> Chain[(Sepolia / Base Sepolia)]
+    Xmtp --> XmtpNetwork[XMTP network]
+
+    subgraph Contracts["contracts"]
+        Factory[ListingFactoryV6<br/>ERC-721 + listing registry]
+        Deployer[EscrowDeployerV6]
+        Escrow[MilestoneEscrowV6<br/>per-listing escrow]
+        Token[JPYC / USDC ERC-20]
+    end
+
+    Chain --> Factory
+    Factory --> Deployer --> Escrow
+    Escrow --> Token
+    Factory --> Escrow
+```
+
+## 取引フロー
 
 ```mermaid
 sequenceDiagram
-    participant S as 出品者
-    participant B as 購入者
+    participant S as 生産者
+    participant B as 買い手
     participant W as Web App
     participant F as ListingFactoryV6
     participant E as MilestoneEscrowV6
     participant T as ERC-20
 
-    S->>W: 1. 出品を作成
-    W->>F: createListing(...)
-    Note over F,E: NFT発行（Escrowが保有）
-    F-->>W: escrowAddress / tokenId
+    S->>W: 出品情報を入力
+    W->>F: createListing(title, desc, amount, imageURI)
+    F->>E: EscrowDeployerV6.deployEscrow(...)
+    F-->>E: NFTをmintしてEscrowが保管
+    F-->>W: escrow address / tokenId
 
-    B->>W: 2. 購入をロック
+    B->>W: 購入を開始
     W->>T: approve(escrow, totalAmount)
     W->>E: lock()
-    T-->>E: ERC-20（全額）
-    E-->>B: NFT移転
-    Note right of E: open → locked
+    T-->>E: ERC-20全額を預託
+    E-->>B: NFTを買い手へ移転
 
-    B->>W: 3. 取引開始を承認
+    B->>W: 条件を承認
     W->>E: approve()
-    Note right of E: locked → active
 
-    loop 中間マイルストーン（最終工程を除く）
-        S->>W: 4. 工程完了を報告
+    loop 中間工程 0-8
+        S->>W: 工程完了を記録
         W->>E: submit(index, evidenceHash)
-        E-->>S: 分割払い（ERC-20）
+        E-->>S: 該当BPS分を支払い
     end
 
-    S->>W: 5. 最終納品を申請
+    S->>W: 最終納品を申請
     W->>E: requestFinalDelivery(evidenceHash)
-    B->>W: 6. 最終受領を確認
+    B->>W: 受領確認
     W->>E: confirmDelivery()
-    E-->>S: 残額支払い（ERC-20）
-    Note right of E: active → completed
+    E-->>S: 残額を支払い
 ```
 
-補足:
-- `cancel()` は `locked` 中のみ購入者が実行でき、全額返金後にNFTは escrow 保管へ戻り、listing は `open` に戻ります。
-- `locked` で 14 日を過ぎた場合は `activateAfterTimeout()` で `active` に進めます。
-- `requestFinalDelivery()` 後 14 日を過ぎた場合は `finalizeAfterTimeout()` で最終支払いを確定できます。
+## 状態遷移
 
-## 主な機能
+```mermaid
+stateDiagram-v2
+    [*] --> OPEN: createListing()
+    OPEN --> LOCKED: lock()
+    LOCKED --> OPEN: cancel() 14日以内
+    LOCKED --> ACTIVE: approve() 14日以内
+    LOCKED --> ACTIVE: activateAfterTimeout() 14日後
+    ACTIVE --> ACTIVE: submit(0..8)
+    ACTIVE --> ACTIVE: requestFinalDelivery()
+    ACTIVE --> COMPLETED: confirmDelivery() 14日以内
+    ACTIVE --> COMPLETED: finalizeAfterTimeout() 14日後
+```
 
-- 出品ごとに `MilestoneEscrowV6` を新規デプロイし、対応NFTを発行
-- ステータス遷移
-  - `open -> locked -> active -> completed`
-  - `locked -> open`（`cancel()` で再販可能に復帰）
-- `lock()` で購入者がERC-20を預け入れ、`approve()` または `activateAfterTimeout()` 後に工程支払いを開始
-- 出品者が中間マイルストーンを `submit()`、最終工程は `requestFinalDelivery()` -> `confirmDelivery()` / `finalizeAfterTimeout()`
-- 出品詳細ページに取引タイムライン（オンチェーンイベント）を表示
-- NFT API
-  - `GET /api/nft/:tokenId`（メタデータ）
-  - `GET /api/nft/:tokenId/image`（動的SVG）
-- XMTPチャット（出品者とNFT所有者のみ表示）
+状態の意味:
+
+| 状態 | 画面表示 | 意味 |
+| --- | --- | --- |
+| `open` | 購入受付中 | NFTはEscrowが保管し、まだ買い手が決まっていない |
+| `locked` | 条件確認中 | 買い手が全額預託し、NFTを保有している |
+| `active` | 進行中 | 工程完了に応じて生産者へ支払いできる |
+| `completed` | 取引完了 | すべての支払いが完了している |
+
+## コードを読む順番
+
+```mermaid
+flowchart TD
+    A[apps/web/src/app/page.tsx<br/>出品一覧と作成フォーム] --> B[apps/web/src/lib/hooks/useFactory.ts<br/>Factory読み取りとcreateListing]
+    B --> C[contracts/ListingFactoryV6.sol<br/>出品登録とNFT発行]
+    C --> D[contracts/EscrowDeployerV6.sol<br/>Escrow作成]
+    D --> E[contracts/MilestoneEscrowV6.sol<br/>lock/approve/submit/finalize]
+    E --> F["apps/web/src/app/listing/[address]/page.tsx<br/>詳細画面と操作導線"]
+    F --> G["apps/web/src/lib/hooks/useEscrow.ts<br/>Escrow読み取り・書き込み"]
+    F --> H["apps/web/src/components/chat<br/>XMTPチャットUI"]
+    E --> I["apps/web/src/app/api/nft/[tokenId]<br/>NFT metadata / image"]
+```
 
 ## リポジトリ構成
 
 ```text
-apps/web/    Next.js 15 フロントエンド + API routes
-contracts/   Solidity コントラクト（Factory/Escrow/MockERC20）
-docs/        構成図・デモ台本・動画成果物
-lib/         Foundryライブラリ（OpenZeppelinサブモジュール）
+.
+├── apps/web/                 Next.js 15 + React 19 のDApp
+│   ├── src/app/              App Router pages と NFT API routes
+│   ├── src/components/       画面部品、取引操作、チャットUI
+│   ├── src/hooks/            XMTPチャット用hook
+│   └── src/lib/              ABI、設定、viem hook、tx utilities
+├── contracts/                Solidity contracts
+│   ├── ListingFactoryV6.sol  ERC-721 NFT + listing registry
+│   ├── EscrowDeployerV6.sol  Escrow作成専用コントラクト
+│   ├── MilestoneEscrowV6.sol 出品ごとのエスクロー本体
+│   └── MockERC20.sol         Foundryテスト用ERC-20
+├── script/                   Foundry deploy script
+├── test/                     Foundry tests
+├── lib/                      OpenZeppelin submodule
+└── foundry.toml              Foundry設定
 ```
 
 ## 前提条件
 
 - Node.js 20+
 - `pnpm`
+- Foundry（コントラクトをビルド・テストする場合）
 - MetaMask
-- 対象チェーンのRPC URL
-- デプロイ済みコントラクトアドレス
-  - `ListingFactoryV6`
-  - 決済用ERC-20
+- Sepolia または Base Sepolia のRPC URL
+- JPYC / USDC 相当のERC-20アドレス
 
-対応チェーン（`apps/web/src/lib/config.ts`）:
+対応チェーンは `apps/web/src/lib/config.ts` で定義されています。
 
-- Sepolia (`11155111`)
-- Base Sepolia (`84532`)
-
-Foundryでコントラクトをビルドする場合は、先にサブモジュールを初期化してください。
-
-```bash
-git submodule update --init --recursive
-```
+| Chain | Chain ID |
+| --- | --- |
+| Sepolia | `11155111` |
+| Base Sepolia | `84532` |
 
 ## Installation
 
 ```bash
 pnpm --dir apps/web install
+git submodule update --init --recursive
 ```
 
 ## Quick Start
@@ -122,80 +182,78 @@ pnpm --dir apps/web dev
 
 ブラウザで `http://localhost:3000` を開きます。
 
-## 設定（`.env.local`）
+## Configuration
 
-設定ファイル: `apps/web/.env.local`
+設定ファイルは `apps/web/.env.local` です。雛形は `apps/web/.env.example` にあります。
 
-### 必須（DApp本体）
-
-| 変数 | 説明 |
-| --- | --- |
-| `NEXT_PUBLIC_RPC_URL` | 接続先RPC URL |
-| `NEXT_PUBLIC_CHAIN_ID` | チェーンID |
-| `NEXT_PUBLIC_JPYC_FACTORY_ADDRESS` | JPYC 用 `ListingFactoryV6` アドレス |
-| `NEXT_PUBLIC_JPYC_TOKEN_ADDRESS` | JPYC ERC-20 アドレス |
-| `NEXT_PUBLIC_USDC_FACTORY_ADDRESS` | USDC 用 `ListingFactoryV6` アドレス |
-| `NEXT_PUBLIC_USDC_TOKEN_ADDRESS` | USDC ERC-20 アドレス |
-
-### 任意（表示・運用）
-
-| 変数 | 説明 |
-| --- | --- |
-| `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE` | TxリンクのベースURL |
-| `CHAIN_ID` | APIルート側のチェーンID上書き |
-| `NEXT_PUBLIC_XMTP_ENV` | `dev` または `production` |
-
-## スマートコントラクト仕様（V6）
-
-### Factory
-
-- `ListingFactoryV6.createListing(...)` でEscrowをデプロイ
-- NFTは初期状態でEscrowが保有
-- セカンダリ移転はEscrow経由フローのみに制限
-
-### Escrow
-
-- `lock()`
-  - 購入者がERC-20を預け入れ
-  - NFTが購入者へ移転
-  - `open -> locked`
-- `approve()`
-  - 購入者が期限内に取引開始
-  - `locked -> active`
-- `activateAfterTimeout()`
-  - `locked` から 14 日経過後に誰でも実行可
-  - `locked -> active`
-- `submit(index, evidenceHash)`
-  - 出品者が中間工程を完了報告
-- `requestFinalDelivery(evidenceHash)`
-  - 出品者が最終納品を申請し、購入者確認の期限を開始
-- `confirmDelivery()`
-  - 購入者が期限内に最終受領確認（残額支払い）
-  - `active -> completed`
-- `finalizeAfterTimeout()`
-  - 最終確認期限経過後に誰でも実行可
-  - `active -> completed`
-- `cancel()`
-  - `locked` 状態のみ購入者が実行可
-  - NFTを escrow 保管へ戻し、全額返金
-  - `locked -> open`
-
-### マイルストーン配分（BPS, 合計10000）
-
-| カテゴリ | 工程数 | BPS配列 |
+| 変数 | 必須 | 説明 |
 | --- | --- | --- |
-| wagyu | 10 | `200,300,400,500,600,650,700,750,900,5000` |
+| `NEXT_PUBLIC_RPC_URL` | Yes | 接続先RPC URL |
+| `NEXT_PUBLIC_CHAIN_ID` | Yes | `11155111` または `84532` |
+| `NEXT_PUBLIC_JPYC_FACTORY_ADDRESS` | Yes | JPYC用 `ListingFactoryV6` |
+| `NEXT_PUBLIC_JPYC_TOKEN_ADDRESS` | Yes | JPYC ERC-20 |
+| `NEXT_PUBLIC_USDC_FACTORY_ADDRESS` | Yes | USDC用 `ListingFactoryV6` |
+| `NEXT_PUBLIC_USDC_TOKEN_ADDRESS` | Yes | USDC ERC-20 |
+| `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE` | No | TxリンクのベースURL |
+| `NEXT_PUBLIC_XMTP_ENV` | No | `dev` または `production` |
+| `CHAIN_ID` | No | API route側のチェーンID上書き |
 
-## API
+## スマートコントラクト
 
-### NFT API
+### `ListingFactoryV6`
 
-| Method | Path | 用途 |
-| --- | --- | --- |
-| `GET` | `/api/nft/:tokenId` | NFTメタデータJSON |
-| `GET` | `/api/nft/:tokenId/image` | 動的SVG画像 |
+- `1 Factory = 1 stablecoin` の設計
+- constructorで `tokenAddress` が JPYC / USDC allowlist のどちらかか確認
+- `createListing()` でEscrowを作り、NFTをEscrowへmint
+- `tokenURI()` は `/api/nft/:tokenId?factoryAddress=...` を返す
+- 通常の二次移転は制限し、Escrowが実行する移転だけを許可
 
-`factoryAddress` クエリで対象Factoryを明示できます。
+### `MilestoneEscrowV6`
+
+- `lock()` で買い手のERC-20を全額預託し、NFTを買い手へ移転
+- `approve()` または `activateAfterTimeout()` で取引を開始
+- `submit(index, evidenceHash)` は中間工程だけを順番に完了
+- `requestFinalDelivery()` の後、`confirmDelivery()` または `finalizeAfterTimeout()` で残額を支払い
+- `cancel()` は `locked` かつ14日以内のみ実行でき、全額返金して `open` に戻す
+- 入出金は「指定額どおり受け取った/送った」ことを確認し、手数料付きトークンを拒否
+
+### マイルストーン配分
+
+`MilestoneEscrowV6` と `apps/web/src/lib/constants.ts` は、和牛取引用の10工程を前提にしています。
+
+| Index | 工程 | BPS | 支払い割合 |
+| --- | --- | ---: | ---: |
+| 0 | 子牛購入 | 200 | 2.0% |
+| 1 | 飼育開始 | 300 | 3.0% |
+| 2 | 体重100kg | 400 | 4.0% |
+| 3 | 体重200kg | 500 | 5.0% |
+| 4 | 体重300kg | 600 | 6.0% |
+| 5 | 体重400kg | 650 | 6.5% |
+| 6 | 体重500kg | 700 | 7.0% |
+| 7 | 出荷準備 | 750 | 7.5% |
+| 8 | 出荷 | 900 | 9.0% |
+| 9 | 納品完了 | 5000 | 50.0% |
+
+## Webアプリ
+
+| パス | 役割 |
+| --- | --- |
+| `/` | 出品一覧、出品作成、担当案件の概要 |
+| `/my` | 生産者/買い手別の担当一覧 |
+| `/listing/:address` | Escrow詳細、支払い操作、工程記録、イベントタイムライン、チャット |
+| `/api/nft/:tokenId` | NFTメタデータJSON |
+| `/api/nft/:tokenId/image` | 動的SVG画像 |
+
+主要hook:
+
+| ファイル | 役割 |
+| --- | --- |
+| `apps/web/src/lib/hooks/useWallet.ts` | MetaMask接続、アカウント管理 |
+| `apps/web/src/lib/hooks/useFactory.ts` | Factory一覧取得、出品作成 |
+| `apps/web/src/lib/hooks/useEscrow.ts` | Escrow詳細取得、取引操作、イベント取得 |
+| `apps/web/src/lib/hooks/useToken.ts` | ERC-20残高・allowance確認 |
+| `apps/web/src/lib/hooks/useRealtime.ts` | 担当一覧とEscrow状態の再取得 |
+| `apps/web/src/hooks/useXmtpChat.ts` | XMTP接続、会話取得、送信、復旧 |
 
 ## Development
 
@@ -205,19 +263,19 @@ pnpm --dir apps/web dev:turbo
 pnpm --dir apps/web build
 pnpm --dir apps/web start
 pnpm --dir apps/web lint
+pnpm --dir apps/web test
 ```
 
-コントラクト（任意）:
+コントラクト:
 
 ```bash
 forge build
+forge test
 ```
 
 ## Testnet Deploy
 
-`ListingFactoryV6` は `1 Factory = 1 stablecoin` です。JPYC と USDC を同時に扱う場合は、同じ testnet に JPYC 用 Factory と USDC 用 Factory を別々にデプロイします。
-
-constructor は `tokenAddress`, `baseURI`, `jpycTokenAddress`, `usdcTokenAddress` を受け取り、`tokenAddress` が JPYC/USDC allowlist 外なら revert します。
+`ListingFactoryV6` は `1 Factory = 1 stablecoin` です。JPYC と USDC を同じtestnetで扱う場合は、Factoryを2つデプロイします。
 
 1. 環境変数を設定
 
@@ -229,7 +287,7 @@ export USDC_TOKEN_ADDRESS="0xYourUsdcTokenAddress"
 export BASE_URI="https://your-app.example.com"
 ```
 
-2. JPYC Factory をデプロイ
+2. JPYC Factoryをデプロイ
 
 ```bash
 export TOKEN_ADDRESS="$JPYC_TOKEN_ADDRESS"
@@ -238,7 +296,7 @@ forge script script/DeployListingFactoryV6.s.sol:DeployListingFactoryV6 \
   --broadcast
 ```
 
-3. USDC Factory をデプロイ
+3. USDC Factoryをデプロイ
 
 ```bash
 export TOKEN_ADDRESS="$USDC_TOKEN_ADDRESS"
@@ -247,35 +305,35 @@ forge script script/DeployListingFactoryV6.s.sol:DeployListingFactoryV6 \
   --broadcast
 ```
 
-4. フロント側の env を更新
+4. `apps/web/.env.local` にデプロイ済みアドレスを設定
 
 ```bash
-cat > apps/web/.env.local <<'EOF'
 NEXT_PUBLIC_RPC_URL=https://your-testnet-rpc
 NEXT_PUBLIC_CHAIN_ID=84532
 NEXT_PUBLIC_JPYC_FACTORY_ADDRESS=0xYourJpycFactoryAddress
 NEXT_PUBLIC_JPYC_TOKEN_ADDRESS=0xYourJpycTokenAddress
 NEXT_PUBLIC_USDC_FACTORY_ADDRESS=0xYourUsdcFactoryAddress
 NEXT_PUBLIC_USDC_TOKEN_ADDRESS=0xYourUsdcTokenAddress
-EOF
+NEXT_PUBLIC_XMTP_ENV=dev
 ```
 
-5. 起動して動作確認
+## テストで確認していること
 
-```bash
-pnpm --dir apps/web dev
-```
+- Factory作成時にNFTがEscrowへmintされる
+- JPYC / USDC以外のstablecoin設定を拒否する
+- `cancel()` 後に再出品でき、NFTがEscrow保管へ戻る
+- producer自身の購入を拒否する
+- `locked` の14日期限と `active` へのタイムアウト遷移
+- 最終納品確認の14日期限とタイムアウト完了
+- 手数料付きERC-20の入金不足や出金差額を拒否する
+- `formatAmount()` がJPYC/USDCの小数桁を正しく表示する
 
-補足:
-- コントラクトのデプロイアドレスは `broadcast/` 配下の実行結果か、`forge script` の出力から確認できます。
-- `MockERC20` は Foundry テスト用です。デプロイスクリプトからは外しています。
+## 関連ファイル
 
-## 関連ドキュメント
-
-- `docs/architecture.mmd`
-- `docs/demo-script.md`
-- `docs/demo-video/README.md`
-- `docs/zenn-article-draft.md`
+- `docs/planidea.md`
+- `TODOS.md`
+- `apps/web/.env.example`
+- `script/DeployListingFactoryV6.s.sol`
 
 ## License
 

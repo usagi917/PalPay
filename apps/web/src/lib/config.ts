@@ -1,5 +1,5 @@
 import { http, createPublicClient, createWalletClient, custom, type Address, type Chain } from "viem";
-import { baseSepolia, sepolia } from "viem/chains";
+import { baseSepolia, polygonAmoy, sepolia } from "viem/chains";
 
 export type StablecoinSymbol = "JPYC" | "USDC";
 
@@ -29,6 +29,7 @@ const isEthereumProvider = (value: unknown): value is EthereumProvider => {
 export const SUPPORTED_CHAINS = Object.freeze({
   [sepolia.id]: sepolia as Chain,
   [baseSepolia.id]: baseSepolia as Chain,
+  [polygonAmoy.id]: polygonAmoy as Chain,
 });
 
 export const config = {
@@ -92,7 +93,7 @@ export const getDefaultStablecoin = (): StablecoinConfig =>
 export const getChain = (): Chain => {
   const chain = SUPPORTED_CHAINS[config.chainId as keyof typeof SUPPORTED_CHAINS];
   if (!chain) {
-    throw new Error(`Unsupported testnet chain ID ${config.chainId}. Use Sepolia or Base Sepolia.`);
+    throw new Error(`Unsupported testnet chain ID ${config.chainId}. Use Sepolia, Base Sepolia, or Polygon Amoy.`);
   }
   return chain;
 };
