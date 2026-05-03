@@ -20,6 +20,10 @@ export type StablecoinConfig = {
 };
 
 const emptyAddress = "" as Address;
+const defaultSepoliaRpcUrl = "https://ethereum-sepolia-rpc.publicnode.com";
+const defaultSepoliaBlockExplorerTxBase = "https://sepolia.etherscan.io/tx/";
+const defaultSepoliaJpycTokenAddress = "0x431D5dfF03120AFA4bDf332c61A6e1766eF37BDB" as Address;
+const defaultSepoliaUsdcTokenAddress = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" as Address;
 
 const isEthereumProvider = (value: unknown): value is EthereumProvider => {
   if (!value || typeof value !== "object") return false;
@@ -33,12 +37,17 @@ export const SUPPORTED_CHAINS = Object.freeze({
 });
 
 export const config = {
-  rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || "",
+  rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || defaultSepoliaRpcUrl,
   chainId: parseInt(
-    process.env.NEXT_PUBLIC_CHAIN_ID || process.env.CHAIN_ID || String(baseSepolia.id),
+    process.env.NEXT_PUBLIC_CHAIN_ID || process.env.CHAIN_ID || String(sepolia.id),
     10,
   ),
-  blockExplorerTxBase: process.env.NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE || "",
+  blockExplorerTxBase: process.env.NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE || defaultSepoliaBlockExplorerTxBase,
+};
+
+const defaultTokenAddressForCurrentChain = (token: StablecoinSymbol): Address => {
+  if (config.chainId !== sepolia.id) return emptyAddress;
+  return token === "JPYC" ? defaultSepoliaJpycTokenAddress : defaultSepoliaUsdcTokenAddress;
 };
 
 export const STABLECOINS = Object.freeze({
@@ -46,14 +55,14 @@ export const STABLECOINS = Object.freeze({
     currency: "JPYC",
     symbol: "JPYC",
     decimals: 18,
-    tokenAddress: (process.env.NEXT_PUBLIC_JPYC_TOKEN_ADDRESS || "") as Address,
+    tokenAddress: (process.env.NEXT_PUBLIC_JPYC_TOKEN_ADDRESS || defaultTokenAddressForCurrentChain("JPYC")) as Address,
     factoryAddress: (process.env.NEXT_PUBLIC_JPYC_FACTORY_ADDRESS || "") as Address,
   },
   USDC: {
     currency: "USDC",
     symbol: "USDC",
     decimals: 6,
-    tokenAddress: (process.env.NEXT_PUBLIC_USDC_TOKEN_ADDRESS || "") as Address,
+    tokenAddress: (process.env.NEXT_PUBLIC_USDC_TOKEN_ADDRESS || defaultTokenAddressForCurrentChain("USDC")) as Address,
     factoryAddress: (process.env.NEXT_PUBLIC_USDC_FACTORY_ADDRESS || "") as Address,
   },
 } satisfies Record<StablecoinSymbol, StablecoinConfig>);
