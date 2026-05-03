@@ -33,10 +33,12 @@ const USER_REJECTED_ERROR_PATTERNS = [
   "denied transaction signature",
 ];
 
-const MIN_PRIORITY_FEE_PER_GAS = parseGwei("25");
-const MIN_MAX_FEE_PER_GAS = parseGwei("60");
+const FALLBACK_PRIORITY_FEE_PER_GAS = parseGwei("1");
+const FALLBACK_MAX_FEE_PER_GAS = parseGwei("3");
 
 const maxBigInt = (...values: bigint[]): bigint => values.reduce((max, value) => (value > max ? value : max));
+
+const minBigInt = (...values: bigint[]): bigint => values.reduce((min, value) => (value < min ? value : min));
 
 const extractErrorText = (error: unknown): string => {
   if (!error || typeof error !== "object") return String(error ?? "");
@@ -114,16 +116,15 @@ export const getRecommendedGasFees = async (client: GasFeeClient): Promise<Requi
   try {
     estimatedFees = await client.estimateFeesPerGas();
   } catch (error) {
-    console.warn("Failed to estimate gas fees. Using minimum configured fees.", error);
+    console.warn("Failed to estimate gas fees. Using fallback configured fees.", error);
   }
 
-  const maxPriorityFeePerGas = maxBigInt(
-    estimatedFees.maxPriorityFeePerGas ?? 0n,
-    MIN_PRIORITY_FEE_PER_GAS,
-  );
+  const maxPriorityFeePerGas = estimatedFees.maxPriorityFeePerGas
+    ?? (estimatedFees.maxFeePerGas
+      ? minBigInt(estimatedFees.maxFeePerGas, FALLBACK_PRIORITY_FEE_PER_GAS)
+      : FALLBACK_PRIORITY_FEE_PER_GAS);
   const maxFeePerGas = maxBigInt(
-    estimatedFees.maxFeePerGas ?? 0n,
-    MIN_MAX_FEE_PER_GAS,
+    estimatedFees.maxFeePerGas ?? FALLBACK_MAX_FEE_PER_GAS,
     maxPriorityFeePerGas,
   );
 
