@@ -20,7 +20,7 @@ describe("getRecommendedGasFees", () => {
     ).resolves.toEqual(estimatedFees);
   });
 
-  it("uses conservative fallback fees when estimation fails", async () => {
+  it("lets the wallet choose fees when estimation fails", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
     await expect(
@@ -29,22 +29,30 @@ describe("getRecommendedGasFees", () => {
           throw new Error("RPC unavailable");
         },
       }),
-    ).resolves.toEqual({
-      maxFeePerGas: parseGwei("3"),
-      maxPriorityFeePerGas: parseGwei("1"),
-    });
+    ).resolves.toEqual({});
   });
 
-  it("keeps fallback priority fee within an estimated max fee", async () => {
+  it("lets the wallet choose fees when estimates are incomplete", async () => {
     await expect(
       getRecommendedGasFees({
         estimateFeesPerGas: async () => ({
           maxFeePerGas: parseGwei("0.5"),
         }),
       }),
+    ).resolves.toEqual({});
+  });
+
+  it("keeps estimated max fee at least as high as priority fee", async () => {
+    await expect(
+      getRecommendedGasFees({
+        estimateFeesPerGas: async () => ({
+          maxFeePerGas: parseGwei("0.5"),
+          maxPriorityFeePerGas: parseGwei("1"),
+        }),
+      }),
     ).resolves.toEqual({
-      maxFeePerGas: parseGwei("0.5"),
-      maxPriorityFeePerGas: parseGwei("0.5"),
+      maxFeePerGas: parseGwei("1"),
+      maxPriorityFeePerGas: parseGwei("1"),
     });
   });
 });

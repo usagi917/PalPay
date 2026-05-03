@@ -1,4 +1,3 @@
-import { parseGwei } from "viem";
 import type { createWallet } from "./config";
 
 type WalletClient = NonNullable<ReturnType<typeof createWallet>>;
@@ -33,12 +32,7 @@ const USER_REJECTED_ERROR_PATTERNS = [
   "denied transaction signature",
 ];
 
-const FALLBACK_PRIORITY_FEE_PER_GAS = parseGwei("1");
-const FALLBACK_MAX_FEE_PER_GAS = parseGwei("3");
-
 const maxBigInt = (...values: bigint[]): bigint => values.reduce((max, value) => (value > max ? value : max));
-
-const minBigInt = (...values: bigint[]): bigint => values.reduce((min, value) => (value < min ? value : min));
 
 const extractErrorText = (error: unknown): string => {
   if (!error || typeof error !== "object") return String(error ?? "");
@@ -110,25 +104,23 @@ export const formatTxError = (
   return message.trim() ? message : fallbackMessage;
 };
 
-export const getRecommendedGasFees = async (client: GasFeeClient): Promise<Required<GasFeeValues>> => {
-  let estimatedFees: GasFeeValues = {};
-
+export const getRecommendedGasFees = async (client: GasFeeClient): Promise<GasFeeValues> => {
   try {
-    estimatedFees = await client.estimateFeesPerGas();
+    const estimatedFees = await client.estimateFeesPerGas();
+    const { maxFeePerGas, maxPriorityFeePerGas } = estimatedFees;
+
+    if (maxFeePerGas === undefined || maxPriorityFeePerGas === undefined) {
+      return {};
+    }
+
+    return {
+      maxFeePerGas: maxBigInt(maxFeePerGas, maxPriorityFeePerGas),
+      maxPriorityFeePerGas,
+    };
   } catch (error) {
-    console.warn("Failed to estimate gas fees. Using fallback configured fees.", error);
+    console.warn("Failed to estimate gas fees. Letting the wallet choose fees.", error);
+    return {};
   }
-
-  const maxPriorityFeePerGas = estimatedFees.maxPriorityFeePerGas
-    ?? (estimatedFees.maxFeePerGas
-      ? minBigInt(estimatedFees.maxFeePerGas, FALLBACK_PRIORITY_FEE_PER_GAS)
-      : FALLBACK_PRIORITY_FEE_PER_GAS);
-  const maxFeePerGas = maxBigInt(
-    estimatedFees.maxFeePerGas ?? FALLBACK_MAX_FEE_PER_GAS,
-    maxPriorityFeePerGas,
-  );
-
-  return { maxFeePerGas, maxPriorityFeePerGas };
 };
 
 export const writeContractWithGasFallback = async (
