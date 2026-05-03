@@ -2,6 +2,13 @@ import type { createWallet } from "./config";
 
 type WalletClient = NonNullable<ReturnType<typeof createWallet>>;
 type WriteContractParams = Parameters<WalletClient["writeContract"]>[0];
+type GasFeeValues = {
+  maxFeePerGas?: bigint;
+  maxPriorityFeePerGas?: bigint;
+};
+type GasFeeClient = {
+  estimateFeesPerGas: () => Promise<GasFeeValues>;
+};
 type ErrorLike = {
   message?: string;
   shortMessage?: string;
@@ -24,6 +31,8 @@ const USER_REJECTED_ERROR_PATTERNS = [
   "rejected the request",
   "denied transaction signature",
 ];
+
+const maxBigInt = (...values: bigint[]): bigint => values.reduce((max, value) => (value > max ? value : max));
 
 const extractErrorText = (error: unknown): string => {
   if (!error || typeof error !== "object") return String(error ?? "");
@@ -93,6 +102,25 @@ export const formatTxError = (
 
   const message = getErrorText(error);
   return message.trim() ? message : fallbackMessage;
+};
+
+export const getRecommendedGasFees = async (client: GasFeeClient): Promise<GasFeeValues> => {
+  try {
+    const estimatedFees = await client.estimateFeesPerGas();
+    const { maxFeePerGas, maxPriorityFeePerGas } = estimatedFees;
+
+    if (maxFeePerGas === undefined || maxPriorityFeePerGas === undefined) {
+      return {};
+    }
+
+    return {
+      maxFeePerGas: maxBigInt(maxFeePerGas, maxPriorityFeePerGas),
+      maxPriorityFeePerGas,
+    };
+  } catch (error) {
+    console.warn("Failed to estimate gas fees. Letting the wallet choose fees.", error);
+    return {};
+  }
 };
 
 export const writeContractWithGasFallback = async (
