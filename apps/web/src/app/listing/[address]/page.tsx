@@ -281,8 +281,8 @@ export default function ListingDetailPage() {
             ? `「${nextMilestone.name}」を記録すれば次へ進めます`
             : `Record "${nextMilestone.name}" to move forward`,
           description: isJapanese
-            ? "写真やメモは任意です。まずは1回で記録できることを優先しています。"
-            : "Photos and notes are optional. The default path is meant to be a single clear action.",
+            ? "必要な補足は詳細ページのチャットで共有できます。記録操作は1回で完了します。"
+            : "Share any extra context in the listing chat. Recording stays a single clear action.",
           metrics: [
             {
               label: isJapanese ? "次の受け取り予定" : "Next expected payout",
@@ -444,8 +444,8 @@ export default function ListingDetailPage() {
     }
   };
 
-  const handleSubmit = async (index: number, evidenceHash?: string) => {
-    await submit(index, evidenceHash);
+  const handleSubmit = async (index: number) => {
+    await submit(index);
   };
 
   const handleCancelConfirm = () => {
@@ -634,8 +634,8 @@ export default function ListingDetailPage() {
                         onApprove={approve}
                         onActivateAfterTimeout={activateAfterTimeout}
                         onCancel={() => setCancelDialogOpen(true)}
-                        onRequestFinalDelivery={(evidenceHash) => {
-                          void requestFinalDelivery(evidenceHash);
+                        onRequestFinalDelivery={() => {
+                          void requestFinalDelivery();
                         }}
                         onConfirmDelivery={confirmDelivery}
                         onFinalizeAfterTimeout={finalizeAfterTimeout}

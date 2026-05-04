@@ -79,8 +79,8 @@ export default function Home() {
       ? {
           title: isJapanese ? "いま記録を進める案件があります" : "You have a listing ready for progress recording",
           body: isJapanese
-            ? "作業が終わったら、そのまま担当画面を開いて記録してください。写真やメモは任意です。"
-            : "Open the assigned workspace after the work is done and record the update. Photos and notes stay optional.",
+            ? "作業が終わったら、そのまま担当画面を開いて記録してください。必要な補足はチャットで共有できます。"
+            : "Open the assigned workspace after the work is done and record the update. Share extra context in chat if needed.",
         }
       : nextProducerListing.status === "locked"
       ? {

@@ -24,7 +24,6 @@ export function EventTimeline({
   if (events.length === 0) return null;
 
   const isJapanese = locale === "ja";
-  const zeroHash = "0x0000000000000000000000000000000000000000000000000000000000000000";
   const dateTimeFormatter = new Intl.DateTimeFormat(isJapanese ? "ja-JP" : "en-US", {
     year: "numeric",
     month: "short",
@@ -111,15 +110,6 @@ export function EventTimeline({
                   {event.amount && (
                     <Typography variant="caption" sx={{ color: "var(--color-text-muted)" }}>
                       {formatAmount(event.amount, decimals, symbol)}
-                    </Typography>
-                  )}
-                  {event.evidenceHash && event.evidenceHash !== zeroHash && (
-                    <Typography
-                      variant="caption"
-                      sx={{ display: "block", color: "var(--color-text-muted)" }}
-                    >
-                      {isJapanese ? "補足あり" : "Supporting proof attached"}:{" "}
-                      {`${event.evidenceHash.slice(0, 10)}...${event.evidenceHash.slice(-6)}`}
                     </Typography>
                   )}
                   {event.timestamp && (
