@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Box,
   Typography,
@@ -9,8 +9,6 @@ import {
   Button,
   CircularProgress,
   Alert,
-  TextField,
-  Collapse,
 } from "@mui/material";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import PaymentIcon from "@mui/icons-material/Payment";
@@ -24,8 +22,6 @@ import type { TxStep } from "@/lib/hooks";
 import type { Locale } from "@/lib/i18n";
 import type { EscrowInfo, Milestone, UserRole } from "@/lib/types";
 import type { Hash } from "viem";
-
-const MAX_EVIDENCE_PHOTO_BYTES = 8 * 1024 * 1024;
 
 interface ActionCardProps {
   info: EscrowInfo;
@@ -49,11 +45,11 @@ interface ActionCardProps {
   milestonesLoading: boolean;
   nextMilestoneIndex: number;
   onLock: () => void;
-  onSubmit: (index: number, evidenceHash?: string) => void | Promise<void>;
+  onSubmit: (index: number) => void | Promise<void>;
   onApprove: () => void;
   onActivateAfterTimeout: () => void;
   onCancel: () => void;
-  onRequestFinalDelivery: (evidenceHash?: string) => void | Promise<void>;
+  onRequestFinalDelivery: () => void | Promise<void>;
   onConfirmDelivery: () => void;
   onFinalizeAfterTimeout: () => void;
 }
@@ -85,11 +81,6 @@ export function ActionCard({
   const isJapanese = locale === "ja";
   const milestoneInBounds = nextMilestoneIndex >= 0 && nextMilestoneIndex < milestones.length;
   const [nowSec, setNowSec] = useState(() => BigInt(Math.floor(Date.now() / 1000)));
-  const [showEvidenceForm, setShowEvidenceForm] = useState(false);
-  const [evidenceNote, setEvidenceNote] = useState("");
-  const [evidencePhoto, setEvidencePhoto] = useState<File | null>(null);
-  const [evidenceError, setEvidenceError] = useState<string | null>(null);
-  const [isPreparingEvidence, setIsPreparingEvidence] = useState(false);
   const lastMilestoneIndex = milestones.length - 1;
   const atFinalMilestone = milestoneInBounds && nextMilestoneIndex === lastMilestoneIndex;
   const lockExpired = info.lockDeadline !== null && nowSec >= info.lockDeadline;
@@ -134,80 +125,7 @@ export function ActionCard({
     txStep !== "success" &&
     !milestonesLoading;
 
-  const clearEvidenceDraft = useCallback(() => {
-    setEvidenceNote("");
-    setEvidencePhoto(null);
-    setEvidenceError(null);
-  }, []);
-
-  const closeEvidenceForm = useCallback(() => {
-    setShowEvidenceForm(false);
-    clearEvidenceDraft();
-  }, [clearEvidenceDraft]);
-
-  const buildEvidenceHash = async (): Promise<`0x${string}` | undefined> => {
-    if (!showEvidenceForm) {
-      return undefined;
-    }
-
-    const trimmedNote = evidenceNote.trim();
-    if (!trimmedNote && !evidencePhoto) {
-      return undefined;
-    }
-
-    if (evidencePhoto) {
-      if (evidencePhoto.size > MAX_EVIDENCE_PHOTO_BYTES) {
-        throw new Error(
-          isJapanese
-            ? "写真は 8MB 以下にしてください。"
-            : "Photos must be 8MB or smaller.",
-        );
-      }
-    }
-
-    const payload = new Blob([
-      `note:${trimmedNote}\n`,
-      evidencePhoto
-        ? `file:${evidencePhoto.name}:${evidencePhoto.type}:${evidencePhoto.size}\n`
-        : "",
-      evidencePhoto ?? "",
-    ]);
-    const digest = await crypto.subtle.digest("SHA-256", await payload.arrayBuffer());
-    const hex = Array.from(new Uint8Array(digest))
-      .map((value) => value.toString(16).padStart(2, "0"))
-      .join("");
-
-    return `0x${hex}` as `0x${string}`;
-  };
-
-  const runWithOptionalEvidence = async (
-    action: (evidenceHash?: string) => void | Promise<void>,
-  ) => {
-    setEvidenceError(null);
-    try {
-      setIsPreparingEvidence(true);
-      const evidenceHash = await buildEvidenceHash();
-      await action(evidenceHash);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setEvidenceError(
-        isJapanese
-          ? `補足情報の準備に失敗しました: ${message}`
-          : `Failed to prepare supporting proof: ${message}`,
-      );
-    } finally {
-      setIsPreparingEvidence(false);
-    }
-  };
-
-  const isBusy = actionLoading || isPreparingEvidence;
-  const canAttachEvidence = canRecordNextMilestone || canRequestFinalHandoff;
-
-  useEffect(() => {
-    if (txStep === "success") {
-      closeEvidenceForm();
-    }
-  }, [txStep, closeEvidenceForm]);
+  const isBusy = actionLoading;
 
   return (
     <Card
@@ -232,117 +150,6 @@ export function ActionCard({
           error={actionError}
           onClose={resetState}
         />
-
-        {evidenceError && (
-          <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
-            {evidenceError}
-          </Alert>
-        )}
-
-        {canAttachEvidence && (
-          <Box sx={{ mb: 2.5 }}>
-            <Button
-              variant="text"
-              onClick={() => {
-                if (showEvidenceForm) {
-                  closeEvidenceForm();
-                  return;
-                }
-                setEvidenceError(null);
-                setShowEvidenceForm(true);
-              }}
-              sx={{
-                px: 0,
-                minWidth: 0,
-                color: "var(--color-primary)",
-                fontWeight: 600,
-                "&:hover": { background: "transparent" },
-              }}
-            >
-              {showEvidenceForm
-                ? isJapanese
-                  ? "補足を閉じる"
-                  : "Hide supporting proof"
-                : isJapanese
-                ? "補足のメモ・写真を付ける"
-                : "Add optional note or photo"}
-            </Button>
-            <Collapse in={showEvidenceForm}>
-              <Box
-                sx={{
-                  mt: 1.5,
-                  p: 2,
-                  borderRadius: 2,
-                  background: "var(--color-bg-elevated)",
-                  border: "1px solid var(--color-border)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 1.5,
-                }}
-              >
-                <Typography sx={{ color: "var(--color-text-secondary)", lineHeight: 1.7 }}>
-                  {isJapanese
-                    ? "任意の補足です。ここで入力した内容はハッシュ化した証跡 ID として記録されます。写真の原本共有は今までどおり現場運用のままです。"
-                    : "This is optional. The note/photo is reduced to a hashed proof ID on-chain. Keep sharing the original photo through your existing field workflow."}
-                </Typography>
-                <TextField
-                  multiline
-                  minRows={3}
-                  value={evidenceNote}
-                  onChange={(event) => setEvidenceNote(event.target.value)}
-                  placeholder={
-                    isJapanese
-                      ? "例: 体重測定を完了。飼料の切り替えも実施。"
-                      : "Example: Weight check completed. Feed change was also applied."
-                  }
-                  sx={{
-                    "& .MuiOutlinedInput-root": {
-                      color: "var(--color-text)",
-                      background: "var(--color-surface)",
-                      "& fieldset": { borderColor: "var(--color-border)" },
-                    },
-                  }}
-                />
-                <Box>
-                  <Button
-                    component="label"
-                    variant="outlined"
-                    sx={{
-                      borderColor: "var(--color-border-strong)",
-                      color: "var(--color-text-secondary)",
-                    }}
-                  >
-                    {isJapanese ? "写真を選ぶ" : "Choose photo"}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      hidden
-                      onChange={(event) => {
-                        const file = event.target.files?.[0] ?? null;
-                        if (file && file.size > MAX_EVIDENCE_PHOTO_BYTES) {
-                          setEvidencePhoto(null);
-                          setEvidenceError(
-                            isJapanese
-                              ? "写真は 8MB 以下にしてください。"
-                              : "Photos must be 8MB or smaller.",
-                          );
-                          return;
-                        }
-                        setEvidenceError(null);
-                        setEvidencePhoto(file);
-                      }}
-                    />
-                  </Button>
-                  {evidencePhoto && (
-                    <Typography sx={{ mt: 1, color: "var(--color-text-muted)" }}>
-                      {isJapanese ? "選択中" : "Selected"}: {evidencePhoto.name}
-                    </Typography>
-                  )}
-                </Box>
-              </Box>
-            </Collapse>
-          </Box>
-        )}
 
         {info.status === "open" && userRole !== "producer" && (
           <Box sx={{ mb: 2 }}>
@@ -636,15 +443,15 @@ export function ActionCard({
           <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
             <Alert severity="info" sx={{ borderRadius: 2 }}>
               {isJapanese
-                ? "まずは今日終わった工程を記録してください。写真やメモは任意なので、1回で完了できます。"
-                : "Record the step that finished today. Photos and notes stay optional, so the default path is a single action."}
+                ? "まずは今日終わった工程を記録してください。必要な補足は詳細ページのチャットで共有できます。"
+                : "Record the step that finished today. Share any extra context in the listing chat."}
             </Alert>
             <Button
               variant="contained"
               fullWidth
               startIcon={isBusy ? <CircularProgress size={20} /> : <SendIcon />}
               onClick={() => {
-                void runWithOptionalEvidence((evidenceHash) => onSubmit(nextMilestoneIndex, evidenceHash));
+                void onSubmit(nextMilestoneIndex);
               }}
               disabled={isBusy}
               sx={{
@@ -682,7 +489,7 @@ export function ActionCard({
               fullWidth
               startIcon={isBusy ? <CircularProgress size={20} /> : <SendIcon />}
               onClick={() => {
-                void runWithOptionalEvidence((evidenceHash) => onRequestFinalDelivery(evidenceHash));
+                void onRequestFinalDelivery();
               }}
               disabled={isBusy}
               sx={{

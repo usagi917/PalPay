@@ -8,6 +8,9 @@ import { getMilestoneName } from "../constants";
 import { formatTxError, writeContractWithGasFallback } from "../tx";
 import type { EscrowInfo, EscrowStatus, Milestone, TimelineEvent } from "../types";
 
+const ZERO_EVIDENCE_HASH =
+  "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
+
 export function useEscrowInfo(escrowAddress: Address | null) {
   const [info, setInfo] = useState<EscrowInfo | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -349,7 +352,7 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
   );
 
   const submit = useCallback(
-    async (index: number, evidenceHash?: string) => {
+    async (index: number) => {
       if (!escrowAddress) return;
 
       setIsLoading(true);
@@ -367,18 +370,13 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
 
         const [account] = await wallet.getAddresses();
 
-        // V4: Pass evidenceHash (bytes32) - use 0x0 if not provided
-        const evidenceBytes32 = evidenceHash
-          ? (evidenceHash.startsWith("0x") ? evidenceHash : `0x${evidenceHash}`)
-          : "0x0000000000000000000000000000000000000000000000000000000000000000";
-
         const hash = await writeContractWithGasFallback(
           wallet,
           {
             address: escrowAddress,
             abi: ESCROW_ABI,
             functionName: "submit",
-            args: [BigInt(index), evidenceBytes32 as `0x${string}`],
+            args: [BigInt(index), ZERO_EVIDENCE_HASH],
             account,
           },
           TX_FALLBACK_GAS.submit,
@@ -459,14 +457,10 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
   const cancel = useMemo(() => makeAction("cancel", [], "キャンセルに失敗しました"), [makeAction]);
 
   const requestFinalDelivery = useCallback(
-    async (evidenceHash?: string) => {
-      const normalizedEvidenceHash = typeof evidenceHash === "string" ? evidenceHash : undefined;
-      const evidenceBytes32 = normalizedEvidenceHash
-        ? (normalizedEvidenceHash.startsWith("0x") ? normalizedEvidenceHash : `0x${normalizedEvidenceHash}`)
-        : "0x0000000000000000000000000000000000000000000000000000000000000000";
+    async () => {
       await makeAction(
         "requestFinalDelivery",
-        [evidenceBytes32 as `0x${string}`],
+        [ZERO_EVIDENCE_HASH],
         "最終納品申請に失敗しました",
       )();
     },
