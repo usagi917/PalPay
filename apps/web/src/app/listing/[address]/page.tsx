@@ -493,14 +493,7 @@ export default function ListingDetailPage() {
             </Box>
 
             <Box sx={{ mb: 3 }}>
-              <ConnectWallet
-                address={wallet.address}
-                isConnecting={wallet.isConnecting}
-                error={wallet.error}
-                userRole={userRole}
-                onConnect={wallet.connect}
-                onDisconnect={wallet.disconnect}
-              />
+              <ConnectWallet userRole={userRole} />
             </Box>
 
             {isLoading && (

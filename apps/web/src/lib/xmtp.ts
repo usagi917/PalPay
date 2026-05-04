@@ -82,20 +82,36 @@ function toAccountIdentifier(walletAddress: string): Identifier {
   };
 }
 
+export type XmtpSignerOptions =
+  | { type?: "EOA" }
+  | { type: "SCW"; chainId: number };
+
 /**
- * Create XMTP signer wrapper from wallet address and sign function
+ * Create XMTP signer wrapper. Defaults to EOA. For Smart Contract Wallets
+ * (e.g. Base Account / Coinbase Smart Wallet) pass `{ type: "SCW", chainId }`
+ * so XMTP can verify EIP-1271 / 6492 signatures against the wallet contract.
  */
 function toXmtpSigner(
   walletAddress: string,
-  signMessage: (message: string) => Promise<string>
+  signMessage: (message: string) => Promise<string>,
+  options: XmtpSignerOptions = {},
 ): Signer {
+  const sign = async (message: string): Promise<Uint8Array> => {
+    const signature = await signMessage(message);
+    return hexToBytes(signature);
+  };
+  if (options.type === "SCW") {
+    return {
+      type: "SCW",
+      getIdentifier: () => toAccountIdentifier(walletAddress),
+      signMessage: sign,
+      getChainId: () => BigInt(options.chainId),
+    };
+  }
   return {
     type: "EOA",
     getIdentifier: () => toAccountIdentifier(walletAddress),
-    signMessage: async (message: string): Promise<Uint8Array> => {
-      const signature = await signMessage(message);
-      return hexToBytes(signature);
-    },
+    signMessage: sign,
   };
 }
 
@@ -128,7 +144,8 @@ function getOrCreateDbEncryptionKey(address: string): Uint8Array {
  */
 export async function createXmtpClient(
   walletAddress: string,
-  signMessage: (message: string) => Promise<string>
+  signMessage: (message: string) => Promise<string>,
+  signerOptions: XmtpSignerOptions = {},
 ): Promise<Client> {
   const cacheKey = getClientCacheKey(walletAddress);
   const cachedClientPromise = clientCache.get(cacheKey);
@@ -136,7 +153,7 @@ export async function createXmtpClient(
     return await cachedClientPromise;
   }
 
-  const signer = toXmtpSigner(walletAddress, signMessage);
+  const signer = toXmtpSigner(walletAddress, signMessage, signerOptions);
 
   // Get or create persistent encryption key for this wallet
   const dbEncryptionKey = getOrCreateDbEncryptionKey(walletAddress);
@@ -217,7 +234,8 @@ interface RevokeInstallationsResult {
  */
 export async function revokeAllInstallationsByAddress(
   walletAddress: string,
-  signMessage: (message: string) => Promise<string>
+  signMessage: (message: string) => Promise<string>,
+  signerOptions: XmtpSignerOptions = {},
 ): Promise<RevokeInstallationsResult> {
   const inboxState = await getInboxStateByAddress(walletAddress);
   if (!inboxState) {
@@ -226,7 +244,7 @@ export async function revokeAllInstallationsByAddress(
 
   const installationBytes = inboxState.installations.map((installation) => installation.bytes);
   if (installationBytes.length > 0) {
-    const signer = toXmtpSigner(walletAddress, signMessage);
+    const signer = toXmtpSigner(walletAddress, signMessage, signerOptions);
     await Client.revokeInstallations(signer, inboxState.inboxId, installationBytes, XMTP_ENV);
   }
 

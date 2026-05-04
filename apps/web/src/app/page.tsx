@@ -368,14 +368,7 @@ export default function Home() {
                 </Grid>
 
                 <Grid size={{ xs: 12, lg: 5 }}>
-                  <ConnectWallet
-                    address={wallet.address}
-                    isConnecting={wallet.isConnecting}
-                    error={wallet.error}
-                    userRole="none"
-                    onConnect={wallet.connect}
-                    onDisconnect={wallet.disconnect}
-                  />
+                  <ConnectWallet userRole="none" />
 
                   {wallet.address && (
                     <Box sx={{ mt: 3 }}>

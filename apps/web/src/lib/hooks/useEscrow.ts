@@ -2,11 +2,31 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { type Address, type Hash } from "viem";
-import { createClient, createWallet, ensureWalletChain, getMetaMaskProvider, getStablecoinByToken } from "../config";
+import { useConfig } from "wagmi";
+import { getAccount, getWalletClient, switchChain } from "wagmi/actions";
+import type { Config } from "wagmi";
+import { createClient, getChain, getStablecoinByToken } from "../config";
 import { ESCROW_ABI, ERC20_ABI } from "../abi";
 import { getMilestoneName } from "../constants";
 import { formatTxError, getRecommendedGasFees, writeContractWithGasFallback } from "../tx";
 import type { EscrowInfo, EscrowStatus, Milestone, TimelineEvent } from "../types";
+
+const acquireWallet = async (config: Config) => {
+  const targetChainId = getChain().id as Config["chains"][number]["id"];
+  try {
+    await switchChain(config, { chainId: targetChainId });
+  } catch (err) {
+    if (getAccount(config).chainId !== targetChainId) {
+      throw err;
+    }
+  }
+  const wallet = await getWalletClient(config, { chainId: targetChainId });
+  if (!wallet) throw new Error("ログインが必要です");
+  if (wallet.chain && wallet.chain.id !== targetChainId) {
+    throw new Error("ウォレットのネットワークが切り替わっていません。再度お試しください。");
+  }
+  return wallet;
+};
 
 const ZERO_EVIDENCE_HASH =
   "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
@@ -235,6 +255,7 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<Hash | null>(null);
   const [txStep, setTxStep] = useState<TxStep>("idle");
+  const config = useConfig();
 
   const resetState = useCallback(() => {
     setIsLoading(false);
@@ -253,12 +274,8 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
       setTxStep("checking");
 
       try {
-        const provider = getMetaMaskProvider();
-        if (!provider) throw new Error("ログインが必要です");
-        await ensureWalletChain(provider);
-        const wallet = createWallet(provider);
+        const wallet = await acquireWallet(config);
         const client = createClient();
-        if (!wallet) throw new Error("ログインが必要です");
 
         const [account] = await wallet.getAddresses();
         const core = await client.readContract({
@@ -345,14 +362,14 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
           formatTxError(
             err,
             "お支払いに失敗しました",
-            "お支払い処理をキャンセルしました。MetaMaskで承認すると再実行できます。",
+            "お支払い処理をキャンセルしました。ウォレットで承認すると再実行できます。",
           ),
         );
       } finally {
         setIsLoading(false);
       }
     },
-    [escrowAddress, onSuccess]
+    [escrowAddress, onSuccess, config]
   );
 
   const submit = useCallback(
@@ -365,12 +382,8 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
       setTxStep("signing");
 
       try {
-        const provider = getMetaMaskProvider();
-        if (!provider) throw new Error("ログインが必要です");
-        await ensureWalletChain(provider);
-        const wallet = createWallet(provider);
+        const wallet = await acquireWallet(config);
         const client = createClient();
-        if (!wallet) throw new Error("ログインが必要です");
 
         const [account] = await wallet.getAddresses();
         const gasFees = await getRecommendedGasFees(client);
@@ -402,14 +415,14 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
           formatTxError(
             err,
             "完了報告に失敗しました",
-            "処理をキャンセルしました。MetaMaskで承認すると再実行できます。",
+            "処理をキャンセルしました。ウォレットで承認すると再実行できます。",
           ),
         );
       } finally {
         setIsLoading(false);
       }
     },
-    [escrowAddress, onSuccess]
+    [escrowAddress, onSuccess, config]
   );
 
   const makeAction = useCallback(
@@ -427,12 +440,8 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
       if (!escrowAddress) return;
       setIsLoading(true); setError(null); setTxHash(null); setTxStep("signing");
       try {
-        const provider = getMetaMaskProvider();
-        if (!provider) throw new Error("ログインが必要です");
-        await ensureWalletChain(provider);
-        const wallet = createWallet(provider);
+        const wallet = await acquireWallet(config);
         const client = createClient();
-        if (!wallet) throw new Error("ログインが必要です");
         const [account] = await wallet.getAddresses();
         const gasFees = await getRecommendedGasFees(client);
         const fallbackGas = TX_FALLBACK_GAS[functionName];
@@ -458,11 +467,11 @@ export function useEscrowActions(escrowAddress: Address | null, onSuccess?: () =
           formatTxError(
             err,
             errorMsg,
-            "処理をキャンセルしました。MetaMaskで承認すると再実行できます。",
+            "処理をキャンセルしました。ウォレットで承認すると再実行できます。",
           ),
         );
       } finally { setIsLoading(false); }
-    }, [escrowAddress, onSuccess]
+    }, [escrowAddress, onSuccess, config]
   );
 
   const approve = useMemo(() => makeAction("approve", [], "取引開始に失敗しました"), [makeAction]);

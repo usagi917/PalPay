@@ -1,7 +1,8 @@
-import type { createWallet } from "./config";
+import type { Hash } from "viem";
 
-type WalletClient = NonNullable<ReturnType<typeof createWallet>>;
-type WriteContractParams = Parameters<WalletClient["writeContract"]>[0];
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyWriteContract = (params: any) => Promise<Hash>;
+type WalletClientLike = { writeContract: AnyWriteContract };
 type GasFeeValues = {
   maxFeePerGas?: bigint;
   maxPriorityFeePerGas?: bigint;
@@ -123,11 +124,11 @@ export const getRecommendedGasFees = async (client: GasFeeClient): Promise<GasFe
   }
 };
 
-export const writeContractWithGasFallback = async (
-  wallet: WalletClient,
-  params: WriteContractParams,
+export const writeContractWithGasFallback = async <W extends WalletClientLike>(
+  wallet: W,
+  params: Parameters<W["writeContract"]>[0],
   fallbackGas?: bigint,
-) => {
+): Promise<Hash> => {
   try {
     return await wallet.writeContract(params);
   } catch (error) {
@@ -143,6 +144,6 @@ export const writeContractWithGasFallback = async (
     return wallet.writeContract({
       ...params,
       gas: fallbackGas,
-    } as WriteContractParams);
+    });
   }
 };

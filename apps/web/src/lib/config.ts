@@ -1,15 +1,7 @@
-import { http, createPublicClient, createWalletClient, custom, type Address, type Chain } from "viem";
-import { baseSepolia, polygonAmoy, sepolia } from "viem/chains";
+import { http, createPublicClient, type Address, type Chain } from "viem";
+import { baseSepolia, polygon, polygonAmoy, sepolia } from "viem/chains";
 
 export type StablecoinSymbol = "JPYC" | "USDC";
-
-type EthereumProvider = {
-  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
-  on?: (event: string, handler: (...args: unknown[]) => void) => void;
-  removeListener?: (event: string, handler: (...args: unknown[]) => void) => void;
-  isMetaMask?: boolean;
-  providers?: unknown[];
-};
 
 export type StablecoinConfig = {
   currency: StablecoinSymbol;
@@ -23,15 +15,11 @@ const emptyAddress = "" as Address;
 const defaultSepoliaJpycTokenAddress = "0x431D5dfF03120AFA4bDf332c61A6e1766eF37BDB" as Address;
 const defaultSepoliaUsdcTokenAddress = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" as Address;
 
-const isEthereumProvider = (value: unknown): value is EthereumProvider => {
-  if (!value || typeof value !== "object") return false;
-  return typeof (value as { request?: unknown }).request === "function";
-};
-
 const SUPPORTED_CHAINS = Object.freeze({
   [sepolia.id]: sepolia as Chain,
   [baseSepolia.id]: baseSepolia as Chain,
   [polygonAmoy.id]: polygonAmoy as Chain,
+  [polygon.id]: polygon as Chain,
 });
 
 const config = {
@@ -44,8 +32,10 @@ const config = {
 };
 
 const defaultTokenAddressForCurrentChain = (token: StablecoinSymbol): Address => {
-  if (config.chainId !== sepolia.id) return emptyAddress;
-  return token === "JPYC" ? defaultSepoliaJpycTokenAddress : defaultSepoliaUsdcTokenAddress;
+  if (config.chainId === sepolia.id) {
+    return token === "JPYC" ? defaultSepoliaJpycTokenAddress : defaultSepoliaUsdcTokenAddress;
+  }
+  return emptyAddress;
 };
 
 export const STABLECOINS = Object.freeze({
@@ -64,6 +54,40 @@ export const STABLECOINS = Object.freeze({
     factoryAddress: (process.env.NEXT_PUBLIC_USDC_FACTORY_ADDRESS || "") as Address,
   },
 } satisfies Record<StablecoinSymbol, StablecoinConfig>);
+
+const SEPOLIA_ONLY_TOKEN_ADDRESSES = new Set<string>([
+  defaultSepoliaJpycTokenAddress.toLowerCase(),
+  defaultSepoliaUsdcTokenAddress.toLowerCase(),
+]);
+const SEPOLIA_EXPLORER_PATTERNS = [/sepolia\.etherscan\.io/i];
+
+const assertChainAddressConsistency = (): void => {
+  if (config.chainId === sepolia.id) return;
+  const chainLabel = SUPPORTED_CHAINS[config.chainId as keyof typeof SUPPORTED_CHAINS]?.name
+    ?? `chain ${config.chainId}`;
+  for (const token of Object.values(STABLECOINS) as StablecoinConfig[]) {
+    if (!token.tokenAddress) continue;
+    if (SEPOLIA_ONLY_TOKEN_ADDRESSES.has(token.tokenAddress.toLowerCase())) {
+      throw new Error(
+        `${token.symbol} token address (${token.tokenAddress}) is the Sepolia default but ` +
+        `NEXT_PUBLIC_CHAIN_ID is ${config.chainId} (${chainLabel}). Set the ${token.symbol} ` +
+        `address for ${chainLabel} via NEXT_PUBLIC_${token.symbol}_TOKEN_ADDRESS, or unset it.`,
+      );
+    }
+  }
+  if (
+    config.blockExplorerTxBase &&
+    SEPOLIA_EXPLORER_PATTERNS.some((pattern) => pattern.test(config.blockExplorerTxBase))
+  ) {
+    throw new Error(
+      `NEXT_PUBLIC_BLOCK_EXPLORER_TX_BASE points to a Sepolia explorer ` +
+      `(${config.blockExplorerTxBase}) but NEXT_PUBLIC_CHAIN_ID is ${config.chainId} ` +
+      `(${chainLabel}). Update the explorer URL to match the active chain.`,
+    );
+  }
+};
+
+assertChainAddressConsistency();
 
 export const getConfiguredStablecoins = (): StablecoinConfig[] =>
   (Object.values(STABLECOINS) as StablecoinConfig[]).filter(
@@ -91,7 +115,7 @@ export const getDefaultStablecoin = (): StablecoinConfig =>
 export const getChain = (): Chain => {
   const chain = SUPPORTED_CHAINS[config.chainId as keyof typeof SUPPORTED_CHAINS];
   if (!chain) {
-    throw new Error(`Unsupported testnet chain ID ${config.chainId}. Use Sepolia, Base Sepolia, or Polygon Amoy.`);
+    throw new Error(`Unsupported chain ID ${config.chainId}. Use Sepolia, Base Sepolia, Polygon Amoy, or Polygon mainnet.`);
   }
   return chain;
 };
@@ -102,132 +126,6 @@ export const createClient = () => {
     chain,
     transport: http(config.rpcUrl || undefined),
   });
-};
-
-export const isMobile = (): boolean => {
-  if (typeof window === "undefined" || typeof navigator === "undefined") {
-    return false;
-  }
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-};
-
-export const openMetaMaskDeepLink = (): void => {
-  if (typeof window === "undefined") return;
-  const dappUrl = window.location.href.replace(/^https?:\/\//, "");
-  window.location.href = `https://metamask.app.link/dapp/${dappUrl}`;
-};
-
-export const getMetaMaskProvider = (): typeof window.ethereum | null => {
-  if (typeof window === "undefined" || !window.ethereum) {
-    return null;
-  }
-
-  const injected = window.ethereum as unknown;
-  const rawProviders =
-    injected && typeof injected === "object" ? (injected as EthereumProvider).providers : undefined;
-
-  const providers: unknown[] = Array.isArray(rawProviders) ? rawProviders : [injected];
-
-  for (const provider of providers) {
-    if (isEthereumProvider(provider) && provider.isMetaMask) {
-      return provider;
-    }
-  }
-
-  for (const provider of providers) {
-    if (isEthereumProvider(provider)) {
-      return provider;
-    }
-  }
-
-  return null;
-};
-
-export const createWallet = (providerOverride?: typeof window.ethereum) => {
-  const provider = providerOverride || getMetaMaskProvider();
-  if (!provider) {
-    return null;
-  }
-  const chain = getChain();
-  return createWalletClient({
-    chain,
-    transport: custom(provider),
-  });
-};
-
-const getChainLabel = (chainId: number): string => {
-  const chain = SUPPORTED_CHAINS[chainId as keyof typeof SUPPORTED_CHAINS];
-  return chain?.name || `Chain ID ${chainId}`;
-};
-
-export const ensureWalletChain = async (provider: typeof window.ethereum): Promise<void> => {
-  if (!provider) {
-    throw new Error("MetaMaskが見つかりません");
-  }
-  const targetChain = getChain();
-  const targetChainId = config.chainId;
-  const targetChainHex = `0x${targetChainId.toString(16)}`;
-
-  const currentChainHex = (await provider.request({ method: "eth_chainId" })) as string;
-  const currentChainId = parseInt(currentChainHex, 16);
-
-  if (currentChainId === targetChainId) {
-    return;
-  }
-
-  const targetLabel = targetChain.name || `Chain ID ${targetChainId}`;
-  const currentLabel = getChainLabel(currentChainId);
-
-  const trySwitch = async () => {
-    await provider.request({
-      method: "wallet_switchEthereumChain",
-      params: [{ chainId: targetChainHex }],
-    });
-  };
-
-  try {
-    await trySwitch();
-  } catch (switchError: unknown) {
-    const err = switchError as { code?: number };
-    if (err.code === 4001) {
-      throw new Error(`ネットワーク切替がキャンセルされました。MetaMaskで${targetLabel}に切り替えてください（現在: ${currentLabel}）。`);
-    }
-    if (err.code === -32002) {
-      throw new Error(`ネットワーク切替の確認待ちがあります。MetaMaskを開き、${targetLabel}への切替を確認してください。`);
-    }
-    if (err.code === 4902) {
-      try {
-        await provider.request({
-          method: "wallet_addEthereumChain",
-          params: [
-            {
-              chainId: targetChainHex,
-              chainName: targetLabel,
-              nativeCurrency: targetChain.nativeCurrency,
-              rpcUrls: [config.rpcUrl || targetChain.rpcUrls.default.http[0]],
-              blockExplorerUrls: targetChain.blockExplorers ? [targetChain.blockExplorers.default.url] : undefined,
-            },
-          ],
-        });
-        await trySwitch();
-      } catch (addError: unknown) {
-        const addErr = addError as { code?: number };
-        if (addErr.code === 4001) {
-          throw new Error(`ネットワーク追加がキャンセルされました。MetaMaskで${targetLabel}を追加して切り替えてください。`);
-        }
-        throw new Error(`ネットワーク追加に失敗しました。MetaMaskで${targetLabel}を追加・切り替えてください。`);
-      }
-    } else {
-      throw new Error(`ネットワーク切替に失敗しました。MetaMaskを${targetLabel}に切り替えてください（現在: ${currentLabel}）。`);
-    }
-  }
-
-  const verifiedHex = (await provider.request({ method: "eth_chainId" })) as string;
-  const verifiedId = parseInt(verifiedHex, 16);
-  if (verifiedId !== targetChainId) {
-    const verifiedLabel = getChainLabel(verifiedId);
-    throw new Error(`ネットワークが${targetLabel}ではありません（現在: ${verifiedLabel}）。MetaMaskで切り替えてください。`);
-  }
 };
 
 export const getTxUrl = (txHash: string): string => {
