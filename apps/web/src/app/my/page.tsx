@@ -210,14 +210,7 @@ export default function MyPage() {
             </Typography>
 
             <Box sx={{ mb: 4 }}>
-              <ConnectWallet
-                address={wallet.address}
-                isConnecting={wallet.isConnecting}
-                error={wallet.error}
-                userRole="none"
-                onConnect={wallet.connect}
-                onDisconnect={wallet.disconnect}
-              />
+              <ConnectWallet userRole="none" />
             </Box>
 
             {!wallet.address && (

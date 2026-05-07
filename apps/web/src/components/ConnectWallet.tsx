@@ -9,22 +9,18 @@ import {
   Typography,
   Button,
   Chip,
-  Alert,
   CircularProgress,
 } from "@mui/material";
 import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import LogoutIcon from "@mui/icons-material/Logout";
 import type { Address } from "viem";
+import { useAccount, useDisconnect } from "wagmi";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useI18n } from "@/lib/i18n";
 import type { UserRole } from "@/lib/types";
 
 interface ConnectWalletProps {
-  address: Address | null;
-  isConnecting: boolean;
-  error: string | null;
   userRole: UserRole;
-  onConnect: () => void;
-  onDisconnect: () => void;
 }
 
 const buildIdenticonCells = (address: Address) => {
@@ -68,15 +64,13 @@ const roleColors: Record<UserRole, { bg: string; color: string; border: string }
   },
 };
 
-export function ConnectWallet({
-  address,
-  isConnecting,
-  error,
-  userRole,
-  onConnect,
-  onDisconnect,
-}: ConnectWalletProps) {
+export function ConnectWallet({ userRole }: ConnectWalletProps) {
   const { locale, t } = useI18n();
+  const { address, isConnecting, isReconnecting } = useAccount();
+  const { disconnect } = useDisconnect();
+  const { openConnectModal, connectModalOpen } = useConnectModal();
+
+  const busy = isConnecting || isReconnecting || connectModalOpen;
 
   const identiconCells = useMemo(
     () => (address ? buildIdenticonCells(address) : []),
@@ -161,34 +155,9 @@ export function ConnectWallet({
                 ? "このアカウントで進捗記録、確認、受け取り状況をまとめて管理できます。"
                 : "Use this account to record progress, review updates, and track payout status."
               : isJapanese
-              ? "初回設定は付き添いで進められます。ログインすると、そのまま担当案件の記録と確認に進めます。"
-              : "First-time setup can be assisted. After login, you can go straight into recording and reviewing assigned work."}
+              ? "MetaMask / Base Account / WalletConnect から選べます。Base Account はメール / Passkey でも始められます。"
+              : "Choose MetaMask, Base Account, or WalletConnect. Base Account also supports email / Passkey login."}
           </Typography>
-
-          {/* Error */}
-          <AnimatePresence>
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-              >
-                <Alert
-                  severity="error"
-                  sx={{
-                    mb: 2,
-                    background: 'var(--status-error-surface)',
-                    color: 'var(--status-error)',
-                    border: '1px solid rgba(214, 104, 83, 0.25)',
-                    borderRadius: 2,
-                    '& .MuiAlert-icon': { color: 'var(--status-error)' },
-                  }}
-                >
-                  {error}
-                </Alert>
-              </motion.div>
-            )}
-          </AnimatePresence>
 
           <AnimatePresence mode="wait">
             {address ? (
@@ -310,7 +279,7 @@ export function ConnectWallet({
 
                 {/* Disconnect Button */}
                 <Button
-                  onClick={onDisconnect}
+                  onClick={() => disconnect()}
                   fullWidth
                   variant="outlined"
                   startIcon={<LogoutIcon sx={{ fontSize: 18 }} />}
@@ -338,8 +307,8 @@ export function ConnectWallet({
                 transition={{ duration: 0.3 }}
               >
                 <Button
-                  onClick={onConnect}
-                  disabled={isConnecting}
+                  onClick={() => openConnectModal?.()}
+                  disabled={busy || !openConnectModal}
                   fullWidth
                   variant="contained"
                   sx={{
@@ -361,14 +330,14 @@ export function ConnectWallet({
                     },
                   }}
                   startIcon={
-                    isConnecting ? (
+                    busy ? (
                       <CircularProgress size={18} sx={{ color: 'inherit' }} />
                     ) : (
                       <AccountCircleIcon sx={{ fontSize: 20 }} />
                     )
                   }
                 >
-                  {isConnecting ? t("connecting") : t("connectWallet")}
+                  {busy ? t("connecting") : t("connectWallet")}
                 </Button>
                 <Typography
                   variant="caption"
@@ -381,8 +350,8 @@ export function ConnectWallet({
                   }}
                 >
                   {isJapanese
-                    ? "ウォレット接続が難しい場合でも、初回だけ一緒に設定すれば次回からはそのまま使えます。"
-                    : "If wallet setup feels unfamiliar, assist the first login once and the same flow should work afterward."}
+                    ? "ログイン設定が難しい場合でも、初回だけ一緒に設定すれば次回からはそのまま使えます。"
+                    : "If login setup feels unfamiliar, assist the first login once and the same flow should work afterward."}
                 </Typography>
               </motion.div>
             )}

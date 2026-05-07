@@ -21,7 +21,6 @@ export const translations = {
     connectWallet: "ログインして始める",
     connecting: "ログイン中...",
     disconnect: "ログアウト",
-    noMetaMask: "MetaMaskアプリが必要です",
 
     // Roles
     buyer: "卸・買い手",
@@ -124,7 +123,6 @@ export const translations = {
     connectWallet: "Log in to start",
     connecting: "Logging in...",
     disconnect: "Log out",
-    noMetaMask: "MetaMask app is required",
 
     // Roles
     buyer: "Buyer / wholesaler",

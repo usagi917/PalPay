@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { type Address, type Hash } from "viem";
+import { useConfig } from "wagmi";
+import { getAccount, getWalletClient, switchChain } from "wagmi/actions";
+import type { Config } from "wagmi";
 import {
   createClient,
-  createWallet,
-  ensureWalletChain,
+  getChain,
   getConfiguredStablecoins,
-  getMetaMaskProvider,
   getStablecoinConfig,
   type StablecoinConfig,
   type StablecoinSymbol,
@@ -15,6 +16,23 @@ import {
 import { FACTORY_ABI, ESCROW_ABI } from "../abi";
 import { formatTxError, getRecommendedGasFees, writeContractWithGasFallback } from "../tx";
 import type { EscrowStatus, ListingSummary } from "../types";
+
+const acquireWallet = async (config: Config) => {
+  const targetChainId = getChain().id as Config["chains"][number]["id"];
+  try {
+    await switchChain(config, { chainId: targetChainId });
+  } catch (err) {
+    if (getAccount(config).chainId !== targetChainId) {
+      throw err;
+    }
+  }
+  const wallet = await getWalletClient(config, { chainId: targetChainId });
+  if (!wallet) throw new Error("ログインが必要です");
+  if (wallet.chain && wallet.chain.id !== targetChainId) {
+    throw new Error("ウォレットのネットワークが切り替わっていません。再度お試しください。");
+  }
+  return wallet;
+};
 
 type ListingPointer = {
   escrowAddress: Address;
@@ -162,6 +180,7 @@ export function useCreateListing(onSuccess?: () => void) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<Hash | null>(null);
+  const config = useConfig();
 
   const createListing = useCallback(
     async (
@@ -176,12 +195,8 @@ export function useCreateListing(onSuccess?: () => void) {
       setTxHash(null);
 
       try {
-        const provider = getMetaMaskProvider();
-        if (!provider) throw new Error("ログインが必要です");
-        await ensureWalletChain(provider);
-        const wallet = createWallet(provider);
+        const wallet = await acquireWallet(config);
         const client = createClient();
-        if (!wallet) throw new Error("ログインが必要です");
 
         const [account] = await wallet.getAddresses();
         const stablecoin = getStablecoinConfig(currency);
@@ -210,14 +225,14 @@ export function useCreateListing(onSuccess?: () => void) {
           formatTxError(
             err,
             "出品に失敗しました",
-            "出品処理をキャンセルしました。MetaMaskで承認すると実行されます。",
+            "出品処理をキャンセルしました。ウォレットで承認すると実行されます。",
           ),
         );
       } finally {
         setIsLoading(false);
       }
     },
-    [onSuccess]
+    [onSuccess, config]
   );
 
   return { createListing, isLoading, error, txHash };

@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Client, Conversation } from "@xmtp/browser-sdk";
+import { useAccount, useConfig } from "wagmi";
+import { getWalletClient } from "wagmi/actions";
 import {
   createXmtpClient,
   getEscrowConversation,
@@ -13,8 +15,13 @@ import {
   revokeAllInstallationsByAddress,
   type XmtpMessage,
   type XmtpErrorKind,
+  type XmtpSignerOptions,
 } from "@/lib/xmtp";
-import { getMetaMaskProvider } from "@/lib/config";
+
+const SMART_CONTRACT_WALLET_CONNECTOR_IDS = new Set<string>([
+  "baseAccount",
+  "coinbaseWalletSDK",
+]);
 
 interface UseXmtpChatProps {
   escrowAddress: string;
@@ -51,6 +58,8 @@ export function useXmtpChat({
   const [canMessagePeer, setCanMessagePeer] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
+  const wagmiConfig = useConfig();
+  const { address: connectedAddress, connector, chainId } = useAccount();
 
   const clientRef = useRef<Client | null>(null);
   const conversationRef = useRef<Conversation | null>(null);
@@ -66,59 +75,34 @@ export function useXmtpChat({
   }, []);
 
   const getWalletContext = useCallback(async () => {
-    const provider = getMetaMaskProvider();
-    if (!provider) {
-      throw new Error("MetaMaskが接続されていません");
-    }
-
-    const accounts = await provider.request({
-      method: "eth_accounts",
-    }) as string[];
-
-    if (!accounts || accounts.length === 0) {
+    const wallet = await getWalletClient(wagmiConfig);
+    if (!wallet) {
       throw new Error("ログインが必要です");
     }
-
-    const providerWithSelected = provider as { selectedAddress?: unknown };
-    const selectedAddress =
-      typeof providerWithSelected.selectedAddress === "string"
-        ? providerWithSelected.selectedAddress
-        : null;
-
-    const address =
-      selectedAddress &&
-      accounts.some((account) => account.toLowerCase() === selectedAddress.toLowerCase())
-        ? selectedAddress
-        : accounts[0];
-    const signMessage = async (message: string): Promise<string> => {
-      return await provider.request({
-        method: "personal_sign",
-        params: [message, address],
-      }) as string;
-    };
-
-    return { address, signMessage };
-  }, []);
-
-  // Reconnect XMTP when wallet account changes in MetaMask
-  useEffect(() => {
-    const provider = getMetaMaskProvider();
-    if (!provider || typeof provider.on !== "function") {
-      return;
+    const [primary] = await wallet.getAddresses();
+    if (!primary) {
+      throw new Error("ログインが必要です");
     }
+    const address = primary;
+    const signMessage = (message: string): Promise<string> =>
+      wallet.signMessage({ account: address, message });
+    const isSmartWallet = connector?.id
+      ? SMART_CONTRACT_WALLET_CONNECTOR_IDS.has(connector.id)
+      : false;
+    const signerOptions: XmtpSignerOptions = isSmartWallet
+      ? {
+          type: "SCW",
+          chainId:
+            chainId ?? wallet.chain?.id ?? Number(await wallet.getChainId()),
+        }
+      : { type: "EOA" };
+    return { address, signMessage, signerOptions };
+  }, [wagmiConfig, connector, chainId]);
 
-    const handleAccountsChanged = () => {
-      setRetryNonce((prev) => prev + 1);
-    };
-
-    provider.on("accountsChanged", handleAccountsChanged);
-
-    return () => {
-      if (typeof provider.removeListener === "function") {
-        provider.removeListener("accountsChanged", handleAccountsChanged);
-      }
-    };
-  }, []);
+  // Re-initialise XMTP whenever the connected wallet changes
+  useEffect(() => {
+    setRetryNonce((prev) => prev + 1);
+  }, [connectedAddress]);
 
   // Initialize XMTP client and conversation
   useEffect(() => {
@@ -138,11 +122,11 @@ export function useXmtpChat({
       closeStream();
 
       try {
-        const { address, signMessage } = await getWalletContext();
+        const { address, signMessage, signerOptions } = await getWalletContext();
         if (!isMounted) return;
 
-        // Create XMTP client
-        const client = await createXmtpClient(address, signMessage);
+        // Create XMTP client (signerOptions select EOA vs SCW path)
+        const client = await createXmtpClient(address, signMessage, signerOptions);
 
         if (!isMounted) return;
 
@@ -273,8 +257,8 @@ export function useXmtpChat({
     setError(null);
 
     try {
-      const { address, signMessage } = await getWalletContext();
-      const result = await revokeAllInstallationsByAddress(address, signMessage);
+      const { address, signMessage, signerOptions } = await getWalletContext();
+      const result = await revokeAllInstallationsByAddress(address, signMessage, signerOptions);
 
       console.info("XMTP installations revoked", {
         inboxId: result.inboxId,
