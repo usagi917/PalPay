@@ -1,4 +1,4 @@
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # --- deps ---
@@ -36,7 +36,7 @@ ENV NEXT_PUBLIC_RPC_URL=${NEXT_PUBLIC_RPC_URL} \
 RUN pnpm build
 
 # --- runner ---
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
